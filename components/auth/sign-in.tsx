@@ -26,8 +26,8 @@ export function SignIn() {
 
   return (
     <>
-      <Button onClick={() => setShowDialog(true)} variant="outline" size="sm">
-        Sign in
+      <Button onClick={() => setShowDialog(true)} variant="outline" size="lg" className="px-8">
+        Get started
       </Button>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>

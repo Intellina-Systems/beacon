@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { FolderKanban, Users, Zap, Menu, X, Sun, Moon } from 'lucide-react'
@@ -16,8 +16,14 @@ const navItems = [
 
 function ThemeCycleButton() {
   const { resolvedTheme, setTheme } = useTheme()
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  )
 
   const cycle = () => {
+    if (!mounted) return
     if (resolvedTheme === 'light') setTheme('dark')
     else setTheme('light')
   }
@@ -29,11 +35,10 @@ function ThemeCycleButton() {
       className="h-8 w-8 p-0"
       onClick={cycle}
       title="Toggle theme"
-      suppressHydrationWarning
+      disabled={!mounted}
+      aria-label="Toggle theme"
     >
-      <span suppressHydrationWarning>
-        {resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-      </span>
+      {mounted ? resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" /> : null}
     </Button>
   )
 }
