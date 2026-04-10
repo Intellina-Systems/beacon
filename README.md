@@ -1,47 +1,56 @@
-# Coding Agent Template
+# Beacon
 
-A template for building AI-powered coding agents that supports Claude Code, OpenAI's Codex CLI, GitHub Copilot CLI, Cursor CLI, Google Gemini CLI, and opencode with [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox) to automatically execute coding tasks on your repositories.
+Beacon is an internal PM tool that fills workflow gaps with AI. It builds an organizational picture from everyone's activity, captures signals across systems, and turns that context into recommendations teams can act on. Beacon works with Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode, with Vercel Sandbox as part of its broader workflow automation and execution stack.
 
-![Coding Agent Template Screenshot](screenshot.png)
+![Beacon Screenshot](screenshot.png)
 
-## Deploy Your Own
+## What Beacon does
 
-You can deploy your own version of the coding agent template to Vercel with one click:
+1. Lets teams plan
+2. Assigns work
+3. Updates tasks
+4. Captures signals from across tools and conversations
+5. Recommends next steps
+6. Suggests required learning gaps
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fvercel-labs%2Fcoding-agent-template&env=SANDBOX_VERCEL_TEAM_ID,SANDBOX_VERCEL_PROJECT_ID,SANDBOX_VERCEL_TOKEN,JWE_SECRET,ENCRYPTION_KEY&envDescription=Required+environment+variables+for+the+coding+agent+template.+You+must+also+configure+at+least+one+OAuth+provider+(GitHub+or+Vercel)+after+deployment.+Optional+API+keys+can+be+added+later.&stores=%5B%7B%22type%22%3A%22postgres%22%7D%5D&project-name=coding-agent-template&repository-name=coding-agent-template)
+## Signals and integrations
 
-**What happens during deployment:**
-- **Automatic Database Setup**: A Neon Postgres database is automatically created and connected to your project
-- **Environment Configuration**: You'll be prompted to provide required environment variables (Vercel credentials and encryption keys)
-- **OAuth Setup**: After deployment, you'll need to configure at least one OAuth provider (GitHub or Vercel) in your project settings for user authentication
+Beacon is intended to pull context from systems like GitHub, Linear, MCP servers, client requirements, WhatsApp, email, and related sources.
 
 ## Features
 
-- **Multi-Agent Support**: Choose from Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, Cursor CLI, Google Gemini CLI, or opencode to execute coding tasks
+- **Planning Workspace**: Organize work, priorities, and dependencies in one place
+- **Task Assignment**: Assign ownership and track accountability across teams
+- **Task Updates**: Keep execution status current as work progresses
+- **Signal Capture**: Pull context from engineering tools, client channels, and operational systems
+- **AI Recommendations**: Surface likely next steps based on activity across the organization
+- **Learning Gap Detection**: Highlight missing knowledge or capability areas that may block delivery
+- **Agent Compatibility**: Works with Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode, with Vercel Sandbox
 - **User Authentication**: Secure sign-in with GitHub or Vercel OAuth
 - **Multi-User Support**: Each user has their own tasks, API keys, and GitHub connection
 - **Vercel Sandbox**: Runs code in isolated, secure sandboxes ([docs](https://vercel.com/docs/vercel-sandbox))
 - **AI Gateway Integration**: Built for seamless integration with [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for model routing and observability
 - **AI-Generated Branch Names**: Automatically generates descriptive Git branch names using AI SDK 5 + AI Gateway
-- **Task Management**: Track task progress with real-time updates
+- **Task Management**: Track work progress with real-time updates
 - **Persistent Storage**: Tasks stored in Neon Postgres database
 - **Git Integration**: Automatically creates branches and commits changes
 - **Modern UI**: Clean, responsive interface built with Next.js and Tailwind CSS
-- **MCP Server Support**: Connect MCP servers to Claude Code for extended capabilities (Claude only)
+- **MCP Server Support**: Connect MCP servers for extended context and integrations
 
 ## Quick Start
 
 For detailed setup instructions, see the [Local Development Setup](#local-development-setup) section below.
 
 **TL;DR:**
-1. Click the "Deploy with Vercel" button above (automatic database setup!)
-2. Configure OAuth (GitHub or Vercel) in your project settings
-3. Users sign in and start creating tasks
+1. Clone the repository
+2. Configure the required environment variables
+3. Install dependencies and initialize the database
+4. Start using Beacon for planning, assignments, and organizational visibility
 
 Or run locally:
 ```bash
-git clone https://github.com/vercel-labs/coding-agent-template.git
-cd coding-agent-template
+git clone <your-repository-url>
+cd beacon
 pnpm install
 # Set up .env.local with required variables
 pnpm db:push
@@ -51,10 +60,10 @@ pnpm dev
 ## Usage
 
 1. **Sign In**: Authenticate with GitHub or Vercel
-2. **Create a Task**: Enter a repository URL and describe what you want the AI to do
-3. **Monitor Progress**: Watch real-time logs as the agent works
-4. **Review Results**: See the changes made and the branch created
-5. **Manage Tasks**: View all your tasks in the sidebar with status updates
+2. **Plan Work**: Capture initiatives, tasks, and client requirements
+3. **Assign Ownership**: Route work to the right people or teams
+4. **Track Signals**: Aggregate updates from connected systems and communication channels
+5. **Review Recommendations**: Use AI-generated suggestions for next steps and capability gaps
 
 ## Task Configuration
 
@@ -124,7 +133,7 @@ When Keep Alive is enabled, the sandbox stays alive after task completion for th
 1. **Task Creation**: When you submit a task, it's stored in the database
 2. **AI Branch Name Generation**: AI SDK 5 + AI Gateway automatically generates a descriptive branch name based on your task (non-blocking using Next.js 15's `after()`)
 3. **Sandbox Setup**: A Vercel sandbox is created with your repository
-4. **Agent Execution**: Your chosen coding agent (Claude Code, Codex CLI, GitHub Copilot CLI, Cursor CLI, Gemini CLI, or opencode) analyzes your prompt and makes changes
+4. **AI Processing**: Beacon analyzes task context, connected signals, and repository activity to produce structured recommendations and updates, and can route execution through tools like Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode
 5. **Git Operations**: Changes are committed and pushed to the AI-generated branch
 6. **Cleanup**: The sandbox is shut down to free resources
 
@@ -151,14 +160,14 @@ The system automatically generates descriptive Git branch names using AI SDK 5 a
 - **UI Components**: shadcn/ui
 - **Database**: PostgreSQL with Drizzle ORM
 - **AI SDK**: AI SDK 5 with Vercel AI Gateway integration
-- **AI Agents**: Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, Cursor CLI, Google Gemini CLI, opencode
+- **AI Integrations**: Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, OpenCode, and AI SDK 5
 - **Sandbox**: [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox)
 - **Authentication**: Next Auth (OAuth with GitHub/Vercel)
 - **Git**: Automated branching and commits with AI-generated branch names
 
 ## MCP Server Support
 
-Connect MCP Servers to extend Claude Code with additional tools and integrations. **Currently only works with Claude Code agent.**
+Connect MCP servers to extend Beacon with additional tools and integrations, including agent-driven workflows.
 
 ### How to Add MCP Servers
 
@@ -173,8 +182,8 @@ Connect MCP Servers to extend Claude Code with additional tools and integrations
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/vercel-labs/coding-agent-template.git
-cd coding-agent-template
+git clone <your-repository-url>
+cd beacon
 ```
 
 ### 2. Install dependencies
@@ -240,7 +249,7 @@ NEXT_PUBLIC_AUTH_PROVIDERS=github,vercel
 
 These API keys can be set globally (fallback for all users) or left unset to require users to provide their own:
 
-- `ANTHROPIC_API_KEY`: Anthropic API key for Claude agent (users can override in their profile)
+- `ANTHROPIC_API_KEY`: Anthropic API key for AI features (users can override in their profile)
 - `AI_GATEWAY_API_KEY`: AI Gateway API key for branch name generation and Codex (users can override)
 - `CURSOR_API_KEY`: For Cursor agent support (users can override)
 - `GEMINI_API_KEY`: For Google Gemini agent support (users can override)
@@ -274,7 +283,7 @@ Based on your `NEXT_PUBLIC_AUTH_PROVIDERS` configuration, you'll need to create 
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
 2. Click "New OAuth App"
 3. Fill in the details:
-   - **Application name**: Your app name (e.g., "My Coding Agent")
+   - **Application name**: Your app name (e.g., "Beacon")
    - **Homepage URL**: `http://localhost:3000` (or your production URL)
    - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
 4. Click "Register application"
@@ -554,4 +563,3 @@ Confirm that:
 - **Users must connect GitHub** (if they signed in with Vercel) to access repositories
 - **API keys** can now be per-user - users can override global API keys in their profile
 - **Breaking API changes**: If you have external integrations calling your API, they'll need to be updated to include authentication
-
