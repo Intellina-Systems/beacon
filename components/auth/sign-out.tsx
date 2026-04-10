@@ -15,18 +15,16 @@ import { useRouter } from 'next/navigation'
 import { useSetAtom, useAtomValue } from 'jotai'
 import { sessionAtom } from '@/lib/atoms/session'
 import { githubConnectionAtom } from '@/lib/atoms/github-connection'
-import { GitHubIcon } from '@/components/icons/github-icon'
-import { ApiKeysDialog } from '@/components/api-keys-dialog'
-import { SandboxesDialog } from '@/components/sandboxes-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { Key, Server } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
 import { getEnabledAuthProviders } from '@/lib/auth/providers'
 
-interface RateLimitInfo {
-  used: number
-  total: number
-  remaining: number
+// Inline GitHub SVG to avoid external icon dependency
+function GitHubIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  )
 }
 
 export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProvider'>) {
@@ -34,11 +32,6 @@ export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProv
   const setSession = useSetAtom(sessionAtom)
   const githubConnection = useAtomValue(githubConnectionAtom)
   const setGitHubConnection = useSetAtom(githubConnectionAtom)
-  const [showApiKeysDialog, setShowApiKeysDialog] = useState(false)
-  const [showSandboxesDialog, setShowSandboxesDialog] = useState(false)
-  const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
-
-  // Check which auth providers are enabled
   const { github: hasGitHub } = getEnabledAuthProviders()
 
   const handleSignOut = async () => {
@@ -52,60 +45,19 @@ export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProv
     try {
       const response = await fetch('/api/auth/github/disconnect', { method: 'POST' })
       if (response.ok) {
-        // Immediately update the atom to reflect disconnected state
         setGitHubConnection({ connected: false })
         toast.success('GitHub disconnected')
         router.refresh()
       } else {
         toast.error('Failed to disconnect GitHub')
       }
-    } catch (error) {
-      console.error('Failed to disconnect GitHub:', error)
+    } catch {
       toast.error('Failed to disconnect GitHub')
     }
   }
 
-  // Fetch rate limit info on mount
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
-      try {
-        const response = await fetch('/api/auth/rate-limit')
-        if (response.ok && mounted) {
-          const data = await response.json()
-          setRateLimit({
-            used: data.used,
-            total: data.total,
-            remaining: data.remaining,
-          })
-        }
-      } catch (error) {
-        console.error('Failed to fetch rate limit:', error)
-      }
-    })()
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  const fetchRateLimit = useCallback(async () => {
-    try {
-      const response = await fetch('/api/auth/rate-limit')
-      if (response.ok) {
-        const data = await response.json()
-        setRateLimit({
-          used: data.used,
-          total: data.total,
-          remaining: data.remaining,
-        })
-      }
-    } catch (error) {
-      console.error('Failed to fetch rate limit:', error)
-    }
-  }, [])
-
   return (
-    <DropdownMenu onOpenChange={(open) => open && fetchRateLimit()}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -118,40 +70,22 @@ export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProv
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-52">
         <div className="px-2 py-2">
-          <div className="text-sm font-medium">
-            <span>{user.name ?? user.username}</span>
-          </div>
-          {user.email && <div className="text-sm text-muted-foreground">{user.email}</div>}
-          {rateLimit && (
-            <div className="text-xs text-muted-foreground mt-1">
-              {rateLimit.remaining}/{rateLimit.total} messages remaining today
-            </div>
-          )}
+          <div className="text-sm font-medium">{user.name ?? user.username}</div>
+          {user.email && <div className="text-xs text-muted-foreground">{user.email}</div>}
         </div>
 
         <DropdownMenuSeparator />
 
         <ThemeToggle />
 
-        <DropdownMenuItem onClick={() => setShowApiKeysDialog(true)} className="cursor-pointer">
-          <Key className="h-4 w-4 mr-2" />
-          API Keys
-        </DropdownMenuItem>
-
-        <DropdownMenuItem onClick={() => setShowSandboxesDialog(true)} className="cursor-pointer">
-          <Server className="h-4 w-4 mr-2" />
-          Sandboxes
-        </DropdownMenuItem>
-
-        {/* Only show GitHub Connect/Disconnect for Vercel users when GitHub is enabled */}
         {authProvider === 'vercel' && hasGitHub && (
           <>
             {githubConnection.connected ? (
               <DropdownMenuItem onClick={handleGitHubDisconnect} className="cursor-pointer">
                 <GitHubIcon className="h-4 w-4 mr-2" />
-                Disconnect
+                Disconnect GitHub
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem
@@ -159,7 +93,7 @@ export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProv
                 className="cursor-pointer"
               >
                 <GitHubIcon className="h-4 w-4 mr-2" />
-                Connect
+                Connect GitHub
               </DropdownMenuItem>
             )}
           </>
@@ -171,21 +105,18 @@ export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProv
           {authProvider === 'github' ? (
             <>
               <GitHubIcon className="h-4 w-4 mr-2" />
-              Log Out
+              Sign out
             </>
           ) : (
             <>
               <svg viewBox="0 0 76 65" className="h-3 w-3 mr-2" fill="currentColor">
                 <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
               </svg>
-              Log Out
+              Sign out
             </>
           )}
         </DropdownMenuItem>
       </DropdownMenuContent>
-
-      <ApiKeysDialog open={showApiKeysDialog} onOpenChange={setShowApiKeysDialog} />
-      <SandboxesDialog open={showSandboxesDialog} onOpenChange={setShowSandboxesDialog} />
     </DropdownMenu>
   )
 }

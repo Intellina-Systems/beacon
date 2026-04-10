@@ -11,18 +11,16 @@ import {
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu'
 
+// Designed to be used as a submenu item inside a DropdownMenu.
 export function ThemeToggle() {
   const { theme = 'system', setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
 
-  // useEffect only runs on the client, so now we can safely show the UI
   React.useEffect(() => {
     setMounted(true)
   }, [])
 
-  if (!mounted) {
-    return null
-  }
+  if (!mounted) return null
 
   return (
     <DropdownMenuSub>

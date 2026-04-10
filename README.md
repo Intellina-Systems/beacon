@@ -117,16 +117,16 @@ The review queue is the trust boundary. AI proposes, human approves, Beacon post
 
 ---
 
-### P0 — Foundation
+### P0 — Foundation ✅
 
 Goal: Clean base with Linear connected. No ingestion yet.
 
-1. Strip any remaining coding-agent or sandbox infrastructure from the template
-2. Auth (GitHub OAuth, Vercel OAuth) — keep as-is
-3. Linear OAuth + API integration — connect workspace, pull projects and issues
-4. `projects`, `workItems`, `members` tables
-5. Basic UI: project list, work item list (mirroring Linear), team roster
-6. Ensure app builds and runs cleanly
+1. ✅ Strip any remaining coding-agent or sandbox infrastructure from the template
+2. ✅ Auth (GitHub OAuth, Vercel OAuth) — keep as-is
+3. ✅ Linear OAuth + API integration — connect workspace, pull projects and issues
+4. ✅ `projects`, `workItems`, `members` tables
+5. ✅ Basic UI: project list, work item list (mirroring Linear), team roster
+6. ✅ Ensure app builds and runs cleanly
 
 **Exit criteria:** Users can sign in, see their Linear projects and issues in Beacon, and manage a team roster.
 

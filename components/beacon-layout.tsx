@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FolderKanban, Users, Zap, Menu, X, Sun, Moon, Monitor } from 'lucide-react'
+import { FolderKanban, Users, Zap, Menu, X, Sun, Moon } from 'lucide-react'
 import { User } from '@/components/auth/user'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -15,23 +15,25 @@ const navItems = [
 ]
 
 function ThemeCycleButton() {
-  const { theme, setTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const { resolvedTheme, setTheme } = useTheme()
 
   const cycle = () => {
-    if (theme === 'light') setTheme('dark')
-    else if (theme === 'dark') setTheme('system')
+    if (resolvedTheme === 'light') setTheme('dark')
     else setTheme('light')
   }
 
-  if (!mounted) return <div className="h-8 w-8" />
-
   return (
-    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={cycle} title="Toggle theme">
-      {theme === 'light' ? <Sun className="h-4 w-4" /> : theme === 'dark' ? <Moon className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-8 w-8 p-0"
+      onClick={cycle}
+      title="Toggle theme"
+      suppressHydrationWarning
+    >
+      <span suppressHydrationWarning>
+        {resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+      </span>
     </Button>
   )
 }
