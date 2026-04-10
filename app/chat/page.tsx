@@ -1,96 +1,140 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useEffect } from 'react'
 import { Sparkles, Send, StopCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { useBeaconChat } from '@/hooks/use-beacon-chat'
+import {
+  ProjectsDisplay,
+  TeamDisplay,
+  WorkItemsDisplay,
+  UnknownToolDisplay,
+  ToolLoading,
+} from '@/components/chat/tool-renderers'
+import type { UIMessage } from 'ai'
 
-type Message = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
+// ---------------------------------------------------------------------------
+// Tool part renderer — maps tool name → component
+// ---------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPart = { type: string; state?: string; input?: any; output?: any; toolCallId?: string }
+
+function ToolPartRenderer({ part }: { part: AnyPart }) {
+  const toolName = part.type.startsWith('tool-') ? part.type.slice(5) : part.type === 'dynamic-tool' ? (part as { toolName?: string }).toolName ?? 'unknown' : ''
+
+  if (part.state === 'input-streaming') {
+    return <ToolLoading label={`Running ${toolName}…`} />
+  }
+
+  const output = part.state === 'output-available' ? part.output : undefined
+
+  if (part.type === 'tool-display_projects') {
+    return <ProjectsDisplay output={output} />
+  }
+  if (part.type === 'tool-display_team') {
+    return <TeamDisplay output={output} />
+  }
+  if (part.type === 'tool-display_work_items') {
+    return <WorkItemsDisplay output={output} />
+  }
+
+  if (output !== undefined) return null // known tool ran, no custom renderer → suppress
+
+  return <UnknownToolDisplay toolName={toolName} input={part.input} />
 }
 
-let msgCount = 0
-function nextId() {
-  return `msg-${++msgCount}`
+// ---------------------------------------------------------------------------
+// Single message renderer
+// ---------------------------------------------------------------------------
+
+function MessageBubble({ message }: { message: UIMessage }) {
+  const isUser = message.role === 'user'
+
+  return (
+    <div className={cn('flex gap-3', isUser && 'justify-end')}>
+      {!isUser && (
+        <div className="h-7 w-7 rounded-full bg-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
+          <Sparkles className="h-3.5 w-3.5 text-background" />
+        </div>
+      )}
+
+      <div className={cn('flex flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
+        {message.parts.map((part, i) => {
+          if (part.type === 'text') {
+            return (
+              <div
+                key={i}
+                className={cn(
+                  'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
+                  isUser ? 'bg-foreground text-background' : 'bg-muted text-foreground',
+                )}
+              >
+                {part.text}
+                {part.state === 'streaming' && (
+                  <span className="inline-block w-1.5 h-3.5 bg-current opacity-70 animate-pulse ml-0.5 align-[-1px]" />
+                )}
+              </div>
+            )
+          }
+
+          if (part.type === 'reasoning') {
+            return (
+              <div key={i} className="text-xs text-muted-foreground italic px-1">
+                {part.text}
+              </div>
+            )
+          }
+
+          // Tool parts
+          if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
+            return (
+              <div key={i} className="w-full">
+                <ToolPartRenderer part={part as AnyPart} />
+              </div>
+            )
+          }
+
+          return null
+        })}
+      </div>
+    </div>
+  )
 }
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  const { messages, status, sendMessage, stop } = useBeaconChat()
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const isStreaming = status === 'streaming' || status === 'submitted'
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  async function submit() {
-    const text = input.trim()
-    if (!text || isStreaming) return
-
-    const userMsg: Message = { id: nextId(), role: 'user', content: text }
-    const assistantId = nextId()
-    const assistantMsg: Message = { id: assistantId, role: 'assistant', content: '' }
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg])
-    setInput('')
-    setIsStreaming(true)
-
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          messages: [...messages, userMsg].map(({ role, content }) => ({ role, content })),
-        }),
-      })
-
-      if (!res.ok || !res.body) {
-        throw new Error(`Request failed: ${res.status}`)
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + chunk } : m)),
-        )
-      }
-    } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: 'Something went wrong. Please try again.' } : m,
-          ),
-        )
-      }
-    } finally {
-      setIsStreaming(false)
-      abortRef.current = null
-    }
-  }
-
-  function stop() {
-    abortRef.current?.abort()
-  }
-
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      submit()
+      const text = (e.currentTarget.value ?? '').trim()
+      if (text && !isStreaming) {
+        sendMessage(text)
+        e.currentTarget.value = ''
+      }
+    }
+  }
+
+  function handleSend() {
+    const text = inputRef.current?.value.trim() ?? ''
+    if (text && !isStreaming) {
+      sendMessage(text)
+      if (inputRef.current) inputRef.current.value = ''
     }
   }
 
@@ -99,40 +143,32 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
             <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
               <Sparkles className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
               <p className="font-medium">Beacon AI</p>
               <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                Ask me about your projects, priorities, team capacity, or anything else on your plate.
+                Ask about your projects, team capacity, blockers, or anything on your plate.
               </p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center max-w-sm">
+              {['Show my projects', 'Who has capacity?', 'What are the blockers?'].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => sendMessage(suggestion)}
+                  className="text-xs px-3 py-1.5 rounded-full border hover:bg-accent transition-colors"
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
           <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
             {messages.map((m) => (
-              <div key={m.id} className={cn('flex gap-3', m.role === 'user' && 'justify-end')}>
-                {m.role === 'assistant' && (
-                  <div className="h-7 w-7 rounded-full bg-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <Sparkles className="h-3.5 w-3.5 text-background" />
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    'rounded-2xl px-4 py-2.5 text-sm leading-relaxed max-w-[80%] whitespace-pre-wrap',
-                    m.role === 'user'
-                      ? 'bg-foreground text-background'
-                      : 'bg-muted text-foreground',
-                  )}
-                >
-                  {m.content}
-                  {m.role === 'assistant' && isStreaming && m.id === messages[messages.length - 1]?.id && (
-                    <span className="inline-block w-1.5 h-3.5 bg-current opacity-70 animate-pulse ml-0.5 align-[-1px]" />
-                  )}
-                </div>
-              </div>
+              <MessageBubble key={m.id} message={m} />
             ))}
             <div ref={bottomRef} />
           </div>
@@ -143,9 +179,7 @@ export default function ChatPage() {
       <div className="border-t bg-background px-4 py-4">
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
           <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
+            ref={inputRef}
             onKeyDown={handleKeyDown}
             placeholder="Ask anything…"
             rows={1}
@@ -157,13 +191,13 @@ export default function ChatPage() {
               <StopCircle className="h-4 w-4" />
             </Button>
           ) : (
-            <Button size="icon" onClick={submit} disabled={!input.trim()} className="flex-shrink-0 h-10 w-10">
+            <Button size="icon" onClick={handleSend} className="flex-shrink-0 h-10 w-10">
               <Send className="h-4 w-4" />
             </Button>
           )}
         </div>
         <p className="text-center text-xs text-muted-foreground mt-2">
-          Press Enter to send, Shift+Enter for a new line
+          Enter to send · Shift+Enter for new line
         </p>
       </div>
     </div>
