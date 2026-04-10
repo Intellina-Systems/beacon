@@ -1,36 +1,38 @@
-import { cookies } from 'next/headers'
-import { HomePageContent } from '@/components/home-page-content'
+import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/session/get-server-session'
-import { getGitHubStars } from '@/lib/github-stars'
-import { getMaxSandboxDuration } from '@/lib/db/settings'
+import { SignIn } from '@/components/auth/sign-in'
+import { Zap } from 'lucide-react'
 
 export default async function Home() {
-  const cookieStore = await cookies()
-  const selectedOwner = cookieStore.get('selected-owner')?.value || ''
-  const selectedRepo = cookieStore.get('selected-repo')?.value || ''
-  const installDependencies = cookieStore.get('install-dependencies')?.value === 'true'
-  const keepAlive = cookieStore.get('keep-alive')?.value === 'true'
-  const enableBrowser = cookieStore.get('enable-browser')?.value === 'true'
-
   const session = await getServerSession()
 
-  // Get max sandbox duration for this user (user-specific > global > env var)
-  const maxSandboxDuration = await getMaxSandboxDuration(session?.user?.id)
-  const maxDuration = parseInt(cookieStore.get('max-duration')?.value || maxSandboxDuration.toString(), 10)
-
-  const stars = await getGitHubStars()
+  if (session?.user) {
+    redirect('/projects')
+  }
 
   return (
-    <HomePageContent
-      initialSelectedOwner={selectedOwner}
-      initialSelectedRepo={selectedRepo}
-      initialInstallDependencies={installDependencies}
-      initialMaxDuration={maxDuration}
-      initialKeepAlive={keepAlive}
-      initialEnableBrowser={enableBrowser}
-      maxSandboxDuration={maxSandboxDuration}
-      user={session?.user ?? null}
-      initialStars={stars}
-    />
+    <div className="flex flex-col items-center justify-center min-h-full px-4 py-16">
+      <div className="flex flex-col items-center gap-6 max-w-md text-center">
+        <div className="flex items-center gap-3">
+          <Zap className="h-8 w-8 text-primary" />
+          <h1 className="text-3xl font-bold tracking-tight">Beacon</h1>
+        </div>
+
+        <p className="text-muted-foreground text-lg">
+          AI-powered PM tool that bridges where your team works and where work is tracked.
+        </p>
+
+        <ul className="text-sm text-muted-foreground text-left space-y-1 w-full">
+          <li>• Sync projects and issues from Linear</li>
+          <li>• Ingest signals from WhatsApp, email, docs</li>
+          <li>• Surface what needs attention each morning</li>
+          <li>• Recommend what to build next</li>
+        </ul>
+
+        <div className="pt-2">
+          <SignIn />
+        </div>
+      </div>
+    </div>
   )
 }
