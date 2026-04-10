@@ -1,565 +1,479 @@
-# Beacon
+# Beacon — AI-Powered PM Tool
 
-Beacon is an internal PM tool that fills workflow gaps with AI. It builds an organizational picture from everyone's activity, captures signals across systems, and turns that context into recommendations teams can act on. Beacon works with Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode, with Vercel Sandbox as part of its broader workflow automation and execution stack.
+Beacon is an AI-first project management tool that aggregates signals from across your engineering and communication systems, and turns them into recommendations, summaries, and next steps for teams. It is being repurposed from a coding agent template into a PM tool.
 
-![Beacon Screenshot](screenshot.png)
+> **For AI agents working on this codebase:** This README is the source of truth for what to build, what to strip, and in what order. Follow the priority tiers (P0 → P1 → P2 → P3) in sequence. Do not build P1 features before P0 is complete. Each section has explicit instructions on what to keep, remove, or create.
 
-## What Beacon does
+---
 
-1. Lets teams plan
-2. Assigns work
-3. Updates tasks
-4. Captures signals from across tools and conversations
-5. Recommends next steps
-6. Suggests required learning gaps
+## Two Modes
 
-## Signals and integrations
+Beacon is designed to work in two configurations. Both share the same core; the difference is whether AI agents are used to understand the codebase.
 
-Beacon is intended to pull context from systems like GitHub, Linear, MCP servers, client requirements, WhatsApp, email, and related sources.
+### Mode A — Without Code Context
 
-## Features
+Beacon operates purely as a PM tool. It captures tasks, pulls signals from project management and communication tools (Linear, GitHub Issues, Slack, email), and uses AI to generate recommendations, summaries, and drafts. No codebase access required.
 
-- **Planning Workspace**: Organize work, priorities, and dependencies in one place
-- **Task Assignment**: Assign ownership and track accountability across teams
-- **Task Updates**: Keep execution status current as work progresses
-- **Signal Capture**: Pull context from engineering tools, client channels, and operational systems
-- **AI Recommendations**: Surface likely next steps based on activity across the organization
-- **Learning Gap Detection**: Highlight missing knowledge or capability areas that may block delivery
-- **Agent Compatibility**: Works with Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode, with Vercel Sandbox
-- **User Authentication**: Secure sign-in with GitHub or Vercel OAuth
-- **Multi-User Support**: Each user has their own tasks, API keys, and GitHub connection
-- **Vercel Sandbox**: Runs code in isolated, secure sandboxes ([docs](https://vercel.com/docs/vercel-sandbox))
-- **AI Gateway Integration**: Built for seamless integration with [Vercel AI Gateway](https://vercel.com/docs/ai-gateway) for model routing and observability
-- **AI-Generated Branch Names**: Automatically generates descriptive Git branch names using AI SDK 5 + AI Gateway
-- **Task Management**: Track work progress with real-time updates
-- **Persistent Storage**: Tasks stored in Neon Postgres database
-- **Git Integration**: Automatically creates branches and commits changes
-- **Modern UI**: Clean, responsive interface built with Next.js and Tailwind CSS
-- **MCP Server Support**: Connect MCP servers for extended context and integrations
+**Best for:** Teams that want AI-assisted PM without giving Beacon access to their repo.
 
-## Quick Start
+### Mode B — With Code Context (Read-Only Agents)
 
-For detailed setup instructions, see the [Local Development Setup](#local-development-setup) section below.
+In addition to Mode A, Beacon routes read-only analysis tasks to AI coding agents (Claude Code, Codex) to understand what is already built, what is missing, and what is at risk — without writing or executing any code.
 
-**TL;DR:**
-1. Clone the repository
-2. Configure the required environment variables
-3. Install dependencies and initialize the database
-4. Start using Beacon for planning, assignments, and organizational visibility
+Agents are used as **code analysts**, not code writers. They read files, grep patterns, trace logic, and return structured findings. Results are cached in Postgres and refreshed on schedule or on demand.
 
-Or run locally:
-```bash
-git clone <your-repository-url>
-cd beacon
-pnpm install
-# Set up .env.local with required variables
-pnpm db:push
-pnpm dev
+**Best for:** Engineering teams that want Beacon to bridge the gap between what's planned and what's actually in the code.
+
+---
+
+## What This Was (Template)
+
+This codebase started as a **coding agent orchestration tool** built on:
+- Vercel Sandbox for isolated code execution
+- AI agent routing (Claude Code, Codex, Copilot, Cursor, Gemini, OpenCode) for writing and committing code
+- Git branch creation and automated commits
+- Sandbox lifecycle management (Keep Alive, timeouts)
+
+All of that execution infrastructure is being replaced with PM-focused features. The auth, database, UI skeleton, AI SDK integration, and MCP support are being kept.
+
+---
+
+## What to Strip (Remove Entirely)
+
+AI agents working on this codebase should remove the following. Do not refactor — delete.
+
+- [ ] Vercel Sandbox creation, management, and lifecycle APIs
+- [ ] Keep Alive and sandbox timeout logic
+- [ ] Git branch creation and automated commit logic
+- [ ] AI-generated branch name feature
+- [ ] Code execution agent routing (write/commit prompts to Claude Code, Codex, etc.)
+- [ ] All references to `SANDBOX_VERCEL_TOKEN`, `SANDBOX_VERCEL_TEAM_ID`, `SANDBOX_VERCEL_PROJECT_ID`
+- [ ] Sandbox duration UI and settings
+- [ ] Any UI components related to sandbox status, terminal output, or execution logs
+- [ ] `MAX_SANDBOX_DURATION` and `MAX_MESSAGES_PER_DAY` environment variables (replace with PM-specific limits later)
+
+---
+
+## What to Keep
+
+- [x] Multi-user authentication (GitHub OAuth, Vercel OAuth) — keep as-is
+- [x] Per-user data isolation (userId on all records) — keep as-is
+- [x] Per-user API key management (Anthropic, OpenAI, etc.) — keep, extend for new providers
+- [x] Postgres database with Drizzle ORM — keep, schema will be extended
+- [x] AI SDK 5 + Vercel AI Gateway integration — keep, repurpose prompts
+- [x] MCP server support (Connectors tab) — keep, critical for integrations
+- [x] Next.js 15, React 19, Tailwind CSS, shadcn/ui — keep as-is
+- [x] GitHub OAuth token per user — keep, used for read-only repo access in Mode B
+- [x] Session encryption (JWE_SECRET, ENCRYPTION_KEY) — keep as-is
+
+---
+
+## Database Schema Changes
+
+### Remove
+- `tasks.sandboxId` or any sandbox-related columns
+- Any execution log or agent output tables tied to code execution
+
+### Add (see P1 and P2 for timing)
+- `projects` table — top-level container (name, description, repo URL, owner, status)
+- `workItems` table — replaces current `tasks` table concept (title, description, status, priority, assignee, projectId, source, sourceId)
+- `signals` table — raw captured signals (type, content, source, metadata, projectId, createdAt)
+- `insights` table — AI-processed findings (summary, recommendations, risks, projectId, generatedAt)
+- `codeInsights` table — Mode B only; cached agent analysis results (query, findings, repoPath, generatedAt, projectId)
+
+---
+
+## Feature Priorities
+
+---
+
+### P0 — Foundation Cleanup (Do This First)
+
+Goal: Strip the coding agent infrastructure and stabilize the app as a clean base. No new features yet.
+
+**Tasks:**
+1. Delete all sandbox-related code, APIs, and UI components (see Strip list above)
+2. Remove git branch creation and agent write-routing logic
+3. Remove AI branch name generation
+4. Update environment variable documentation — remove sandbox vars, keep auth + AI vars
+5. Rename or repurpose the `tasks` table to `workItems` with PM-relevant fields (title, description, status, priority, assignee, projectId)
+6. Add a `projects` table — every work item belongs to a project
+7. Update the main UI to reflect a PM tool, not a coding agent launcher
+8. Remove any UI that references sandboxes, agent execution, terminal output, or code running
+9. Ensure the app builds and runs cleanly after removals
+
+**Exit criteria:** App runs, users can sign in, create a project, and add work items manually. No sandbox or code execution references remain.
+
+---
+
+### P1 — Core PM Features (Mode A)
+
+Goal: Make Beacon useful as a standalone PM tool without any code context.
+
+**Tasks:**
+
+1. **Project Management**
+   - Create, edit, archive projects
+   - Project dashboard showing work item counts by status
+   - Link a GitHub repo URL to a project (used later in Mode B — store the URL, don't act on it yet)
+
+2. **Work Item Management**
+   - Create, edit, delete, assign work items
+   - Statuses: Backlog, In Progress, In Review, Done, Blocked
+   - Priority levels: P0, P1, P2, P3
+   - Assignee field (team member name or GitHub username)
+   - Due date field
+
+3. **AI-Assisted Work Item Creation**
+   - User describes a feature or problem in natural language
+   - AI breaks it into structured work items with title, description, priority
+   - Uses AI SDK 5 + Vercel AI Gateway (Anthropic or OpenAI)
+   - Prompt: decompose into actionable, independently deliverable items
+
+4. **AI Status Summaries**
+   - Per-project: "What is the current state of this project?"
+   - Reads all work items, statuses, and assignees
+   - Returns a plain-English summary suitable for a stakeholder update
+   - User can copy or edit before sending
+
+5. **AI Next Step Recommendations**
+   - Given current work item statuses, recommend what to prioritize next
+   - Flag items that are blocked or overdue
+   - Simple heuristic + AI reasoning, no external signals yet
+
+**Exit criteria:** A PM can manage a project end-to-end using only Beacon. AI features add real value without external integrations.
+
+---
+
+### P2 — Signal Capture & Integrations (Mode A, Enhanced)
+
+Goal: Beacon pulls context from external systems and surfaces it automatically.
+
+**Tasks:**
+
+1. **GitHub Signal Capture (via existing GitHub OAuth token)**
+   - Pull open PRs for a linked repo — show as signals
+   - Pull open issues — show as signals
+   - Detect PRs open >3 days with no review (risk signal)
+   - Detect issues with no linked PR (planning gap signal)
+   - Run on demand and on a daily schedule
+
+2. **Linear Integration (via MCP)**
+   - Connect a Linear workspace via MCP server
+   - Sync issues into Beacon work items (one-way, read)
+   - Map Linear statuses to Beacon statuses
+
+3. **Notion Integration (via MCP)**
+   - Read Notion pages linked to a project (PRDs, specs, meeting notes)
+   - Surface as context when generating AI summaries
+
+4. **Slack / WhatsApp Signal Capture (via MCP or webhook)**
+   - Accept inbound signals from Slack (via webhook or MCP)
+   - AI extracts action items, decisions, and blockers from messages
+   - Surfaces them as signals in the project dashboard
+
+5. **Signals Dashboard**
+   - Per-project view of all captured signals
+   - Grouped by type: PR activity, issue activity, messages, decisions
+   - AI synthesizes signals into a daily digest
+
+6. **PRD / Spec Writing Assistant**
+   - User describes a feature
+   - AI drafts a structured PRD (problem, goals, non-goals, requirements, open questions)
+   - Output saved as a Notion page (via MCP) or plain text
+
+**Exit criteria:** Beacon automatically surfaces what is happening across GitHub, Linear, and communication channels. Team needs minimal manual input.
+
+---
+
+### P3 — Code Context Layer (Mode B)
+
+Goal: Use AI (Claude, OpenAI) to read and understand what is actually built in a linked repo — without a sandbox, without cloning, and without executing any code.
+
+#### How Mode B works without a sandbox
+
+The original template used Vercel Sandbox to clone a repo and let agents read/write files. In Mode B we do not need execution — only reading. There are two mechanisms, used together:
+
+**Primary: GitHub MCP Server**
+Connect the official GitHub MCP server (already supported via the Connectors tab). This gives the AI model a set of tools to browse the repo interactively via the GitHub API:
+- List directory trees and file paths
+- Read file contents by path
+- Search code across the repo (grep equivalent)
+- Read commit history, PR descriptions, and diffs
+
+The AI (Claude or OpenAI via AI SDK 5) is given these MCP tools and a read-only analysis prompt. It browses the repo autonomously and returns structured findings. No sandbox, no cloning, no filesystem access required.
+
+**Fallback: GitHub API + Context Injection**
+For targeted, known queries (e.g. "read all files in /src/auth"), Beacon fetches file contents directly via the GitHub REST API using the user's existing OAuth token, then injects them into the AI prompt as context. No agent autonomy — just file content passed to the model.
+
+| | GitHub MCP (primary) | GitHub API injection (fallback) |
+|---|---|---|
+| Open-ended exploration | Yes | No |
+| Targeted file reads | Yes | Yes |
+| Requires sandbox | No | No |
+| Requires GitHub OAuth | Yes (already in template) | Yes (already in template) |
+| Agent autonomy | Yes | No |
+| Best for | Audits, gap detection | Specific questions |
+
+> **Important for AI agents implementing this:** No sandbox is created in P3. Do not reintroduce Vercel Sandbox. All repo access goes through GitHub MCP tools or the GitHub REST API. AI prompts must include: "You are a read-only code analyst. Do not attempt to write, edit, create, or delete any files or resources."
+
+**Tasks:**
+
+1. **GitHub MCP Server Integration**
+   - Document how to connect the official GitHub MCP server via the Connectors tab
+   - The server uses the user's GitHub OAuth token — no additional credentials needed
+   - Verify MCP tools available: `get_file_contents`, `list_directory`, `search_code`, `get_commits`
+
+2. **Read-Only Analysis via AI SDK 5**
+   - Add an analysis prompt template: system prompt enforces read-only, task prompt describes the analysis goal
+   - Use `streamText` or `generateText` from AI SDK 5 with GitHub MCP tools attached
+   - Supported models: Claude (Anthropic) and OpenAI — configurable per user via existing API key settings
+   - No new agent routing layer needed — use AI SDK 5's tool-use directly
+
+3. **Codebase Audit**
+   - User triggers "Audit this repo" for a linked project
+   - AI browses file structure and key modules via GitHub MCP tools
+   - Returns structured output: features found, incomplete areas, TODOs/FIXMEs, test coverage signals
+   - Results saved to `codeInsights` table with timestamp and repo SHA
+
+4. **Gap Detection**
+   - Cross-reference work items marked "Done" against what the AI finds in the code
+   - Flag mismatches: "Work item marked Done but no corresponding code change found"
+   - Flag orphaned code: "Module exists in repo but has no corresponding work item"
+   - Uses GitHub API (merged PRs, commits) + AI analysis together
+
+5. **On-Demand Code Questions**
+   - PM asks natural language questions: "Is auth fully implemented?", "What does the payments module handle?"
+   - For targeted questions: fetch relevant files via GitHub API, inject as context, get AI answer
+   - For broad questions: use GitHub MCP tools for autonomous exploration
+   - Results cached in `codeInsights` — not re-fetched if asked again within 24 hours
+
+6. **Scheduled Analysis**
+   - Nightly lightweight audit using GitHub MCP (configurable, off by default)
+   - Compare repo state (latest commit SHA) against last cached insight — skip if no changes
+   - Surface new modules or deleted files as signals in the project dashboard
+   - Use Vercel Cron (`/api/cron/code-analysis`)
+
+7. **Risk Signals from Code**
+   - AI identifies via GitHub MCP: files with no corresponding test files, high-churn modules (touched in many recent PRs), TODO/FIXME density
+   - Surfaces as risk signals alongside GitHub issue and Linear signals in the Signals Dashboard
+
+**Exit criteria:** A PM can ask "what has actually been built?" and get a reliable AI-generated answer from the real codebase via GitHub MCP — no sandbox, no execution, no cloning.
+
+---
+
+### P4 — Deep Codebase Understanding via Sandbox + Claude Code / Codex (Optional / Experimental)
+
+Goal: Use Vercel Sandbox to clone the full repo and give Claude Code or Codex a real filesystem to explore — enabling deep, semantic understanding of how the app works, what is already built, and how the pieces connect. This goes significantly further than P3's GitHub MCP approach.
+
+> **This is purely optional and experimental.** P0–P3 must be complete first. The PM tool works fully without P4. This exists for teams that need rich, deep codebase understanding beyond what file-by-file API reads can provide.
+
+#### Why sandbox beats GitHub MCP for deep understanding
+
+P3 (GitHub MCP) is good for targeted reads — fetch a file, search for a pattern, read a PR. But it has real limits for deep codebase understanding:
+
+| Question | P3 GitHub MCP | P4 Sandbox + Claude Code |
+|---|---|---|
+| "What does this file do?" | Yes | Yes |
+| "How do these 5 modules connect?" | Partial — manual file-by-file | Yes — agent traces imports and calls |
+| "What is the full auth flow end-to-end?" | Hard — requires many API calls | Yes — agent explores interactively |
+| "What features are fully built vs half-built?" | Slow and imprecise | Yes — agent grep/finds patterns holistically |
+| "How does data flow from API to DB?" | Hard to stitch together | Yes — agent follows the chain |
+| "What is the overall architecture?" | No — can't see the whole picture | Yes — agent reads the full tree |
+
+The key difference: in P4, the full repo is cloned into a sandbox. Claude Code or Codex have a **real filesystem** — they can `grep`, `find`, trace imports, follow call chains, read all files at once, and build a complete mental model of the codebase. The agent is not limited to single-file reads via API.
+
+#### What the agent does (and does not do)
+
+**Allowed:**
+- Clone the repo (read-only checkout)
+- Read any file
+- Run `grep`, `find`, `cat`, `ls`, `wc`, `tree` and other read-only shell commands
+- Trace imports, follow function calls, map data flows
+- Build a structured understanding of the codebase
+
+**Not allowed (enforced via system prompt):**
+- `git commit`, `git push`, `git add`
+- Any file writes or edits
+- Running the application, tests, or any executable code
+- Installing packages or modifying the environment
+
+The sandbox is used as an **isolated reading environment**, not an execution environment.
+
+#### What this enables for the PM tool
+
+- **"How does the app work?"** — Agent explores the full codebase and returns a plain-English architecture summary: key modules, data models, API routes, auth flow, etc.
+- **"What is already built?"** — Agent maps features to code. "The payments module exists with Stripe integration, but webhook handling is a stub."
+- **"What is half-built or missing?"** — Agent finds TODOs, empty handlers, unimplemented interfaces, feature flags that are always off.
+- **"How does X work end-to-end?"** — Agent traces a full user journey through the code: request → middleware → handler → service → database.
+- **"Is this feature safe to ship?"** — Agent looks for missing validation, error handling gaps, and hardcoded values in the relevant module.
+
+These are PM questions that need the full picture — not answers a single file read can give.
+
+**Tasks:**
+
+1. **Restore Vercel Sandbox (behind a feature flag)**
+   - Re-add `SANDBOX_VERCEL_TOKEN`, `SANDBOX_VERCEL_TEAM_ID`, `SANDBOX_VERCEL_PROJECT_ID` as optional env vars
+   - If vars are not set, P4 mode is silently unavailable — no errors, no UI shown
+   - Add a `Deep Analysis` option to project settings, visible only when sandbox is configured
+
+2. **Read-Only Sandbox Prompt (strict)**
+   - System prompt prefix for all P4 agent calls:
+     ```
+     You are a read-only codebase analyst. Your job is to deeply understand this codebase and answer questions about it.
+     You may read files, run grep/find/cat/ls/tree, and trace code paths.
+     You must NEVER write, edit, or delete files.
+     You must NEVER run git commit, git push, or git add.
+     You must NEVER run the application, execute tests, or install packages.
+     You must NEVER modify the environment in any way.
+     Only read. Only understand. Only report.
+     ```
+   - Supported agents: Claude Code (Anthropic), Codex (OpenAI) — configurable per project
+
+3. **Predefined Understanding Queries**
+   - PM selects from a menu of analysis queries rather than freeform input:
+     - "Give me an architecture overview of this codebase"
+     - "What features are fully built?"
+     - "What is incomplete or stubbed out?"
+     - "Walk me through the [auth / payments / data / API] flow end-to-end"
+     - "What are the main data models and how do they relate?"
+     - "What does the [module name] module do?"
+   - Freeform custom questions available as an advanced option
+
+4. **Structured Output Format**
+   - Agent returns findings in a consistent structure:
+     - **Architecture summary**: key modules, their roles, how they connect
+     - **Built features**: what exists and appears complete
+     - **Incomplete areas**: stubs, TODOs, empty handlers, half-built flows
+     - **Risk flags**: missing validation, hardcoded values, obvious gaps
+     - **Confidence**: low / medium / high based on code clarity
+   - Stored in `codeInsights` table with `source: sandbox`, repo SHA, and query type
+
+5. **Diffing Against Work Items**
+   - Cross-reference agent findings with work items
+   - "Work item says Done — agent found no corresponding implementation" → flag
+   - "Agent found a fully-built feature that has no work item" → suggest creating one
+
+6. **Sandbox Lifecycle (simplified)**
+   - No Keep Alive — sandbox shuts down as soon as analysis is returned
+   - Fixed 20-minute timeout — deep reads should complete well within this
+   - No user-configurable duration — this is not a coding sandbox
+
+7. **Caching**
+   - Results cached by repo SHA — if the repo hasn't changed since last analysis, return cached results instantly
+   - User can force a refresh
+   - Cache stored in `codeInsights` alongside P3 results, distinguished by `source` field
+
+**Exit criteria:** A PM can ask "how does this app work?" or "what is actually built?" and receive a rich, accurate, agent-generated answer based on a full codebase read — not just file-by-file API lookups.
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Next.js 15 App                    │
+│                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐ │
+│  │ Projects │  │  Work    │  │     Signals        │ │
+│  │ Dashboard│  │  Items   │  │     Dashboard      │ │
+│  └──────────┘  └──────────┘  └───────────────────┘ │
+│                                                     │
+│  ┌─────────────────────────────────────────────┐   │
+│  │           AI Layer (AI SDK 5)               │   │
+│  │  Summaries │ Recommendations │ PRD Writing  │   │
+│  │  Code Analysis (Mode B — read-only via MCP) │   │
+│  └─────────────────────────────────────────────┘   │
+└──────────────────────────┬──────────────────────────┘
+                           │
+          ┌────────────────┼──────────────────────┐
+          │                │                      │
+   ┌──────▼──────┐  ┌──────▼───────────┐  ┌──────▼──────────────┐
+   │  Postgres   │  │   MCP Servers    │  │  GitHub API         │
+   │  (Neon)     │  │   Linear         │  │  (Mode B fallback)  │
+   │  projects   │  │   Notion         │  │  File contents      │
+   │  workItems  │  │   Slack          │  │  injected as        │
+   │  signals    │  │   GitHub MCP ◄───┼──┤  context for        │
+   │  insights   │  │   (Mode B        │  │  targeted queries   │
+   │  codeInsights│  │    primary)      │  └─────────────────────┘
+   └─────────────┘  └──────────────────┘
+
+Mode B data flow (no sandbox):
+  Trigger → AI SDK 5 + GitHub MCP tools → agent browses repo via API
+          → structured findings → cached in codeInsights → surfaced as signals
 ```
 
-## Usage
+---
 
-1. **Sign In**: Authenticate with GitHub or Vercel
-2. **Plan Work**: Capture initiatives, tasks, and client requirements
-3. **Assign Ownership**: Route work to the right people or teams
-4. **Track Signals**: Aggregate updates from connected systems and communication channels
-5. **Review Recommendations**: Use AI-generated suggestions for next steps and capability gaps
+## Environment Variables
 
-## Task Configuration
+### Required (keep from template)
+- `POSTGRES_URL` — PostgreSQL connection string
+- `JWE_SECRET` — Session encryption secret (`openssl rand -base64 32`)
+- `ENCRYPTION_KEY` — Data encryption key (`openssl rand -hex 32`)
+- `NEXT_PUBLIC_AUTH_PROVIDERS` — Comma-separated: `github`, `vercel`, or both
 
-### Maximum Duration
+### Authentication (at least one required)
+- `NEXT_PUBLIC_GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET`
+- `NEXT_PUBLIC_VERCEL_CLIENT_ID` + `VERCEL_CLIENT_SECRET`
 
-The maximum duration setting controls how long the Vercel sandbox will stay alive from the moment it's created. You can select timeouts ranging from 5 minutes to 5 hours.
+### AI (optional, can be per-user)
+- `ANTHROPIC_API_KEY` — For Claude-based AI features
+- `AI_GATEWAY_API_KEY` — For Vercel AI Gateway routing
+- `OPENAI_API_KEY` — For Codex and OpenAI-based features
 
-- The sandbox is created at the start of the task
-- The timeout begins when the sandbox is created
-- All work (agent execution, dependency installation, etc.) happens within this timeframe
-- When the timeout is reached, the sandbox automatically expires
+### Remove (no longer needed)
+- ~~`SANDBOX_VERCEL_TOKEN`~~ — Removed with sandbox
+- ~~`SANDBOX_VERCEL_TEAM_ID`~~ — Removed with sandbox
+- ~~`SANDBOX_VERCEL_PROJECT_ID`~~ — Removed with sandbox
+- ~~`MAX_SANDBOX_DURATION`~~ — Removed with sandbox
 
-### Keep Alive Setting
-
-The Keep Alive setting determines what happens to the sandbox after your task completes.
-
-#### Keep Alive OFF (Default)
-
-When Keep Alive is disabled, the sandbox shuts down immediately after the task completes:
-
-**Timeline:**
-1. Task starts and sandbox is created (e.g., with 1 hour timeout)
-2. Agent executes your task
-3. Task completes successfully (e.g., after 10 minutes)
-4. Changes are committed and pushed to the branch
-5. Sandbox immediately shuts down (destroys all processes and the environment)
-6. Task is marked as completed
-
-**Use Keep Alive OFF when:**
-- You're making one-time code changes that don't require iteration
-- You have simple tasks that work on the first try
-- You want to minimize resource usage and costs
-- You don't need to test or manually interact with the code after completion
-
-#### Keep Alive ON
-
-When Keep Alive is enabled, the sandbox stays alive after task completion for the remaining duration:
-
-**Timeline:**
-1. Task starts and sandbox is created (e.g., with 1 hour timeout)
-2. Agent executes your task
-3. Task completes successfully (e.g., after 10 minutes)
-4. Changes are committed and pushed to the branch
-5. Sandbox stays alive with all processes running
-6. You can send follow-up messages for 50 more minutes (until the 1 hour timeout expires)
-7. If the project has a dev server (e.g., `npm run dev`), it automatically starts in the background
-8. After the full timeout duration, the sandbox expires
-
-**Use Keep Alive ON when:**
-- You need to iterate on the code with follow-up messages
-- You want to test changes in the live sandbox environment
-- You anticipate needing to refine or fix issues
-- You want to manually run commands or inspect the environment after completion
-- You're developing a web application and want to see it running
-
-#### Comparison
-
-| Setting | Task completes in 10 min | Remaining sandbox time | Can send follow-ups? | Dev server starts? |
-|---------|-------------------------|------------------------|---------------------|-------------------|
-| Keep Alive ON | Sandbox stays alive | 50 minutes (until timeout) | Yes | Yes (if available) |
-| Keep Alive OFF | Sandbox shuts down | 0 minutes | No | No |
-
-**Note:** The maximum duration timeout always takes precedence. If you set a 1-hour timeout, the sandbox will expire after 1 hour regardless of the Keep Alive setting. Keep Alive only determines whether the sandbox shuts down early (after task completion) or stays alive until the timeout.
-
-## How It Works
-
-1. **Task Creation**: When you submit a task, it's stored in the database
-2. **AI Branch Name Generation**: AI SDK 5 + AI Gateway automatically generates a descriptive branch name based on your task (non-blocking using Next.js 15's `after()`)
-3. **Sandbox Setup**: A Vercel sandbox is created with your repository
-4. **AI Processing**: Beacon analyzes task context, connected signals, and repository activity to produce structured recommendations and updates, and can route execution through tools like Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, and OpenCode
-5. **Git Operations**: Changes are committed and pushed to the AI-generated branch
-6. **Cleanup**: The sandbox is shut down to free resources
-
-## AI Branch Name Generation
-
-The system automatically generates descriptive Git branch names using AI SDK 5 and Vercel AI Gateway. This feature:
-
-- **Non-blocking**: Uses Next.js 15's `after()` function to generate names without delaying task creation
-- **Descriptive**: Creates meaningful branch names like `feature/user-authentication-A1b2C3` or `fix/memory-leak-parser-X9y8Z7`
-- **Conflict-free**: Adds a 6-character alphanumeric hash to prevent naming conflicts
-- **Fallback**: Gracefully falls back to timestamp-based names if AI generation fails
-- **Context-aware**: Uses task description, repository name, and agent context for better names
-
-### Branch Name Examples
-
-- `feature/add-user-auth-K3mP9n` (for "Add user authentication with JWT")
-- `fix/resolve-memory-leak-B7xQ2w` (for "Fix memory leak in image processing")
-- `chore/update-deps-M4nR8s` (for "Update all project dependencies")
-- `docs/api-endpoints-F9tL5v` (for "Document REST API endpoints")
+---
 
 ## Tech Stack
 
-- **Frontend**: Next.js 15, React 19, Tailwind CSS
-- **UI Components**: shadcn/ui
-- **Database**: PostgreSQL with Drizzle ORM
-- **AI SDK**: AI SDK 5 with Vercel AI Gateway integration
-- **AI Integrations**: Claude Code, OpenAI Codex, GitHub Copilot, Cursor, Gemini, OpenCode, and AI SDK 5
-- **Sandbox**: [Vercel Sandbox](https://vercel.com/docs/vercel-sandbox)
-- **Authentication**: Next Auth (OAuth with GitHub/Vercel)
-- **Git**: Automated branching and commits with AI-generated branch names
+- **Frontend**: Next.js 15, React 19, Tailwind CSS, shadcn/ui
+- **Database**: PostgreSQL (Neon) with Drizzle ORM
+- **AI**: AI SDK 5 + Vercel AI Gateway (Anthropic, OpenAI)
+- **Auth**: NextAuth with GitHub and Vercel OAuth
+- **Integrations**: MCP servers (Linear, Notion, Slack, GitHub)
+- **Code Analysis (Mode B)**: Claude, OpenAI — read-only via GitHub MCP + GitHub API (no sandbox)
 
-## MCP Server Support
+---
 
-Connect MCP servers to extend Beacon with additional tools and integrations, including agent-driven workflows.
-
-### How to Add MCP Servers
-
-1. Go to the "Connectors" tab and click "Add MCP Server"
-2. Enter server details (name, base URL, optional OAuth credentials)
-3. If using OAuth, ensure `ENCRYPTION_KEY` is set in your environment variables
-
-**Note**: `ENCRYPTION_KEY` is required when using MCP servers with OAuth authentication.
-
-## Local Development Setup
-
-### 1. Clone the repository
+## Local Development
 
 ```bash
 git clone <your-repository-url>
 cd beacon
-```
-
-### 2. Install dependencies
-
-```bash
 pnpm install
-```
 
-### 3. Set up environment variables
+# Copy and fill in environment variables
+cp .env.example .env.local
 
-Create a `.env.local` file with your values:
-
-#### Required Environment Variables (App Infrastructure)
-
-These are set once by you (the app developer) and are used for core infrastructure:
-
-- `POSTGRES_URL`: Your PostgreSQL connection string (automatically provided when deploying to Vercel via the Neon integration, or set manually for local development)
-- `SANDBOX_VERCEL_TOKEN`: Your Vercel API token (for creating sandboxes)
-- `SANDBOX_VERCEL_TEAM_ID`: Your Vercel team ID (for sandbox creation)
-- `SANDBOX_VERCEL_PROJECT_ID`: Your Vercel project ID (for sandbox creation)
-- `JWE_SECRET`: Base64-encoded secret for session encryption (generate with: `openssl rand -base64 32`)
-- `ENCRYPTION_KEY`: 32-byte hex string for encrypting user API keys and tokens (generate with: `openssl rand -hex 32`)
-
-> **Note**: When deploying to Vercel using the "Deploy with Vercel" button, the database is automatically provisioned via Neon and `POSTGRES_URL` is set for you. For local development, you'll need to provide your own database connection string.
-
-#### User Authentication (Required)
-
-**You must configure at least one authentication method** (Vercel or GitHub):
-
-##### Configure Enabled Providers
-
-- `NEXT_PUBLIC_AUTH_PROVIDERS`: Comma-separated list of enabled auth providers
-  - `"github"` - GitHub only (default)
-  - `"vercel"` - Vercel only
-  - `"github,vercel"` - Both providers enabled
-
-**Examples:**
-
-```bash
-# GitHub authentication only (default)
-NEXT_PUBLIC_AUTH_PROVIDERS=github
-
-# Vercel authentication only
-NEXT_PUBLIC_AUTH_PROVIDERS=vercel
-
-# Both GitHub and Vercel authentication
-NEXT_PUBLIC_AUTH_PROVIDERS=github,vercel
-```
-
-##### Provider Configuration
-
-**Option 1: Sign in with Vercel** (if `vercel` is in `NEXT_PUBLIC_AUTH_PROVIDERS`)
-- `NEXT_PUBLIC_VERCEL_CLIENT_ID`: Your Vercel OAuth app client ID (exposed to client)
-- `VERCEL_CLIENT_SECRET`: Your Vercel OAuth app client secret
-
-**Option 2: Sign in with GitHub** (if `github` is in `NEXT_PUBLIC_AUTH_PROVIDERS`)
-- `NEXT_PUBLIC_GITHUB_CLIENT_ID`: Your GitHub OAuth app client ID (exposed to client)
-- `GITHUB_CLIENT_SECRET`: Your GitHub OAuth app client secret
-
-> **Note**: Only the providers listed in `NEXT_PUBLIC_AUTH_PROVIDERS` will appear in the sign-in dialog. You must provide the OAuth credentials for each enabled provider.
-
-#### API Keys (Optional - Can be per-user)
-
-These API keys can be set globally (fallback for all users) or left unset to require users to provide their own:
-
-- `ANTHROPIC_API_KEY`: Anthropic API key for AI features (users can override in their profile)
-- `AI_GATEWAY_API_KEY`: AI Gateway API key for branch name generation and Codex (users can override)
-- `CURSOR_API_KEY`: For Cursor agent support (users can override)
-- `GEMINI_API_KEY`: For Google Gemini agent support (users can override)
-- `OPENAI_API_KEY`: For Codex and OpenCode agents (users can override)
-
-> **Note**: Users can provide their own API keys in their profile settings, which take precedence over global environment variables.
-
-#### GitHub Repository Access
-
-- ~~`GITHUB_TOKEN`~~: **No longer needed!** Users authenticate with their own GitHub accounts.
-  - Users who sign in with GitHub automatically get repository access via their OAuth token
-  - Users who sign in with Vercel can connect their GitHub account from their profile to access repositories
-
-**How Authentication Works:**
-- **Sign in with GitHub**: Users get immediate repository access via their GitHub OAuth token
-- **Sign in with Vercel**: Users must connect a GitHub account from their profile to work with repositories
-- **Identity Merging**: If a user signs in with Vercel, connects GitHub, then later signs in directly with GitHub, they'll be recognized as the same user (no duplicate accounts)
-
-#### Optional Environment Variables
-
-- `NPM_TOKEN`: For private npm packages
-- `MAX_SANDBOX_DURATION`: Default maximum sandbox duration in minutes (default: `300` = 5 hours)
-- `MAX_MESSAGES_PER_DAY`: Maximum number of tasks + follow-ups per user per day (default: `5`)
-
-### 4. Set up OAuth Applications
-
-Based on your `NEXT_PUBLIC_AUTH_PROVIDERS` configuration, you'll need to create OAuth apps:
-
-#### GitHub OAuth App (if using GitHub authentication)
-
-1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
-2. Click "New OAuth App"
-3. Fill in the details:
-   - **Application name**: Your app name (e.g., "Beacon")
-   - **Homepage URL**: `http://localhost:3000` (or your production URL)
-   - **Authorization callback URL**: `http://localhost:3000/api/auth/github/callback`
-4. Click "Register application"
-5. Copy the **Client ID** → use for `NEXT_PUBLIC_GITHUB_CLIENT_ID`
-6. Click "Generate a new client secret" → copy and use for `GITHUB_CLIENT_SECRET`
-
-**Required Scopes**: The app will request `repo` scope to access repositories.
-
-#### Vercel OAuth App (if using Vercel authentication)
-
-1. Go to your [Vercel Dashboard](https://vercel.com/dashboard)
-2. Navigate to Settings → Integrations → Create
-3. Configure the integration:
-   - **Redirect URL**: `http://localhost:3000/api/auth/callback/vercel`
-4. Copy the **Client ID** → use for `NEXT_PUBLIC_VERCEL_CLIENT_ID`
-5. Copy the **Client Secret** → use for `VERCEL_CLIENT_SECRET`
-
-> **Production Deployment**: Remember to add production callback URLs when deploying (e.g., `https://yourdomain.com/api/auth/github/callback`)
-
-### 5. Set up the database
-
-Generate and run database migrations:
-
-```bash
-pnpm db:generate
+# Set up database
 pnpm db:push
-```
 
-### 6. Start the development server
-
-```bash
+# Start dev server
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Development
-
-### Database Operations
-
+### Database commands
 ```bash
-# Generate migrations
-pnpm db:generate
-
-# Push schema changes
-pnpm db:push
-
-# Open Drizzle Studio
-pnpm db:studio
+pnpm db:generate   # Generate migrations
+pnpm db:push       # Push schema changes
+pnpm db:studio     # Open Drizzle Studio
 ```
 
-### Running the App
-
-```bash
-# Development
-pnpm dev
-
-# Build for production
-pnpm build
-
-# Start production server
-pnpm start
-```
+---
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## Security Considerations
-
-- **Environment Variables**: Never commit `.env` files to version control. All sensitive data should be stored in environment variables.
-- **API Keys**: Rotate your API keys regularly and use the principle of least privilege.
-- **Database Access**: Ensure your PostgreSQL database is properly secured with strong credentials.
-- **Vercel Sandbox**: Sandboxes are isolated but ensure you're not exposing sensitive data in logs or outputs.
-- **User Authentication**: Each user uses their own GitHub token for repository access - no shared credentials
-- **Encryption**: All sensitive data (tokens, API keys) is encrypted at rest using per-user encryption
-
-## Changelog
-
-### Version 2.0.0 - Major Update: User Authentication & Security
-
-This release introduces **user authentication** and **major security improvements**, but contains **breaking changes** that require migration for existing deployments.
-
-#### New Features
-
-- **User Authentication System**
-  - Sign in with Vercel
-  - Sign in with GitHub
-  - Session management with encrypted tokens
-  - User profile management
-
-- **Multi-User Support**
-  - Each user has their own tasks and connectors
-  - Users can manage their own API keys (Anthropic, OpenAI, Cursor, Gemini, AI Gateway)
-  - GitHub account connection for repository access
-
-- **Security Enhancements**
-  - Per-user GitHub authentication - each user uses their own GitHub token instead of shared credentials
-  - All sensitive data (tokens, API keys, env vars) encrypted at rest
-  - Session-based authentication with JWT encryption
-  - User-scoped authorization - users can only access their own resources
-
-- **Database Enhancements**
-  - New `users` table for user profiles and OAuth accounts
-  - New `accounts` table for linked accounts (e.g., Vercel users connecting GitHub)
-  - New `keys` table for user-provided API keys
-  - Foreign key relationships ensure data integrity
-  - Soft delete support for tasks
-
-#### Breaking Changes
-
-**These changes require action if upgrading from v1.x:**
-
-1. **Database Schema Changes**
-   - `tasks` table now requires `userId` (foreign key to `users.id`)
-   - `connectors` table now requires `userId` (foreign key to `users.id`)
-   - `connectors.env` changed from `jsonb` to encrypted `text`
-   - Added `tasks.deletedAt` for soft deletes
-
-2. **API Changes**
-   - All API endpoints now require authentication
-   - Task creation requires `userId` in request body
-   - Tasks are now filtered by user ownership
-   - GitHub API access uses user's own GitHub token (no shared token fallback)
-
-3. **Environment Variables**
-   - **New Required Variables:**
-     - `JWE_SECRET`: Base64-encoded secret for session encryption (generate: `openssl rand -base64 32`)
-     - `ENCRYPTION_KEY`: 32-byte hex string for encrypting sensitive data (generate: `openssl rand -hex 32`)
-     - `NEXT_PUBLIC_AUTH_PROVIDERS`: Configure which auth providers to enable (`github`, `vercel`, or both)
-   
-   - **New OAuth Configuration (at least one required):**
-     - GitHub: `NEXT_PUBLIC_GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`
-     - Vercel: `NEXT_PUBLIC_VERCEL_CLIENT_ID`, `VERCEL_CLIENT_SECRET`
-   
-   - **Changed Authentication:**
-     - `GITHUB_TOKEN` no longer used as fallback in API routes
-     - Users must connect their own GitHub account for repository access
-     - Each user's GitHub token is used for their requests
-
-4. **Authentication Required**
-   - All routes now require user authentication
-   - No anonymous access to tasks or API endpoints
-   - Users must sign in with GitHub or Vercel before creating tasks
-
-#### Migration Guide for Existing Deployments
-
-If you're upgrading from v1.x to v2.0.0, follow these steps:
-
-##### Step 1: Backup Your Database
-
-```bash
-# Create a backup of your existing database
-pg_dump $POSTGRES_URL > backup-before-v2-migration.sql
-```
-
-##### Step 2: Add Required Environment Variables
-
-Add these new variables to your `.env.local` or Vercel project settings:
-
-```bash
-# Session encryption (REQUIRED)
-JWE_SECRET=$(openssl rand -base64 32)
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-
-# Configure auth providers (REQUIRED - choose at least one)
-NEXT_PUBLIC_AUTH_PROVIDERS=github  # or "vercel" or "github,vercel"
-
-# GitHub OAuth (if using GitHub authentication)
-NEXT_PUBLIC_GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
-
-# Vercel OAuth (if using Vercel authentication)
-NEXT_PUBLIC_VERCEL_CLIENT_ID=your_vercel_client_id
-VERCEL_CLIENT_SECRET=your_vercel_client_secret
-```
-
-##### Step 3: Set Up OAuth Applications
-
-Create OAuth applications for your chosen authentication provider(s). See the [Local Development Setup](#local-development-setup) section for detailed instructions.
-
-##### Step 4: Prepare Database Migration
-
-Before running migrations, you need to handle existing data:
-
-**Option A: Fresh Start (Recommended for Development)**
-
-If you don't have production data to preserve:
-
-```bash
-# Drop existing tables and start fresh
-pnpm db:push --force
-
-# This will create all new tables with proper structure
-```
-
-**Option B: Preserve Existing Data (Production)**
-
-If you have existing tasks/connectors to preserve:
-
-1. **Create a system user first:**
-
-```sql
--- Connect to your database and run:
-INSERT INTO users (id, provider, external_id, access_token, username, email, created_at, updated_at, last_login_at)
-VALUES (
-  'system-user-migration',
-  'github',
-  'system-migration',
-  'encrypted-placeholder-token',  -- You'll need to encrypt a placeholder
-  'System Migration User',
-  NULL,
-  NOW(),
-  NOW(),
-  NOW()
-);
-```
-
-2. **Update existing records:**
-
-```sql
--- Add userId to existing tasks
-ALTER TABLE tasks ADD COLUMN user_id TEXT;
-UPDATE tasks SET user_id = 'system-user-migration' WHERE user_id IS NULL;
-ALTER TABLE tasks ALTER COLUMN user_id SET NOT NULL;
-ALTER TABLE tasks ADD CONSTRAINT tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-
--- Add userId to existing connectors
-ALTER TABLE connectors ADD COLUMN user_id TEXT;
-UPDATE connectors SET user_id = 'system-user-migration' WHERE user_id IS NULL;
-ALTER TABLE connectors ALTER COLUMN user_id SET NOT NULL;
-ALTER TABLE connectors ADD CONSTRAINT connectors_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
-
--- Convert connector env from jsonb to encrypted text (requires app-level encryption)
--- Note: You'll need to manually encrypt existing env values using your ENCRYPTION_KEY
-```
-
-3. **Run the standard migrations:**
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-##### Step 5: Update Your Code
-
-Pull the latest changes:
-
-```bash
-git pull origin main
-pnpm install
-```
-
-##### Step 6: Test Authentication
-
-1. Start the development server: `pnpm dev`
-2. Navigate to `http://localhost:3000`
-3. Sign in with your configured OAuth provider
-4. Verify you can create and view tasks
-
-##### Step 7: Verify Security Fix
-
-Confirm that:
-- Users can only see their own tasks
-- File diff/files endpoints require GitHub connection
-- Users without GitHub connection see "GitHub authentication required" errors
-- No `GITHUB_TOKEN` fallback is being used in API routes
-
-#### Important Notes
-
-- **All users will need to sign in** after this upgrade - no anonymous access
-- **Existing tasks** will be owned by the system user if using Option B migration
-- **Users must connect GitHub** (if they signed in with Vercel) to access repositories
-- **API keys** can now be per-user - users can override global API keys in their profile
-- **Breaking API changes**: If you have external integrations calling your API, they'll need to be updated to include authentication
+3. Follow the priority order: P0 → P1 → P2 → P3
+4. Do not implement P1+ features before P0 is complete
+5. Test thoroughly
+6. Submit a pull request
