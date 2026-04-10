@@ -30,7 +30,7 @@ export default async function Home() {
   const session = await getServerSession()
 
   if (session?.user) {
-    redirect('/projects')
+    redirect('/chat')
   }
 
   return (

@@ -3,13 +3,14 @@
 import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FolderKanban, Users, Zap, Menu, X, Sun, Moon } from 'lucide-react'
+import { FolderKanban, Users, Zap, Menu, X, Sun, Moon, Sparkles } from 'lucide-react'
 import { User } from '@/components/auth/user'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 
 const navItems = [
+  { href: '/chat', label: 'Chat', icon: Sparkles },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/team', label: 'Team', icon: Users },
 ]
@@ -51,7 +52,7 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full bg-muted/30">
       {/* Logo */}
       <div className="px-4 py-4 border-b flex items-center justify-between">
-        <Link href="/projects" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+        <Link href="/chat" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <Zap className="h-5 w-5 text-primary" />
           <span className="font-semibold text-lg tracking-tight">Beacon</span>
         </Link>
@@ -110,7 +111,7 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setMobileOpen(true)}>
             <Menu className="h-4 w-4" />
           </Button>
-          <Link href="/projects" className="flex items-center gap-2">
+          <Link href="/chat" className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
             <span className="font-semibold">Beacon</span>
           </Link>

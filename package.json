@@ -17,6 +17,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.74",
     "@git-diff-view/file": "^0.0.32",
     "@git-diff-view/react": "^0.0.32",
     "@monaco-editor/react": "^4.7.0",
