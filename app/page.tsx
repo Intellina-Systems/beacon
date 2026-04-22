@@ -36,7 +36,6 @@ export default async function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 py-20">
       <div className="flex flex-col items-center gap-10 max-w-lg w-full">
-
         {/* Logo mark */}
         <div className="flex flex-col items-center gap-4">
           <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center shadow-lg">
@@ -53,10 +52,7 @@ export default async function Home() {
         {/* Feature grid */}
         <div className="grid grid-cols-2 gap-3 w-full">
           {features.map(({ icon: Icon, title, description }) => (
-            <div
-              key={title}
-              className="rounded-xl border bg-card p-4 flex flex-col gap-2"
-            >
+            <div key={title} className="rounded-xl border bg-card p-4 flex flex-col gap-2">
               <Icon className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium leading-none">{title}</p>
