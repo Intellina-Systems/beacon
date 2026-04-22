@@ -34,7 +34,7 @@ export default async function ProjectsPage({
       description: projects.description,
       linearProjectId: projects.linearProjectId,
       updatedAt: projects.updatedAt,
-      issueCount: sql<number>`(select count(*) from work_items where work_items.project_id = ${projects.id})::int`,
+      issueCount: sql<number>`(select count(*) from work_items where work_items.project_id = ${projects.id} and (work_items.status_type is null or work_items.status_type not in ('completed','cancelled')))::int`,
     })
     .from(projects)
     .where(eq(projects.userId, userId))

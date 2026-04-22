@@ -19,11 +19,14 @@ import type { UIMessage } from 'ai'
 // Tool part renderer — maps tool name → component
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyPart = { type: string; state?: string; input?: any; output?: any; toolCallId?: string }
+type AnyPart = { type: string; state?: string; input?: unknown; output?: unknown; toolCallId?: string }
 
 function ToolPartRenderer({ part }: { part: AnyPart }) {
-  const toolName = part.type.startsWith('tool-') ? part.type.slice(5) : part.type === 'dynamic-tool' ? (part as { toolName?: string }).toolName ?? 'unknown' : ''
+  const toolName = part.type.startsWith('tool-')
+    ? part.type.slice(5)
+    : part.type === 'dynamic-tool'
+      ? ((part as { toolName?: string }).toolName ?? 'unknown')
+      : ''
 
   if (part.state === 'input-streaming') {
     return <ToolLoading label={`Running ${toolName}…`} />
@@ -32,13 +35,13 @@ function ToolPartRenderer({ part }: { part: AnyPart }) {
   const output = part.state === 'output-available' ? part.output : undefined
 
   if (part.type === 'tool-display_projects') {
-    return <ProjectsDisplay output={output} />
+    return <ProjectsDisplay output={output as Parameters<typeof ProjectsDisplay>[0]['output']} />
   }
   if (part.type === 'tool-display_team') {
-    return <TeamDisplay output={output} />
+    return <TeamDisplay output={output as Parameters<typeof TeamDisplay>[0]['output']} />
   }
   if (part.type === 'tool-display_work_items') {
-    return <WorkItemsDisplay output={output} />
+    return <WorkItemsDisplay output={output as Parameters<typeof WorkItemsDisplay>[0]['output']} />
   }
 
   if (output !== undefined) return null // known tool ran, no custom renderer → suppress
@@ -196,9 +199,7 @@ export default function ChatPage() {
             </Button>
           )}
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-2">
-          Enter to send · Shift+Enter for new line
-        </p>
+        <p className="text-center text-xs text-muted-foreground mt-2">Enter to send · Shift+Enter for new line</p>
       </div>
     </div>
   )

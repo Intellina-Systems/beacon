@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, jsonb, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, text, timestamp, integer, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
 
 // Users table - user profile and primary OAuth account
 export const users = pgTable(
@@ -151,6 +151,45 @@ export const workItems = pgTable('work_items', {
 
 export type WorkItem = typeof workItems.$inferSelect
 export type InsertWorkItem = typeof workItems.$inferInsert
+
+// Linear issues - workspace-wide issue cache grouped for board views
+export const linearIssues = pgTable(
+  'linear_issues',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    linearIssueId: text('linear_issue_id').notNull(),
+    identifier: text('identifier').notNull(),
+    title: text('title').notNull(),
+    description: text('description'),
+    status: text('status').notNull(),
+    statusType: text('status_type'),
+    priority: integer('priority').default(0),
+    assigneeLinearId: text('assignee_linear_id'),
+    assigneeName: text('assignee_name'),
+    linearProjectId: text('linear_project_id'),
+    projectName: text('project_name'),
+    linearTeamId: text('linear_team_id'),
+    teamName: text('team_name'),
+    linearUrl: text('linear_url'),
+    dueDate: timestamp('due_date'),
+    linearCreatedAt: timestamp('linear_created_at'),
+    linearUpdatedAt: timestamp('linear_updated_at'),
+    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userIssueUnique: uniqueIndex('linear_issues_user_issue_idx').on(table.userId, table.linearIssueId),
+    userStatusIdx: index('linear_issues_user_status_idx').on(table.userId, table.statusType),
+    userProjectIdx: index('linear_issues_user_project_idx').on(table.userId, table.linearProjectId),
+  }),
+)
+
+export type LinearIssue = typeof linearIssues.$inferSelect
+export type InsertLinearIssue = typeof linearIssues.$inferInsert
 
 // Members - team roster
 export const members = pgTable('members', {

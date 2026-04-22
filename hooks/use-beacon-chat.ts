@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useSyncExternalStore, useCallback } from 'react'
+import { useState, useSyncExternalStore, useCallback } from 'react'
 import { AbstractChat, DefaultChatTransport } from 'ai'
 import type { UIMessage, ChatState, ChatStatus } from 'ai'
 
@@ -11,7 +11,11 @@ import type { UIMessage, ChatState, ChatStatus } from 'ai'
 // We proxy all writes and method calls to trigger React re-renders.
 // ---------------------------------------------------------------------------
 
-function createReactiveChatState(): { state: ChatState<UIMessage>; subscribe: (l: () => void) => () => void; getSnapshot: () => number } {
+function createReactiveChatState(): {
+  state: ChatState<UIMessage>
+  subscribe: (l: () => void) => () => void
+  getSnapshot: () => number
+} {
   const listeners = new Set<() => void>()
   let version = 0
 
@@ -33,35 +37,60 @@ function createReactiveChatState(): { state: ChatState<UIMessage>; subscribe: (l
   // Proxy intercepts direct property writes (status, error, messages)
   const state = new Proxy(
     {
-      get status() { return raw.status },
-      get error() { return raw.error },
-      get messages() { return raw.messages },
-      set status(v: ChatStatus) { raw.status = v; notify() },
-      set error(v: Error | undefined) { raw.error = v; notify() },
-      set messages(v: UIMessage[]) { raw.messages = v; notify() },
-      pushMessage(msg: UIMessage) { raw.messages = [...raw.messages, msg]; notify() },
-      popMessage() { raw.messages = raw.messages.slice(0, -1); notify() },
+      get status() {
+        return raw.status
+      },
+      get error() {
+        return raw.error
+      },
+      get messages() {
+        return raw.messages
+      },
+      set status(v: ChatStatus) {
+        raw.status = v
+        notify()
+      },
+      set error(v: Error | undefined) {
+        raw.error = v
+        notify()
+      },
+      set messages(v: UIMessage[]) {
+        raw.messages = v
+        notify()
+      },
+      pushMessage(msg: UIMessage) {
+        raw.messages = [...raw.messages, msg]
+        notify()
+      },
+      popMessage() {
+        raw.messages = raw.messages.slice(0, -1)
+        notify()
+      },
       replaceMessage(index: number, msg: UIMessage) {
         const next = [...raw.messages]
         next[index] = msg
         raw.messages = next
         notify()
       },
-      snapshot<T>(thing: T): T { return thing },
+      snapshot<T>(thing: T): T {
+        return thing
+      },
     } as ChatState<UIMessage>,
     {
       set(target, prop, value) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(target as any)[prop as string] = value
+        const didSet = Reflect.set(target, prop, value)
         if (prop === 'status' || prop === 'error' || prop === 'messages') notify()
-        return true
+        return didSet
       },
     },
   ) as ChatState<UIMessage>
 
   return {
     state,
-    subscribe: (l) => { listeners.add(l); return () => listeners.delete(l) },
+    subscribe: (l) => {
+      listeners.add(l)
+      return () => listeners.delete(l)
+    },
     getSnapshot: () => version,
   }
 }
@@ -84,25 +113,23 @@ class BeaconChat extends AbstractChat<UIMessage> {
 // ---------------------------------------------------------------------------
 
 export function useBeaconChat() {
-  const storeRef = useRef<ReturnType<typeof createReactiveChatState>>(null!)
-  if (!storeRef.current) storeRef.current = createReactiveChatState()
-
-  const chatRef = useRef<BeaconChat>(null!)
-  if (!chatRef.current) chatRef.current = new BeaconChat(storeRef.current.state)
-
-  const { subscribe, getSnapshot } = storeRef.current
+  const [store] = useState(() => createReactiveChatState())
+  const [chat] = useState(() => new BeaconChat(store.state))
+  const { subscribe, getSnapshot } = store
 
   // Subscribe so React re-renders whenever state changes
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
-  const chat = chatRef.current
-
   const sendMessage = useCallback(
-    (text: string) => { void chat.sendMessage({ text }) },
+    (text: string) => {
+      void chat.sendMessage({ text })
+    },
     [chat],
   )
 
-  const stop = useCallback(() => { void chat.stop() }, [chat])
+  const stop = useCallback(() => {
+    void chat.stop()
+  }, [chat])
 
   return {
     messages: chat.messages as UIMessage[],

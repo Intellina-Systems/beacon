@@ -3,7 +3,7 @@
 import { useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FolderKanban, Users, Zap, Menu, X, Sun, Moon, Sparkles } from 'lucide-react'
+import { FolderKanban, Users, Zap, Menu, X, Sun, Moon, Sparkles, ListTodo } from 'lucide-react'
 import { User } from '@/components/auth/user'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -12,6 +12,7 @@ import { useTheme } from 'next-themes'
 const navItems = [
   { href: '/chat', label: 'Chat', icon: Sparkles },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/issues', label: 'Issues', icon: ListTodo },
   { href: '/team', label: 'Team', icon: Users },
 ]
 

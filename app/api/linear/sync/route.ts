@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { db } from '@/lib/db/client'
 import { linearConnections, projects, workItems, members } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { decrypt } from '@/lib/crypto'
 import { getServerSession } from '@/lib/session/get-server-session'
@@ -35,7 +35,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       const teamId = lp.teams.nodes[0]?.id ?? null
 
       // Upsert project
-      const existingProjects = await db.select().from(projects).where(eq(projects.linearProjectId, lp.id)).limit(1)
+      const existingProjects = await db
+        .select()
+        .from(projects)
+        .where(and(eq(projects.userId, userId), eq(projects.linearProjectId, lp.id)))
+        .limit(1)
 
       let projectId: string
 
@@ -68,7 +72,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       const issues = await getLinearProjectIssues(accessToken, lp.id)
 
       for (const issue of issues) {
-        const existingItems = await db.select().from(workItems).where(eq(workItems.linearId, issue.id)).limit(1)
+        const existingItems = await db
+          .select()
+          .from(workItems)
+          .where(and(eq(workItems.projectId, projectId), eq(workItems.linearId, issue.id)))
+          .limit(1)
 
         const dueDate = issue.dueDate ? new Date(issue.dueDate) : null
 
@@ -114,7 +122,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     const linearUsers = await getLinearUsers(accessToken)
 
     for (const lu of linearUsers) {
-      const existingMembers = await db.select().from(members).where(eq(members.linearUserId, lu.id)).limit(1)
+      const existingMembers = await db
+        .select()
+        .from(members)
+        .where(and(eq(members.userId, userId), eq(members.linearUserId, lu.id)))
+        .limit(1)
 
       if (existingMembers.length > 0) {
         await db

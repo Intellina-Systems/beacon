@@ -2,7 +2,6 @@ import { type NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
 import { linearConnections } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { encrypt } from '@/lib/crypto'
 import { getLinearViewer } from '@/lib/linear/client'
@@ -104,9 +103,4 @@ export async function GET(req: NextRequest): Promise<Response> {
     console.error('[Linear Callback] Error:', err)
     return Response.redirect(new URL('/projects?error=linear_failed', req.url))
   }
-}
-
-export async function getLinearConnection(userId: string) {
-  const rows = await db.select().from(linearConnections).where(eq(linearConnections.userId, userId)).limit(1)
-  return rows[0] ?? null
 }
