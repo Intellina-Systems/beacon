@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { FolderKanban, Sparkles, Send, StopCircle } from 'lucide-react'
+import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -69,13 +70,24 @@ function MessageBubble({ message }: { message: UIMessage }) {
       <div className={cn('flex flex-col gap-2 max-w-[85%]', isUser && 'items-end')}>
         {message.parts.map((part, i) => {
           if (part.type === 'text') {
+            if (!isUser) {
+              return (
+                <div key={i} className="rounded-2xl bg-muted px-4 py-3 text-foreground">
+                  <Streamdown
+                    className="text-sm leading-relaxed [&_a]:underline [&_a]:underline-offset-4 [&_pre]:max-w-full"
+                    controls
+                    isAnimating={part.state === 'streaming'}
+                  >
+                    {part.text}
+                  </Streamdown>
+                </div>
+              )
+            }
+
             return (
               <div
                 key={i}
-                className={cn(
-                  'rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap',
-                  isUser ? 'bg-foreground text-background' : 'bg-muted text-foreground',
-                )}
+                className="rounded-2xl bg-foreground px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap text-background"
               >
                 {part.text}
                 {part.state === 'streaming' && (
