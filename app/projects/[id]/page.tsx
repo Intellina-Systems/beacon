@@ -8,6 +8,8 @@ import {
   githubCommits,
   githubLinearLinks,
   githubPullRequests,
+  knowledgeDocuments,
+  knowledgeSignals,
   linearConnections,
   linearIssues,
   members,
@@ -21,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { KnowledgeIngestion } from '@/components/products/knowledge-ingestion'
 import { ProductSettings } from '@/components/products/product-settings'
 
 const PRIORITY_LABEL: Record<number, string> = {
@@ -92,7 +95,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       null)
     : null
 
-  const [issues, pullRequests, commits, links] = await Promise.all([
+  const [issues, pullRequests, commits, links, knowledgeDocumentRows, knowledgeSignalRows] = await Promise.all([
     attachedLinearWorkspace
       ? db
           .select()
@@ -130,6 +133,31 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       .leftJoin(githubCommits, eq(githubCommits.id, githubLinearLinks.githubCommitId))
       .where(eq(githubLinearLinks.productId, id))
       .limit(30),
+    db
+      .select({
+        id: knowledgeDocuments.id,
+        title: knowledgeDocuments.title,
+        sourceType: knowledgeDocuments.sourceType,
+        summary: knowledgeDocuments.summary,
+        createdAt: knowledgeDocuments.createdAt,
+      })
+      .from(knowledgeDocuments)
+      .where(and(eq(knowledgeDocuments.productId, id), eq(knowledgeDocuments.userId, session.user.id)))
+      .orderBy(desc(knowledgeDocuments.createdAt))
+      .limit(20),
+    db
+      .select({
+        id: knowledgeSignals.id,
+        kind: knowledgeSignals.kind,
+        title: knowledgeSignals.title,
+        detail: knowledgeSignals.detail,
+        evidence: knowledgeSignals.evidence,
+        confidence: knowledgeSignals.confidence,
+      })
+      .from(knowledgeSignals)
+      .where(eq(knowledgeSignals.productId, id))
+      .orderBy(desc(knowledgeSignals.createdAt))
+      .limit(50),
   ])
 
   const activeIssues = issues.filter((issue) => !['completed', 'cancelled'].includes(issue.statusType ?? ''))
@@ -164,6 +192,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="work">Work</TabsTrigger>
+          <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
           <TabsTrigger value="code">Code</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -191,8 +220,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Code Links</CardDescription>
-                <CardTitle>{acceptedLinks.length}</CardTitle>
+                <CardDescription>Signals</CardDescription>
+                <CardTitle>{knowledgeSignalRows.length}</CardTitle>
               </CardHeader>
             </Card>
           </div>
@@ -293,6 +322,10 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="knowledge">
+          <KnowledgeIngestion productId={id} documents={knowledgeDocumentRows} signals={knowledgeSignalRows} />
         </TabsContent>
 
         <TabsContent value="code">

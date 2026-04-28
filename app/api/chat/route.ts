@@ -1,5 +1,5 @@
 import { streamText, tool, zodSchema, convertToModelMessages } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
+import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { db } from '@/lib/db/client'
@@ -16,6 +16,7 @@ import {
 import { eq, sql, desc, and } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import { getIssueBucket } from '@/lib/linear/issue-bucket'
+import { retrieveKnowledgeContext } from '@/lib/knowledge/retrieve'
 
 const PRIORITY_LABEL: Record<number, string> = { 0: 'none', 1: 'urgent', 2: 'high', 3: 'medium', 4: 'low' }
 const MAX_LINEAR_ISSUES_CONTEXT_ACTIVE = 30
@@ -235,6 +236,7 @@ function buildSystemPrompt(
   memberRows: (typeof members.$inferSelect)[],
   issueContext: IssueContextSummary,
   githubContext: GitHubContextRow[],
+  knowledgeContext: Awaited<ReturnType<typeof retrieveKnowledgeContext>>,
 ): string {
   const parts: string[] = []
   const workspace = workspaceName ? ` for the **${workspaceName}** workspace` : ''
@@ -285,6 +287,30 @@ function buildSystemPrompt(
     parts.push('- No product-scoped GitHub pull requests, commits, or links are available yet.')
   }
 
+  parts.push('\n## Retrieved Knowledge Sources')
+  if (knowledgeContext.documents.length > 0) {
+    for (const document of knowledgeContext.documents) {
+      const summary = document.summary ?? truncateText(normalizeWhitespace(document.content), 260)
+      parts.push(
+        `- ${document.title} | source: ${document.sourceType} | similarity: ${document.similarity.toFixed(2)} | ${truncateText(normalizeWhitespace(summary), 260)}`,
+      )
+    }
+  } else {
+    parts.push('- No semantically relevant knowledge sources are available yet.')
+  }
+
+  parts.push('\n## Knowledge Signal Snapshot')
+  if (knowledgeContext.signals.length > 0) {
+    for (const signal of knowledgeContext.signals) {
+      const evidence = signal.evidence ? ` | evidence: ${truncateText(normalizeWhitespace(signal.evidence), 140)}` : ''
+      parts.push(
+        `- ${signal.kind} | confidence: ${signal.confidence}/5 | ${signal.title}: ${truncateText(normalizeWhitespace(signal.detail), 220)}${evidence}`,
+      )
+    }
+  } else {
+    parts.push('- No product-scoped knowledge signals are available yet.')
+  }
+
   if (memberRows.length > 0) {
     parts.push('\n## Team')
     for (const m of memberRows) {
@@ -330,7 +356,7 @@ export async function POST(req: Request) {
     ? productLinearRows.some((connection) => connection.linearWorkspaceId === linearConnection.workspaceId)
     : false
 
-  const [linearIssueRows, githubRows] = await Promise.all([
+  const [linearIssueRows, githubRows, knowledgeContext] = await Promise.all([
     selectedProduct && hasLinearWorkspace
       ? db
           .select({
@@ -390,6 +416,12 @@ export async function POST(req: Request) {
             .limit(20),
         ])
       : Promise.resolve([[], [], []] as const),
+    selectedProduct
+      ? retrieveKnowledgeContext({
+          productId: selectedProduct.id,
+          query: latestUserText,
+        })
+      : Promise.resolve({ documents: [], signals: [] }),
   ])
 
   const workspaceName = linearConnection?.workspaceName ?? linearConnection?.workspaceSlug ?? null
@@ -412,12 +444,19 @@ export async function POST(req: Request) {
       detail: `source: ${link.source}; status: ${link.status}`,
     })),
   ].slice(0, 35)
-  const systemPrompt = buildSystemPrompt(selectedProduct, workspaceName, memberRows, issueContext, githubContext)
+  const systemPrompt = buildSystemPrompt(
+    selectedProduct,
+    workspaceName,
+    memberRows,
+    issueContext,
+    githubContext,
+    knowledgeContext,
+  )
 
   const result = streamText({
-    model: anthropic('claude-sonnet-4-6'),
+    model: openai('gpt-5.4-nano'),
     system: systemPrompt,
-    messages: convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages),
     tools: {
       display_projects: tool({
         description:
@@ -570,5 +609,5 @@ export async function POST(req: Request) {
     },
   })
 
-  return result.toUIMessageStreamResponse()
+  return result.toUIMessageStreamResponse({ originalMessages: messages })
 }

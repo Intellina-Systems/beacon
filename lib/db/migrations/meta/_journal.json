@@ -176,6 +176,13 @@
       "when": 1777390200000,
       "tag": "0024_product_linear_workspace_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1777392600000,
+      "tag": "0025_knowledge_ingestion",
+      "breakpoints": true
     }
   ]
 }

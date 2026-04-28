@@ -1,4 +1,4 @@
-import { boolean, pgTable, text, timestamp, integer, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp, integer, jsonb, uniqueIndex, index, vector } from 'drizzle-orm/pg-core'
 
 // Users table - user profile and primary OAuth account
 export const users = pgTable(
@@ -356,6 +356,68 @@ export const githubLinearLinks = pgTable(
 
 export type GitHubLinearLink = typeof githubLinearLinks.$inferSelect
 export type InsertGitHubLinearLink = typeof githubLinearLinks.$inferInsert
+
+export const knowledgeDocuments = pgTable(
+  'knowledge_documents',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    sourceType: text('source_type', { enum: ['note', 'email', 'doc', 'pdf', 'whatsapp', 'other'] })
+      .notNull()
+      .default('note'),
+    content: text('content').notNull(),
+    summary: text('summary'),
+    embedding: vector('embedding', { dimensions: 1536 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productIdx: index('knowledge_documents_product_idx').on(table.productId),
+    userProductIdx: index('knowledge_documents_user_product_idx').on(table.userId, table.productId),
+  }),
+)
+
+export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect
+export type InsertKnowledgeDocument = typeof knowledgeDocuments.$inferInsert
+
+export const knowledgeSignals = pgTable(
+  'knowledge_signals',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    documentId: text('document_id')
+      .notNull()
+      .references(() => knowledgeDocuments.id, { onDelete: 'cascade' }),
+    kind: text('kind', {
+      enum: ['user_need', 'pain_point', 'feature_request', 'blocker', 'risk', 'decision', 'question'],
+    }).notNull(),
+    title: text('title').notNull(),
+    detail: text('detail').notNull(),
+    evidence: text('evidence'),
+    confidence: integer('confidence').default(3).notNull(),
+    status: text('status', { enum: ['new', 'reviewed', 'dismissed'] })
+      .notNull()
+      .default('new'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productIdx: index('knowledge_signals_product_idx').on(table.productId),
+    documentIdx: index('knowledge_signals_document_idx').on(table.documentId),
+    statusIdx: index('knowledge_signals_status_idx').on(table.status),
+  }),
+)
+
+export type KnowledgeSignal = typeof knowledgeSignals.$inferSelect
+export type InsertKnowledgeSignal = typeof knowledgeSignals.$inferInsert
 
 // Members - team roster
 export const members = pgTable('members', {
