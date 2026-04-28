@@ -13,7 +13,7 @@ import {
   linearConnections,
   linearIssues,
 } from '@/lib/db/schema'
-import { eq, sql, desc, and, inArray } from 'drizzle-orm'
+import { eq, sql, desc, and } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import { getIssueBucket } from '@/lib/linear/issue-bucket'
 
@@ -325,10 +325,13 @@ export async function POST(req: Request) {
   ])
 
   const selectedProduct = productRows[0] ?? null
-  const linearProjectIds = productLinearRows.map((connection) => connection.linearProjectId)
+  const linearConnection = connectionRows[0] ?? null
+  const hasLinearWorkspace = linearConnection
+    ? productLinearRows.some((connection) => connection.linearWorkspaceId === linearConnection.workspaceId)
+    : false
 
   const [linearIssueRows, githubRows] = await Promise.all([
-    selectedProduct && linearProjectIds.length > 0
+    selectedProduct && hasLinearWorkspace
       ? db
           .select({
             identifier: linearIssues.identifier,
@@ -342,7 +345,7 @@ export async function POST(req: Request) {
             updatedAt: linearIssues.updatedAt,
           })
           .from(linearIssues)
-          .where(and(eq(linearIssues.userId, userId), inArray(linearIssues.linearProjectId, linearProjectIds)))
+          .where(eq(linearIssues.userId, userId))
           .orderBy(desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
           .limit(600)
       : Promise.resolve([]),
@@ -389,7 +392,7 @@ export async function POST(req: Request) {
       : Promise.resolve([[], [], []] as const),
   ])
 
-  const workspaceName = connectionRows[0]?.workspaceName ?? connectionRows[0]?.workspaceSlug ?? null
+  const workspaceName = linearConnection?.workspaceName ?? linearConnection?.workspaceSlug ?? null
   const issueContext = buildLinearIssuesContext(linearIssueRows, latestUserText)
   const [pullRequestRows, commitRows, linkRows] = githubRows
   const githubContext: GitHubContextRow[] = [
@@ -430,10 +433,13 @@ export async function POST(req: Request) {
                 select count(*)
                 from linear_issues
                 where linear_issues.user_id = ${userId}
-                  and linear_issues.linear_project_id in (
-                    select product_linear_connections.linear_project_id
+                  and exists (
+                    select 1
                     from product_linear_connections
-                    where product_linear_connections.product_id = ${products.id}
+                    inner join linear_connections
+                      on linear_connections.user_id = ${userId}
+                     and linear_connections.workspace_id = product_linear_connections.linear_workspace_id
+                    where product_linear_connections.product_id = "products"."id"
                   )
                   and (linear_issues.status_type is null or linear_issues.status_type not in ('completed','cancelled'))
               )::int`,
@@ -487,14 +493,11 @@ export async function POST(req: Request) {
 
           const projectNameFilter = projectName?.trim().toLowerCase() ?? null
 
-          if (!selectedProduct || linearProjectIds.length === 0) {
+          if (!selectedProduct || !hasLinearWorkspace) {
             return { items: [] }
           }
 
-          const productScope = and(
-            eq(linearIssues.userId, userId),
-            inArray(linearIssues.linearProjectId, linearProjectIds),
-          )
+          const productScope = eq(linearIssues.userId, userId)
 
           const whereClause = projectNameFilter
             ? and(productScope, sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`)

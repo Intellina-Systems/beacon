@@ -208,7 +208,7 @@ export const products = pgTable('products', {
 export type Product = typeof products.$inferSelect
 export type InsertProduct = typeof products.$inferInsert
 
-// Product Linear connections - maps one Beacon product to one or more Linear projects/teams
+// Product Linear connections - maps one Beacon product to one Linear workspace
 export const productLinearConnections = pgTable(
   'product_linear_connections',
   {
@@ -217,7 +217,7 @@ export const productLinearConnections = pgTable(
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
     linearWorkspaceId: text('linear_workspace_id').notNull(),
-    linearProjectId: text('linear_project_id').notNull(),
+    linearProjectId: text('linear_project_id'),
     linearProjectName: text('linear_project_name'),
     linearTeamId: text('linear_team_id'),
     linearTeamName: text('linear_team_name'),
@@ -226,8 +226,8 @@ export const productLinearConnections = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
+    productUnique: uniqueIndex('product_linear_connection_product_idx').on(table.productId),
     productLinearProjectUnique: uniqueIndex('product_linear_project_idx').on(table.productId, table.linearProjectId),
-    productIdx: index('product_linear_product_idx').on(table.productId),
   }),
 )
 

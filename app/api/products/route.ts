@@ -19,8 +19,15 @@ export async function GET(): Promise<Response> {
       clientVertical: products.clientVertical,
       createdAt: products.createdAt,
       updatedAt: products.updatedAt,
-      linearConnectionCount: sql<number>`(select count(*) from product_linear_connections where product_linear_connections.product_id = ${products.id})::int`,
-      githubRepositoryCount: sql<number>`(select count(*) from product_github_repositories where product_github_repositories.product_id = ${products.id})::int`,
+      linearConnectionCount: sql<number>`(
+        select count(*)
+        from product_linear_connections
+        inner join linear_connections
+          on linear_connections.user_id = ${session.user.id}
+         and linear_connections.workspace_id = product_linear_connections.linear_workspace_id
+        where product_linear_connections.product_id = "products"."id"
+      )::int`,
+      githubRepositoryCount: sql<number>`(select count(*) from product_github_repositories where product_github_repositories.product_id = "products"."id")::int`,
     })
     .from(products)
     .where(eq(products.userId, session.user.id))

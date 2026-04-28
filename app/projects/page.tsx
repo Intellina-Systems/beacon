@@ -22,16 +22,26 @@ export default async function ProjectsPage() {
       description: products.description,
       clientVertical: products.clientVertical,
       updatedAt: products.updatedAt,
-      linearConnectionCount: sql<number>`(select count(*) from product_linear_connections where product_linear_connections.product_id = ${products.id})::int`,
-      githubRepositoryCount: sql<number>`(select count(*) from product_github_repositories where product_github_repositories.product_id = ${products.id})::int`,
+      linearConnectionCount: sql<number>`(
+        select count(*)
+        from product_linear_connections
+        inner join linear_connections
+          on linear_connections.user_id = ${session.user.id}
+         and linear_connections.workspace_id = product_linear_connections.linear_workspace_id
+        where product_linear_connections.product_id = "products"."id"
+      )::int`,
+      githubRepositoryCount: sql<number>`(select count(*) from product_github_repositories where product_github_repositories.product_id = "products"."id")::int`,
       activeIssueCount: sql<number>`(
         select count(*)
         from linear_issues
         where linear_issues.user_id = ${session.user.id}
-          and linear_issues.linear_project_id in (
-            select product_linear_connections.linear_project_id
+          and exists (
+            select 1
             from product_linear_connections
-            where product_linear_connections.product_id = ${products.id}
+            inner join linear_connections
+              on linear_connections.user_id = ${session.user.id}
+             and linear_connections.workspace_id = product_linear_connections.linear_workspace_id
+            where product_linear_connections.product_id = "products"."id"
           )
           and (linear_issues.status_type is null or linear_issues.status_type not in ('completed','cancelled'))
       )::int`,
@@ -87,7 +97,7 @@ export default async function ProjectsPage() {
                   {product.clientVertical && <Badge variant="outline">{product.clientVertical}</Badge>}
                   <Badge variant="secondary">
                     <Zap className="mr-1 h-3 w-3" />
-                    {product.linearConnectionCount} Linear
+                    {product.linearConnectionCount > 0 ? 'Linear connected' : 'No Linear'}
                   </Badge>
                   <Badge variant="secondary">
                     <Github className="mr-1 h-3 w-3" />

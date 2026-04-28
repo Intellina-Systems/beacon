@@ -4,7 +4,6 @@ import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { linearConnections, productLinearConnections } from '@/lib/db/schema'
 import { decrypt } from '@/lib/crypto'
-import { getLinearProjects } from '@/lib/linear/client'
 import { syncProductLinearIssues } from '@/lib/linear/sync-product-issues'
 import { getUserProduct } from '@/lib/products/access'
 import { getServerSession } from '@/lib/session/get-server-session'
@@ -30,21 +29,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return Response.json({ connected: false, attached, availableProjects: [] })
   }
 
-  const accessToken = decrypt(connection[0].accessToken)
-  const availableProjects = await getLinearProjects(accessToken)
+  const currentWorkspaceAttached = attached.filter(
+    (attachment) => attachment.linearWorkspaceId === connection[0].workspaceId,
+  )
 
   return Response.json({
     connected: true,
     workspaceName: connection[0].workspaceName ?? connection[0].workspaceSlug,
     workspaceId: connection[0].workspaceId,
-    attached,
-    availableProjects: availableProjects.map((project) => ({
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      teamId: project.teams.nodes[0]?.id ?? null,
-      teamName: project.teams.nodes[0]?.name ?? null,
-    })),
+    attached: currentWorkspaceAttached,
   })
 }
 
@@ -62,7 +55,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const body = (await req.json().catch(() => ({}))) as {
     action?: 'attach' | 'sync'
-    linearProjectId?: string
   }
 
   const [connection] = await db
@@ -81,35 +73,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ success: true, ...result })
   }
 
-  if (!body.linearProjectId) {
-    return Response.json({ error: 'Linear project is required' }, { status: 400 })
-  }
-
-  const linearProject = (await getLinearProjects(accessToken)).find((project) => project.id === body.linearProjectId)
-  if (!linearProject) {
-    return Response.json({ error: 'Linear project not found' }, { status: 404 })
-  }
-
-  const team = linearProject.teams.nodes[0] ?? null
-
   const [attached] = await db
     .insert(productLinearConnections)
     .values({
       id: nanoid(),
       productId: id,
       linearWorkspaceId: connection.workspaceId,
-      linearProjectId: linearProject.id,
-      linearProjectName: linearProject.name,
-      linearTeamId: team?.id ?? null,
-      linearTeamName: team?.name ?? null,
     })
     .onConflictDoUpdate({
-      target: [productLinearConnections.productId, productLinearConnections.linearProjectId],
+      target: productLinearConnections.productId,
       set: {
         linearWorkspaceId: connection.workspaceId,
-        linearProjectName: linearProject.name,
-        linearTeamId: team?.id ?? null,
-        linearTeamName: team?.name ?? null,
+        linearProjectId: null,
+        linearProjectName: null,
+        linearTeamId: null,
+        linearTeamName: null,
         syncEnabled: true,
         updatedAt: new Date(),
       },

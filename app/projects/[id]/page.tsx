@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { ArrowLeft, ExternalLink, Github, GitCommit, GitPullRequest, ListTodo, Settings, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import {
@@ -16,8 +16,6 @@ import {
   products,
   users,
 } from '@/lib/db/schema'
-import { decrypt } from '@/lib/crypto'
-import { getLinearProjects } from '@/lib/linear/client'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -79,25 +77,27 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     notFound()
   }
 
-  const [linearConnectionRows, attachedLinearProjects, repositories, teamMembers, githubConnection] = await Promise.all(
-    [
+  const [linearConnectionRows, attachedLinearWorkspaces, repositories, teamMembers, githubConnection] =
+    await Promise.all([
       db.select().from(linearConnections).where(eq(linearConnections.userId, session.user.id)).limit(1),
       db.select().from(productLinearConnections).where(eq(productLinearConnections.productId, id)),
       db.select().from(productGitHubRepositories).where(eq(productGitHubRepositories.productId, id)),
       db.select().from(members).where(eq(members.userId, session.user.id)).orderBy(members.name),
       getGitHubConnection(session.user.id),
-    ],
-  )
+    ])
 
   const linearConnection = linearConnectionRows[0] ?? null
-  const linearProjectIds = attachedLinearProjects.map((connection) => connection.linearProjectId)
+  const attachedLinearWorkspace = linearConnection
+    ? (attachedLinearWorkspaces.find((connection) => connection.linearWorkspaceId === linearConnection.workspaceId) ??
+      null)
+    : null
 
   const [issues, pullRequests, commits, links] = await Promise.all([
-    linearProjectIds.length > 0
+    attachedLinearWorkspace
       ? db
           .select()
           .from(linearIssues)
-          .where(and(eq(linearIssues.userId, session.user.id), inArray(linearIssues.linearProjectId, linearProjectIds)))
+          .where(eq(linearIssues.userId, session.user.id))
           .orderBy(linearIssues.priority, desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
       : Promise.resolve([]),
     db
@@ -132,20 +132,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       .limit(30),
   ])
 
-  let availableLinearProjects: Array<{ id: string; name: string; teamName: string | null }> = []
-  if (linearConnection) {
-    try {
-      const accessToken = decrypt(linearConnection.accessToken)
-      availableLinearProjects = (await getLinearProjects(accessToken)).map((project) => ({
-        id: project.id,
-        name: project.name,
-        teamName: project.teams.nodes[0]?.name ?? null,
-      }))
-    } catch {
-      availableLinearProjects = []
-    }
-  }
-
   const activeIssues = issues.filter((issue) => !['completed', 'cancelled'].includes(issue.statusType ?? ''))
   const openPullRequests = pullRequests.filter((pullRequest) => pullRequest.state === 'open')
   const acceptedLinks = links.filter((link) => link.status === 'accepted')
@@ -168,7 +154,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           {product.description && <p className="mt-1 max-w-2xl text-muted-foreground">{product.description}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             {product.clientVertical && <Badge variant="outline">{product.clientVertical}</Badge>}
-            <Badge variant="secondary">{attachedLinearProjects.length} Linear projects</Badge>
+            <Badge variant="secondary">{attachedLinearWorkspace ? '1 Linear workspace' : 'No Linear workspace'}</Badge>
             <Badge variant="secondary">{repositories.length} GitHub repos</Badge>
           </div>
         </div>
@@ -218,14 +204,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 <CardDescription>Product-scoped work and code signals.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-3 text-sm">
-                {attachedLinearProjects.length === 0 && (
-                  <p className="text-muted-foreground">Attach Linear projects in Settings.</p>
+                {!attachedLinearWorkspace && (
+                  <p className="text-muted-foreground">Attach a Linear workspace in Settings.</p>
                 )}
                 {repositories.length === 0 && (
                   <p className="text-muted-foreground">Attach GitHub repositories in Settings.</p>
                 )}
                 {suggestedLinks.length > 0 && <p>{suggestedLinks.length} AI-suggested code links need review.</p>}
-                {attachedLinearProjects.length > 0 && repositories.length > 0 && suggestedLinks.length === 0 && (
+                {attachedLinearWorkspace && repositories.length > 0 && suggestedLinks.length === 0 && (
                   <p className="text-muted-foreground">No review-gated link suggestions are waiting.</p>
                 )}
               </CardContent>
@@ -261,12 +247,12 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 <ListTodo className="h-4 w-4" />
                 Linear Work
               </CardTitle>
-              <CardDescription>Issues from the Linear projects attached to this product.</CardDescription>
+              <CardDescription>Issues from the Linear workspace attached to this product.</CardDescription>
             </CardHeader>
             <CardContent>
               {issues.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Attach and sync Linear projects to see product-scoped work.
+                  Attach and sync a Linear workspace to see product-scoped work.
                 </p>
               ) : (
                 <div className="overflow-hidden rounded-md border">
@@ -417,8 +403,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             productId={id}
             linearConnected={Boolean(linearConnection)}
             linearWorkspaceName={linearConnection?.workspaceName ?? linearConnection?.workspaceSlug ?? null}
-            availableLinearProjects={availableLinearProjects}
-            attachedLinearProjects={attachedLinearProjects}
+            attachedLinearWorkspace={attachedLinearWorkspace}
             githubConnected={githubConnection.connected}
             githubUsername={githubConnection.username}
             repositories={repositories}

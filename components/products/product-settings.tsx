@@ -2,25 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Github, LinkIcon, RefreshCw, Trash2, Zap } from 'lucide-react'
+import { Github, LinkIcon, PlugZap, RefreshCw, Trash2, Zap } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-type LinearProjectOption = {
+type AttachedLinearWorkspace = {
   id: string
-  name: string
-  teamName: string | null
-}
-
-type AttachedLinearProject = {
-  id: string
-  linearProjectId: string
-  linearProjectName: string | null
-  linearTeamName: string | null
+  linearWorkspaceId: string
 }
 
 type ProductRepository = {
@@ -44,8 +35,7 @@ interface ProductSettingsProps {
   productId: string
   linearConnected: boolean
   linearWorkspaceName: string | null
-  availableLinearProjects: LinearProjectOption[]
-  attachedLinearProjects: AttachedLinearProject[]
+  attachedLinearWorkspace: AttachedLinearWorkspace | null
   githubConnected: boolean
   githubUsername: string | null
   repositories: ProductRepository[]
@@ -55,30 +45,26 @@ export function ProductSettings({
   productId,
   linearConnected,
   linearWorkspaceName,
-  availableLinearProjects,
-  attachedLinearProjects,
+  attachedLinearWorkspace,
   githubConnected,
   githubUsername,
   repositories,
 }: ProductSettingsProps) {
   const router = useRouter()
-  const [linearProjectId, setLinearProjectId] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
   const [repoOptions, setRepoOptions] = useState<GitHubRepositoryOption[]>([])
   const [loading, setLoading] = useState<string | null>(null)
 
-  async function attachLinearProject() {
-    if (!linearProjectId) return
+  async function attachLinearWorkspace() {
     setLoading('linear')
     try {
       const response = await fetch(`/api/products/${productId}/linear`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'attach', linearProjectId }),
+        body: JSON.stringify({ action: 'attach' }),
       })
       if (response.ok) {
-        setLinearProjectId('')
         router.refresh()
       }
     } finally {
@@ -86,7 +72,7 @@ export function ProductSettings({
     }
   }
 
-  async function detachLinearProject(connectionId: string) {
+  async function detachLinearWorkspace(connectionId: string) {
     setLoading(connectionId)
     try {
       const response = await fetch(`/api/products/${productId}/linear?connectionId=${connectionId}`, {
@@ -166,9 +152,6 @@ export function ProductSettings({
     }
   }
 
-  const attachedLinearIds = new Set(attachedLinearProjects.map((project) => project.linearProjectId))
-  const unattachedLinearProjects = availableLinearProjects.filter((project) => !attachedLinearIds.has(project.id))
-
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
@@ -180,7 +163,7 @@ export function ProductSettings({
           <CardDescription>
             {linearConnected
               ? `Connected to ${linearWorkspaceName ?? 'Linear'}`
-              : 'Connect Linear before attaching work projects.'}
+              : 'Connect Linear before attaching a workspace.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -193,56 +176,40 @@ export function ProductSettings({
             </Button>
           ) : (
             <>
-              <div className="flex gap-2">
-                <Select value={linearProjectId} onValueChange={setLinearProjectId}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Choose a Linear project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unattachedLinearProjects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button onClick={attachLinearProject} disabled={!linearProjectId || loading === 'linear'}>
-                  Attach
+              {!attachedLinearWorkspace && (
+                <Button onClick={attachLinearWorkspace} disabled={loading === 'linear'}>
+                  <PlugZap className="h-4 w-4 mr-2" />
+                  Attach Workspace
                 </Button>
-              </div>
+              )}
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={syncLinear} disabled={loading === 'linear-sync'}>
+                <Button
+                  variant="outline"
+                  onClick={syncLinear}
+                  disabled={!attachedLinearWorkspace || loading === 'linear-sync'}
+                >
                   <RefreshCw className={loading === 'linear-sync' ? 'h-4 w-4 mr-2 animate-spin' : 'h-4 w-4 mr-2'} />
                   Sync Linear
                 </Button>
               </div>
               <div className="flex flex-col gap-2">
-                {attachedLinearProjects.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No Linear projects attached yet.</p>
+                {!attachedLinearWorkspace ? (
+                  <p className="text-sm text-muted-foreground">No Linear workspace attached yet.</p>
                 ) : (
-                  attachedLinearProjects.map((project) => (
-                    <div
-                      key={project.id}
-                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">
-                          {project.linearProjectName ?? project.linearProjectId}
-                        </p>
-                        {project.linearTeamName && (
-                          <p className="text-xs text-muted-foreground">{project.linearTeamName}</p>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => detachLinearProject(project.id)}
-                        disabled={loading === project.id}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                  <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{linearWorkspaceName ?? 'Linear workspace'}</p>
+                      <p className="text-xs text-muted-foreground">Product workspace</p>
                     </div>
-                  ))
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => detachLinearWorkspace(attachedLinearWorkspace.id)}
+                      disabled={loading === attachedLinearWorkspace.id}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 )}
               </div>
             </>

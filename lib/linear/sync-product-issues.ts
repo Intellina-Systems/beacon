@@ -1,4 +1,4 @@
-import { and, eq, inArray, notInArray } from 'drizzle-orm'
+import { and, eq, notInArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { linearIssues, productLinearConnections } from '@/lib/db/schema'
@@ -29,16 +29,13 @@ export async function syncProductLinearIssues(
     .from(productLinearConnections)
     .where(and(eq(productLinearConnections.productId, productId), eq(productLinearConnections.syncEnabled, true)))
 
-  const linearProjectIds = connections.map((connection) => connection.linearProjectId)
   const buckets = createEmptyBuckets()
 
-  if (linearProjectIds.length === 0) {
+  if (connections.length === 0) {
     return { issuesSynced: 0, buckets }
   }
 
-  const issues = (await getLinearIssues(accessToken)).filter(
-    (issue) => issue.project?.id && linearProjectIds.includes(issue.project.id),
-  )
+  const issues = await getLinearIssues(accessToken)
   const now = new Date()
   const syncedIssueIds: string[] = []
 
@@ -103,13 +100,7 @@ export async function syncProductLinearIssues(
   if (syncedIssueIds.length > 0) {
     await db
       .delete(linearIssues)
-      .where(
-        and(
-          eq(linearIssues.userId, userId),
-          inArray(linearIssues.linearProjectId, linearProjectIds),
-          notInArray(linearIssues.linearIssueId, syncedIssueIds),
-        ),
-      )
+      .where(and(eq(linearIssues.userId, userId), notInArray(linearIssues.linearIssueId, syncedIssueIds)))
   }
 
   return {

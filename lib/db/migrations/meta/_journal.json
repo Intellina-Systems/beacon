@@ -169,6 +169,13 @@
       "when": 1777388400000,
       "tag": "0023_product_first_github_signals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777390200000,
+      "tag": "0024_product_linear_workspace_scope",
+      "breakpoints": true
     }
   ]
 }
