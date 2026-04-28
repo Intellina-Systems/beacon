@@ -55,3 +55,32 @@ export async function getUserGitHubToken(req?: NextRequest): Promise<string | nu
     return null
   }
 }
+
+export async function getGitHubTokenForUserId(userId: string): Promise<string | null> {
+  try {
+    const account = await db
+      .select({ accessToken: accounts.accessToken })
+      .from(accounts)
+      .where(and(eq(accounts.userId, userId), eq(accounts.provider, 'github')))
+      .limit(1)
+
+    if (account[0]?.accessToken) {
+      return decrypt(account[0].accessToken)
+    }
+
+    const user = await db
+      .select({ accessToken: users.accessToken })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.provider, 'github')))
+      .limit(1)
+
+    if (user[0]?.accessToken) {
+      return decrypt(user[0].accessToken)
+    }
+
+    return null
+  } catch {
+    console.error('Error fetching stored GitHub token')
+    return null
+  }
+}

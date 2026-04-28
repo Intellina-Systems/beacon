@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { boolean, pgTable, text, timestamp, integer, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
 
 // Users table - user profile and primary OAuth account
 export const users = pgTable(
@@ -190,6 +190,172 @@ export const linearIssues = pgTable(
 
 export type LinearIssue = typeof linearIssues.$inferSelect
 export type InsertLinearIssue = typeof linearIssues.$inferInsert
+
+// Products - top-level Beacon container for the product a user is building
+export const products = pgTable('products', {
+  id: text('id').primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description'),
+  clientVertical: text('client_vertical'),
+  trackedTopics: jsonb('tracked_topics').$type<string[]>(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type Product = typeof products.$inferSelect
+export type InsertProduct = typeof products.$inferInsert
+
+// Product Linear connections - maps one Beacon product to one or more Linear projects/teams
+export const productLinearConnections = pgTable(
+  'product_linear_connections',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    linearWorkspaceId: text('linear_workspace_id').notNull(),
+    linearProjectId: text('linear_project_id').notNull(),
+    linearProjectName: text('linear_project_name'),
+    linearTeamId: text('linear_team_id'),
+    linearTeamName: text('linear_team_name'),
+    syncEnabled: boolean('sync_enabled').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productLinearProjectUnique: uniqueIndex('product_linear_project_idx').on(table.productId, table.linearProjectId),
+    productIdx: index('product_linear_product_idx').on(table.productId),
+  }),
+)
+
+export type ProductLinearConnection = typeof productLinearConnections.$inferSelect
+export type InsertProductLinearConnection = typeof productLinearConnections.$inferInsert
+
+// Product GitHub repositories - maps one Beacon product to one or more GitHub repos
+export const productGitHubRepositories = pgTable(
+  'product_github_repositories',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    owner: text('owner').notNull(),
+    repo: text('repo').notNull(),
+    repoUrl: text('repo_url').notNull(),
+    defaultBranch: text('default_branch'),
+    syncEnabled: boolean('sync_enabled').default(true).notNull(),
+    lastSyncedAt: timestamp('last_synced_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productRepoUnique: uniqueIndex('product_github_repo_idx').on(table.productId, table.owner, table.repo),
+    productIdx: index('product_github_product_idx').on(table.productId),
+  }),
+)
+
+export type ProductGitHubRepository = typeof productGitHubRepositories.$inferSelect
+export type InsertProductGitHubRepository = typeof productGitHubRepositories.$inferInsert
+
+export const githubPullRequests = pgTable(
+  'github_pull_requests',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    repositoryId: text('repository_id')
+      .notNull()
+      .references(() => productGitHubRepositories.id, { onDelete: 'cascade' }),
+    githubPrId: text('github_pr_id').notNull(),
+    number: integer('number').notNull(),
+    title: text('title').notNull(),
+    body: text('body'),
+    state: text('state').notNull(),
+    authorLogin: text('author_login'),
+    headRefName: text('head_ref_name'),
+    baseRefName: text('base_ref_name'),
+    reviewers: jsonb('reviewers').$type<string[]>(),
+    labels: jsonb('labels').$type<string[]>(),
+    htmlUrl: text('html_url').notNull(),
+    githubCreatedAt: timestamp('github_created_at'),
+    githubUpdatedAt: timestamp('github_updated_at'),
+    githubMergedAt: timestamp('github_merged_at'),
+    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    repoPrUnique: uniqueIndex('github_pull_requests_repo_pr_idx').on(table.repositoryId, table.githubPrId),
+    productIdx: index('github_pull_requests_product_idx').on(table.productId),
+  }),
+)
+
+export type GitHubPullRequest = typeof githubPullRequests.$inferSelect
+export type InsertGitHubPullRequest = typeof githubPullRequests.$inferInsert
+
+export const githubCommits = pgTable(
+  'github_commits',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    repositoryId: text('repository_id')
+      .notNull()
+      .references(() => productGitHubRepositories.id, { onDelete: 'cascade' }),
+    sha: text('sha').notNull(),
+    message: text('message').notNull(),
+    authorName: text('author_name'),
+    authorLogin: text('author_login'),
+    htmlUrl: text('html_url').notNull(),
+    committedAt: timestamp('committed_at'),
+    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    repoShaUnique: uniqueIndex('github_commits_repo_sha_idx').on(table.repositoryId, table.sha),
+    productIdx: index('github_commits_product_idx').on(table.productId),
+  }),
+)
+
+export type GitHubCommit = typeof githubCommits.$inferSelect
+export type InsertGitHubCommit = typeof githubCommits.$inferInsert
+
+export const githubLinearLinks = pgTable(
+  'github_linear_links',
+  {
+    id: text('id').primaryKey(),
+    productId: text('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    linearIssueId: text('linear_issue_id')
+      .notNull()
+      .references(() => linearIssues.id, { onDelete: 'cascade' }),
+    githubPullRequestId: text('github_pull_request_id').references(() => githubPullRequests.id, {
+      onDelete: 'cascade',
+    }),
+    githubCommitId: text('github_commit_id').references(() => githubCommits.id, { onDelete: 'cascade' }),
+    source: text('source', { enum: ['identifier_match', 'ai_suggestion', 'manual'] }).notNull(),
+    status: text('status', { enum: ['accepted', 'suggested', 'rejected'] })
+      .notNull()
+      .default('accepted'),
+    rationale: text('rationale'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    productIdx: index('github_linear_links_product_idx').on(table.productId),
+    issueIdx: index('github_linear_links_issue_idx').on(table.linearIssueId),
+  }),
+)
+
+export type GitHubLinearLink = typeof githubLinearLinks.$inferSelect
+export type InsertGitHubLinearLink = typeof githubLinearLinks.$inferInsert
 
 // Members - team roster
 export const members = pgTable('members', {

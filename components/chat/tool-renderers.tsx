@@ -37,10 +37,10 @@ type ProjectItem = {
 }
 
 export function ProjectsDisplay({ output }: { output: { projects: ProjectItem[] } | undefined }) {
-  if (!output) return <ToolLoading label="Loading projects…" />
+  if (!output) return <ToolLoading label="Loading products…" />
 
   const { projects } = output
-  if (projects.length === 0) return <p className="text-sm text-muted-foreground">No projects found.</p>
+  if (projects.length === 0) return <p className="text-sm text-muted-foreground">No products found.</p>
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">

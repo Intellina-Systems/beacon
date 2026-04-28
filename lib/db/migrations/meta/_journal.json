@@ -155,6 +155,20 @@
       "when": 1769207400000,
       "tag": "0021_lovely_lizard",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1769208000000,
+      "tag": "0022_precise_issue_board",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777388400000,
+      "tag": "0023_product_first_github_signals",
+      "breakpoints": true
     }
   ]
 }

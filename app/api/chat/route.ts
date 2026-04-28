@@ -3,8 +3,17 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { db } from '@/lib/db/client'
-import { projects, members, linearConnections, linearIssues } from '@/lib/db/schema'
-import { eq, sql, desc, and } from 'drizzle-orm'
+import {
+  githubCommits,
+  githubLinearLinks,
+  githubPullRequests,
+  members,
+  products,
+  productLinearConnections,
+  linearConnections,
+  linearIssues,
+} from '@/lib/db/schema'
+import { eq, sql, desc, and, inArray } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import { getIssueBucket } from '@/lib/linear/issue-bucket'
 
@@ -63,6 +72,18 @@ type IssueContextSummary = {
   totalInScope: number
   injectedCount: number
   lines: string[]
+}
+
+type ProductContext = {
+  id: string
+  name: string
+  description: string | null
+}
+
+type GitHubContextRow = {
+  type: 'pull_request' | 'commit' | 'link'
+  label: string
+  detail: string
 }
 
 function extractLatestUserText(messages: UIMessage[]): string {
@@ -209,15 +230,28 @@ function buildLinearIssuesContext(rows: LinearIssueContextRow[], latestUserText:
 }
 
 function buildSystemPrompt(
+  product: ProductContext | null,
   workspaceName: string | null,
   memberRows: (typeof members.$inferSelect)[],
   issueContext: IssueContextSummary,
+  githubContext: GitHubContextRow[],
 ): string {
   const parts: string[] = []
   const workspace = workspaceName ? ` for the **${workspaceName}** workspace` : ''
+  if (!product) {
+    parts.push(
+      'You are Beacon AI, an intelligent PM assistant. The user has not selected a product. Ask them to create or select a product before giving project, Linear, GitHub, or team analysis.',
+    )
+    return parts.join('\n')
+  }
+
   parts.push(
-    `You are Beacon AI, an intelligent PM assistant${workspace}. Help the team stay on top of projects, priorities, and capacity.\n\nYou have access to tools to display projects, team info, and work items visually — use them proactively when the user asks to see or show something.\n\nBe concise and direct.`,
+    `You are Beacon AI, an intelligent PM assistant${workspace}. The selected product is **${product.name}**. Keep every answer scoped to this product unless the user explicitly asks for all products.\n\nYou have access to tools to display products, team info, and product-scoped work items visually — use them proactively when the user asks to see or show something.\n\nBe concise and direct.`,
   )
+
+  if (product.description) {
+    parts.push(`\n## Product\n${product.description}`)
+  }
 
   parts.push('\n## Response Rendering Rules')
   parts.push('- For issue snapshots, priority breakdowns, or current task lists, always call display_work_items first.')
@@ -242,6 +276,15 @@ function buildSystemPrompt(
     parts.push('- No synced Linear issue context is available yet.')
   }
 
+  parts.push('\n## GitHub Context Snapshot')
+  if (githubContext.length > 0) {
+    for (const row of githubContext) {
+      parts.push(`- ${row.type}: ${row.label} | ${row.detail}`)
+    }
+  } else {
+    parts.push('- No product-scoped GitHub pull requests, commits, or links are available yet.')
+  }
+
   if (memberRows.length > 0) {
     parts.push('\n## Team')
     for (const m of memberRows) {
@@ -258,33 +301,115 @@ export async function POST(req: Request) {
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
   const userId = session.user.id
+  const productId = new URL(req.url).searchParams.get('productId')
   const { messages }: { messages: UIMessage[] } = await req.json()
   const latestUserText = extractLatestUserText(messages)
 
-  const [connectionRows, memberRows, linearIssueRows] = await Promise.all([
+  const [connectionRows, memberRows, productRows, productLinearRows] = await Promise.all([
     db.select().from(linearConnections).where(eq(linearConnections.userId, userId)).limit(1),
     db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name),
-    db
-      .select({
-        identifier: linearIssues.identifier,
-        title: linearIssues.title,
-        description: linearIssues.description,
-        status: linearIssues.status,
-        statusType: linearIssues.statusType,
-        priority: linearIssues.priority,
-        assigneeName: linearIssues.assigneeName,
-        linearUpdatedAt: linearIssues.linearUpdatedAt,
-        updatedAt: linearIssues.updatedAt,
-      })
-      .from(linearIssues)
-      .where(eq(linearIssues.userId, userId))
-      .orderBy(desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
-      .limit(600),
+    productId
+      ? db
+          .select({
+            id: products.id,
+            name: products.name,
+            description: products.description,
+          })
+          .from(products)
+          .where(and(eq(products.id, productId), eq(products.userId, userId)))
+          .limit(1)
+      : Promise.resolve([]),
+    productId
+      ? db.select().from(productLinearConnections).where(eq(productLinearConnections.productId, productId))
+      : Promise.resolve([]),
+  ])
+
+  const selectedProduct = productRows[0] ?? null
+  const linearProjectIds = productLinearRows.map((connection) => connection.linearProjectId)
+
+  const [linearIssueRows, githubRows] = await Promise.all([
+    selectedProduct && linearProjectIds.length > 0
+      ? db
+          .select({
+            identifier: linearIssues.identifier,
+            title: linearIssues.title,
+            description: linearIssues.description,
+            status: linearIssues.status,
+            statusType: linearIssues.statusType,
+            priority: linearIssues.priority,
+            assigneeName: linearIssues.assigneeName,
+            linearUpdatedAt: linearIssues.linearUpdatedAt,
+            updatedAt: linearIssues.updatedAt,
+          })
+          .from(linearIssues)
+          .where(and(eq(linearIssues.userId, userId), inArray(linearIssues.linearProjectId, linearProjectIds)))
+          .orderBy(desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
+          .limit(600)
+      : Promise.resolve([]),
+    selectedProduct
+      ? Promise.all([
+          db
+            .select({
+              title: githubPullRequests.title,
+              number: githubPullRequests.number,
+              state: githubPullRequests.state,
+              authorLogin: githubPullRequests.authorLogin,
+              githubUpdatedAt: githubPullRequests.githubUpdatedAt,
+            })
+            .from(githubPullRequests)
+            .where(eq(githubPullRequests.productId, selectedProduct.id))
+            .orderBy(desc(githubPullRequests.githubUpdatedAt), desc(githubPullRequests.updatedAt))
+            .limit(15),
+          db
+            .select({
+              message: githubCommits.message,
+              authorLogin: githubCommits.authorLogin,
+              authorName: githubCommits.authorName,
+              committedAt: githubCommits.committedAt,
+            })
+            .from(githubCommits)
+            .where(eq(githubCommits.productId, selectedProduct.id))
+            .orderBy(desc(githubCommits.committedAt), desc(githubCommits.updatedAt))
+            .limit(15),
+          db
+            .select({
+              status: githubLinearLinks.status,
+              source: githubLinearLinks.source,
+              issueIdentifier: linearIssues.identifier,
+              prTitle: githubPullRequests.title,
+              commitMessage: githubCommits.message,
+            })
+            .from(githubLinearLinks)
+            .innerJoin(linearIssues, eq(linearIssues.id, githubLinearLinks.linearIssueId))
+            .leftJoin(githubPullRequests, eq(githubPullRequests.id, githubLinearLinks.githubPullRequestId))
+            .leftJoin(githubCommits, eq(githubCommits.id, githubLinearLinks.githubCommitId))
+            .where(eq(githubLinearLinks.productId, selectedProduct.id))
+            .limit(20),
+        ])
+      : Promise.resolve([[], [], []] as const),
   ])
 
   const workspaceName = connectionRows[0]?.workspaceName ?? connectionRows[0]?.workspaceSlug ?? null
   const issueContext = buildLinearIssuesContext(linearIssueRows, latestUserText)
-  const systemPrompt = buildSystemPrompt(workspaceName, memberRows, issueContext)
+  const [pullRequestRows, commitRows, linkRows] = githubRows
+  const githubContext: GitHubContextRow[] = [
+    ...pullRequestRows.map((pullRequest) => ({
+      type: 'pull_request' as const,
+      label: `#${pullRequest.number} ${pullRequest.title}`,
+      detail: `state: ${pullRequest.state}; author: ${pullRequest.authorLogin ?? 'unknown'}`,
+    })),
+    ...commitRows.map((commit) => ({
+      type: 'commit' as const,
+      label: truncateText(normalizeWhitespace(commit.message.split('\n')[0] ?? commit.message), 140),
+      detail: `author: ${commit.authorLogin ?? commit.authorName ?? 'unknown'}`,
+    })),
+    ...linkRows.map((link) => ({
+      type: 'link' as const,
+      label: `${link.issueIdentifier} -> ${link.prTitle ?? truncateText(normalizeWhitespace(link.commitMessage ?? ''), 100)}`,
+      detail: `source: ${link.source}; status: ${link.status}`,
+    })),
+  ].slice(0, 35)
+  const systemPrompt = buildSystemPrompt(selectedProduct, workspaceName, memberRows, issueContext, githubContext)
 
   const result = streamText({
     model: anthropic('claude-sonnet-4-6'),
@@ -293,19 +418,29 @@ export async function POST(req: Request) {
     tools: {
       display_projects: tool({
         description:
-          'Display all projects as visual cards showing name, description, and issue counts. Use this when the user asks to see, show, or list their projects.',
+          'Display all products as visual cards showing name, description, and active issue counts. Use this when the user asks to see, show, or list their products.',
         inputSchema: zodSchema(z.object({})),
         execute: async () => {
           const rows = await db
             .select({
-              id: projects.id,
-              name: projects.name,
-              description: projects.description,
-              issueCount: sql<number>`(select count(*) from work_items where work_items.project_id = ${projects.id} and (work_items.status_type is null or work_items.status_type not in ('completed','cancelled')))::int`,
+              id: products.id,
+              name: products.name,
+              description: products.description,
+              issueCount: sql<number>`(
+                select count(*)
+                from linear_issues
+                where linear_issues.user_id = ${userId}
+                  and linear_issues.linear_project_id in (
+                    select product_linear_connections.linear_project_id
+                    from product_linear_connections
+                    where product_linear_connections.product_id = ${products.id}
+                  )
+                  and (linear_issues.status_type is null or linear_issues.status_type not in ('completed','cancelled'))
+              )::int`,
             })
-            .from(projects)
-            .where(eq(projects.userId, userId))
-            .orderBy(projects.updatedAt)
+            .from(products)
+            .where(eq(products.userId, userId))
+            .orderBy(products.updatedAt)
           return { projects: rows }
         },
       }),
@@ -352,12 +487,18 @@ export async function POST(req: Request) {
 
           const projectNameFilter = projectName?.trim().toLowerCase() ?? null
 
+          if (!selectedProduct || linearProjectIds.length === 0) {
+            return { items: [] }
+          }
+
+          const productScope = and(
+            eq(linearIssues.userId, userId),
+            inArray(linearIssues.linearProjectId, linearProjectIds),
+          )
+
           const whereClause = projectNameFilter
-            ? and(
-                eq(linearIssues.userId, userId),
-                sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`,
-              )
-            : eq(linearIssues.userId, userId)
+            ? and(productScope, sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`)
+            : productScope
 
           const rows = await db
             .select({

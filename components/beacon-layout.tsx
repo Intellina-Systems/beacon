@@ -11,7 +11,7 @@ import { useTheme } from 'next-themes'
 
 const navItems = [
   { href: '/chat', label: 'Chat', icon: Sparkles },
-  { href: '/projects', label: 'Projects', icon: FolderKanban },
+  { href: '/projects', label: 'Products', icon: FolderKanban },
   { href: '/issues', label: 'Issues', icon: ListTodo },
   { href: '/team', label: 'Team', icon: Users },
 ]

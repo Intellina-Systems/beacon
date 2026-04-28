@@ -1,8 +1,10 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
-import { Sparkles, Send, StopCircle } from 'lucide-react'
+import { useRef, useEffect, useState } from 'react'
+import Link from 'next/link'
+import { FolderKanban, Sparkles, Send, StopCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useBeaconChat } from '@/hooks/use-beacon-chat'
@@ -111,8 +113,8 @@ function MessageBubble({ message }: { message: UIMessage }) {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function ChatPage() {
-  const { messages, status, sendMessage, stop } = useBeaconChat()
+function ChatConversation({ productId }: { productId: string | null }) {
+  const { messages, status, sendMessage, stop } = useBeaconChat(productId)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -126,7 +128,7 @@ export default function ChatPage() {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const text = (e.currentTarget.value ?? '').trim()
-      if (text && !isStreaming) {
+      if (text && !isStreaming && productId) {
         sendMessage(text)
         e.currentTarget.value = ''
       }
@@ -135,41 +137,44 @@ export default function ChatPage() {
 
   function handleSend() {
     const text = inputRef.current?.value.trim() ?? ''
-    if (text && !isStreaming) {
+    if (text && !isStreaming && productId) {
       sendMessage(text)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages */}
+    <>
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
               <Sparkles className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
               <p className="font-medium">Beacon AI</p>
-              <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                Ask about your projects, team capacity, blockers, or anything on your plate.
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                {productId
+                  ? 'Ask about this product, its work, code activity, blockers, or anything on your plate.'
+                  : 'Create or select a product before asking Beacon AI.'}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-              {['Show my projects', 'Who has capacity?', 'What are the blockers?'].map((suggestion) => (
-                <button
-                  key={suggestion}
-                  onClick={() => sendMessage(suggestion)}
-                  className="text-xs px-3 py-1.5 rounded-full border hover:bg-accent transition-colors"
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
+            {productId && (
+              <div className="flex max-w-sm flex-wrap justify-center gap-2">
+                {['Show active work', 'What changed in GitHub?', 'What are the blockers?'].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => sendMessage(suggestion)}
+                    className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+          <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
@@ -178,29 +183,92 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Input */}
       <div className="border-t bg-background px-4 py-4">
-        <div className="max-w-2xl mx-auto flex gap-2 items-end">
+        <div className="mx-auto flex max-w-2xl items-end gap-2">
           <Textarea
             ref={inputRef}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything…"
+            placeholder="Ask anything..."
             rows={1}
-            className="resize-none min-h-[40px] max-h-40 overflow-y-auto py-2.5 text-sm"
-            disabled={isStreaming}
+            className="max-h-40 min-h-[40px] resize-none overflow-y-auto py-2.5 text-sm"
+            disabled={isStreaming || !productId}
           />
           {isStreaming ? (
-            <Button variant="outline" size="icon" onClick={stop} className="flex-shrink-0 h-10 w-10">
+            <Button variant="outline" size="icon" onClick={stop} className="h-10 w-10 flex-shrink-0">
               <StopCircle className="h-4 w-4" />
             </Button>
           ) : (
-            <Button size="icon" onClick={handleSend} className="flex-shrink-0 h-10 w-10">
+            <Button size="icon" onClick={handleSend} className="h-10 w-10 flex-shrink-0" disabled={!productId}>
               <Send className="h-4 w-4" />
             </Button>
           )}
         </div>
-        <p className="text-center text-xs text-muted-foreground mt-2">Enter to send · Shift+Enter for new line</p>
+        <p className="mt-2 text-center text-xs text-muted-foreground">Enter to send · Shift+Enter for new line</p>
       </div>
+    </>
+  )
+}
+
+export default function ChatPage() {
+  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
+  const [productId, setProductId] = useState<string | null>(null)
+
+  useEffect(() => {
+    const storedProductId = window.localStorage.getItem('beacon:selected-product-id')
+
+    async function loadProducts() {
+      const response = await fetch('/api/products')
+      if (!response.ok) return
+      const data = (await response.json()) as { products: Array<{ id: string; name: string }> }
+      setProducts(data.products)
+      const selected = data.products.find((product) => product.id === storedProductId) ?? data.products[0] ?? null
+      if (selected) {
+        setProductId(selected.id)
+        window.localStorage.setItem('beacon:selected-product-id', selected.id)
+      }
+    }
+
+    void loadProducts()
+  }, [])
+
+  function handleProductChange(value: string) {
+    setProductId(value)
+    window.localStorage.setItem('beacon:selected-product-id', value)
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="border-b bg-background px-4 py-3">
+        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Beacon AI</p>
+            <p className="text-xs text-muted-foreground">Answers stay scoped to the selected product.</p>
+          </div>
+          {products.length > 0 ? (
+            <Select value={productId ?? undefined} onValueChange={handleProductChange}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Select product" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/projects">
+                <FolderKanban className="h-4 w-4 mr-2" />
+                Create Product
+              </Link>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <ChatConversation key={productId ?? 'no-product'} productId={productId} />
     </div>
   )
 }
