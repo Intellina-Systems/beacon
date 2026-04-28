@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { productGitHubRepositories } from '@/lib/db/schema'
-import { syncProductGitHubRepository } from '@/lib/github/product-sync'
+import { getGitHubApiErrorMessage, syncProductGitHubRepository } from '@/lib/github/product-sync'
 import { getUserProduct } from '@/lib/products/access'
 import { getServerSession } from '@/lib/session/get-server-session'
 
@@ -46,7 +46,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       commitsSynced,
       linksCreated,
     })
-  } catch {
-    return Response.json({ error: 'GitHub sync failed' }, { status: 500 })
+  } catch (error) {
+    return Response.json({ error: getGitHubApiErrorMessage(error) }, { status: 500 })
   }
 }

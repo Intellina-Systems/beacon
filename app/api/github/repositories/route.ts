@@ -1,5 +1,5 @@
 import { getServerSession } from '@/lib/session/get-server-session'
-import { listGitHubRepositories } from '@/lib/github/product-sync'
+import { getGitHubApiErrorMessage, listGitHubRepositories } from '@/lib/github/product-sync'
 
 export async function GET(): Promise<Response> {
   const session = await getServerSession()
@@ -10,7 +10,7 @@ export async function GET(): Promise<Response> {
   try {
     const repositories = await listGitHubRepositories()
     return Response.json({ repositories })
-  } catch {
-    return Response.json({ error: 'Failed to load repositories' }, { status: 500 })
+  } catch (error) {
+    return Response.json({ error: getGitHubApiErrorMessage(error) }, { status: 500 })
   }
 }

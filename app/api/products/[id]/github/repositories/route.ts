@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { productGitHubRepositories } from '@/lib/db/schema'
 import { parseGitHubUrl } from '@/lib/github/client'
-import { getGitHubRepositoryMetadata } from '@/lib/github/product-sync'
+import { getGitHubApiErrorMessage, getGitHubRepositoryMetadata } from '@/lib/github/product-sync'
 import { getUserProduct } from '@/lib/products/access'
 import { getServerSession } from '@/lib/session/get-server-session'
 
@@ -54,7 +54,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Repository is required' }, { status: 400 })
   }
 
-  const metadata = await getGitHubRepositoryMetadata(owner, repo)
+  let metadata: Awaited<ReturnType<typeof getGitHubRepositoryMetadata>>
+  try {
+    metadata = await getGitHubRepositoryMetadata(owner, repo)
+  } catch (error) {
+    return Response.json({ error: getGitHubApiErrorMessage(error) }, { status: 400 })
+  }
+
   if (!metadata) {
     return Response.json({ error: 'GitHub account not connected' }, { status: 401 })
   }

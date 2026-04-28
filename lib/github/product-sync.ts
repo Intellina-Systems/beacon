@@ -29,6 +29,33 @@ export interface ProductGitHubSyncResult {
   linksCreated: number
 }
 
+type GitHubApiError = {
+  status?: number
+}
+
+export function getGitHubApiErrorMessage(error: unknown): string {
+  const status =
+    typeof error === 'object' && error !== null && 'status' in error ? (error as GitHubApiError).status : null
+
+  if (status === 401) {
+    return 'GitHub authorization expired. Reconnect GitHub and try again.'
+  }
+
+  if (status === 403) {
+    return 'GitHub denied access. For private organization repositories, approve Beacon in the GitHub organization or reconnect GitHub with private repository access.'
+  }
+
+  if (status === 404) {
+    return 'Repository not found or Beacon is not authorized to access it. Check collaborator access, organization OAuth approval, and private repository authorization.'
+  }
+
+  if (status === 409) {
+    return 'GitHub repository is empty or unavailable for commit sync.'
+  }
+
+  return 'GitHub sync failed. Check the repository access and try again.'
+}
+
 function toDate(value: string | null | undefined): Date | null {
   return value ? new Date(value) : null
 }

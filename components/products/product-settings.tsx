@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Github, LinkIcon, PlugZap, RefreshCw, Trash2, Zap } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,6 +32,10 @@ type GitHubRepositoryOption = {
   private: boolean
 }
 
+type ApiError = {
+  error?: string
+}
+
 interface ProductSettingsProps {
   productId: string
   linearConnected: boolean
@@ -55,6 +60,15 @@ export function ProductSettings({
   const [repoPickerOpen, setRepoPickerOpen] = useState(false)
   const [repoOptions, setRepoOptions] = useState<GitHubRepositoryOption[]>([])
   const [loading, setLoading] = useState<string | null>(null)
+
+  async function getErrorMessage(response: Response, fallback: string) {
+    try {
+      const data = (await response.json()) as ApiError
+      return data.error ?? fallback
+    } catch {
+      return fallback
+    }
+  }
 
   async function attachLinearWorkspace() {
     setLoading('linear')
@@ -110,6 +124,8 @@ export function ProductSettings({
         setRepoUrl('')
         setRepoPickerOpen(false)
         router.refresh()
+      } else {
+        toast.error(await getErrorMessage(response, 'Failed to attach GitHub repository'))
       }
     } finally {
       setLoading(null)
@@ -136,6 +152,8 @@ export function ProductSettings({
         const data = (await response.json()) as { repositories: GitHubRepositoryOption[] }
         setRepoOptions(data.repositories)
         setRepoPickerOpen(true)
+      } else {
+        toast.error(await getErrorMessage(response, 'Failed to load GitHub repositories'))
       }
     } finally {
       setLoading(null)
@@ -146,7 +164,13 @@ export function ProductSettings({
     setLoading('github-sync')
     try {
       const response = await fetch(`/api/products/${productId}/github/sync`, { method: 'POST' })
-      if (response.ok) router.refresh()
+      if (response.ok) {
+        const data = (await response.json()) as { commitsSynced: number; pullRequestsSynced: number }
+        toast.success(`Synced ${data.commitsSynced} commits and ${data.pullRequestsSynced} pull requests.`)
+        router.refresh()
+      } else {
+        toast.error(await getErrorMessage(response, 'Failed to sync GitHub'))
+      }
     } finally {
       setLoading(null)
     }
