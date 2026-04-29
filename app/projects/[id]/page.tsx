@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { and, count, desc, eq } from 'drizzle-orm'
-import { ArrowLeft, ExternalLink, Github, GitCommit, GitPullRequest, ListTodo, Settings, Users } from 'lucide-react'
+import { and, count, desc, eq, isNotNull } from 'drizzle-orm'
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Github, GitCommit, GitPullRequest, ListTodo, Settings, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import {
   accounts,
@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { KnowledgeIngestion } from '@/components/products/knowledge-ingestion'
 import { ProductSettings } from '@/components/products/product-settings'
+import { CommitFilters, PRFilters } from '@/components/products/code-filters'
 
 const PRIORITY_LABEL: Record<number, string> = {
   0: 'None',
@@ -63,13 +64,79 @@ function formatDate(value: Date | null) {
   return value.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-export default async function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
+const PAGE_SIZE = 25
+
+function PaginationControls({
+  page,
+  totalPages,
+  prPage,
+  commitPage,
+  paramName,
+  productId,
+}: {
+  page: number
+  totalPages: number
+  prPage: number
+  commitPage: number
+  paramName: 'prPage' | 'commitPage'
+  productId: string
+}) {
+  if (totalPages <= 1) return null
+
+  const buildHref = (newPage: number) => {
+    const p = paramName === 'prPage' ? newPage : prPage
+    const c = paramName === 'commitPage' ? newPage : commitPage
+    const parts: string[] = []
+    if (p !== 1) parts.push(`prPage=${p}`)
+    if (c !== 1) parts.push(`commitPage=${c}`)
+    return `/projects/${productId}${parts.length ? `?${parts.join('&')}` : ''}`
+  }
+
+  return (
+    <div className="flex items-center justify-between mt-3 text-sm">
+      <span className="text-muted-foreground">
+        Page {page} of {totalPages}
+      </span>
+      <div className="flex gap-1">
+        {page > 1 && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={buildHref(page - 1)}>
+              <ChevronLeft className="h-4 w-4" />
+              Prev
+            </Link>
+          </Button>
+        )}
+        {page < totalPages && (
+          <Button asChild variant="outline" size="sm">
+            <Link href={buildHref(page + 1)}>
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default async function ProductDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<Record<string, string>>
+}) {
   const session = await getServerSession()
   if (!session?.user) {
     redirect('/')
   }
 
-  const { id } = await params
+  const [{ id }, resolvedSearchParams] = await Promise.all([params, searchParams])
+  const prPage = Math.max(1, parseInt(resolvedSearchParams.prPage ?? '1', 10) || 1)
+  const commitPage = Math.max(1, parseInt(resolvedSearchParams.commitPage ?? '1', 10) || 1)
+  const prStateFilter = resolvedSearchParams.prState ?? ''
+  const prAuthorFilter = resolvedSearchParams.prAuthor ?? ''
+  const commitAuthorFilter = resolvedSearchParams.commitAuthor ?? ''
   const [product] = await db
     .select()
     .from(products)
@@ -116,7 +183,17 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     commitCount: commitCountMap.get(repo.id) ?? 0,
   }))
 
-  const [issues, pullRequests, commits, links, knowledgeDocumentRows, knowledgeSignalRows] = await Promise.all([
+  const prWhere = and(
+    eq(githubPullRequests.productId, id),
+    prStateFilter ? eq(githubPullRequests.state, prStateFilter) : undefined,
+    prAuthorFilter ? eq(githubPullRequests.authorLogin, prAuthorFilter) : undefined,
+  )
+  const commitWhere = and(
+    eq(githubCommits.productId, id),
+    commitAuthorFilter ? eq(githubCommits.authorLogin, commitAuthorFilter) : undefined,
+  )
+
+  const [issues, pullRequests, commits, prTotalRows, commitTotalRows, prAuthorRows, commitAuthorRows, links, knowledgeDocumentRows, knowledgeSignalRows] = await Promise.all([
     attachedLinearWorkspace
       ? db
           .select()
@@ -127,15 +204,29 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     db
       .select()
       .from(githubPullRequests)
-      .where(eq(githubPullRequests.productId, id))
+      .where(prWhere)
       .orderBy(desc(githubPullRequests.githubUpdatedAt), desc(githubPullRequests.updatedAt))
-      .limit(25),
+      .limit(PAGE_SIZE)
+      .offset((prPage - 1) * PAGE_SIZE),
     db
       .select()
       .from(githubCommits)
-      .where(eq(githubCommits.productId, id))
+      .where(commitWhere)
       .orderBy(desc(githubCommits.committedAt), desc(githubCommits.updatedAt))
-      .limit(25),
+      .limit(PAGE_SIZE)
+      .offset((commitPage - 1) * PAGE_SIZE),
+    db.select({ total: count() }).from(githubPullRequests).where(prWhere),
+    db.select({ total: count() }).from(githubCommits).where(commitWhere),
+    db
+      .selectDistinct({ authorLogin: githubPullRequests.authorLogin })
+      .from(githubPullRequests)
+      .where(and(eq(githubPullRequests.productId, id), isNotNull(githubPullRequests.authorLogin)))
+      .orderBy(githubPullRequests.authorLogin),
+    db
+      .selectDistinct({ authorLogin: githubCommits.authorLogin })
+      .from(githubCommits)
+      .where(and(eq(githubCommits.productId, id), isNotNull(githubCommits.authorLogin)))
+      .orderBy(githubCommits.authorLogin),
     db
       .select({
         id: githubLinearLinks.id,
@@ -180,6 +271,13 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       .orderBy(desc(knowledgeSignals.createdAt))
       .limit(50),
   ])
+
+  const totalPRs = prTotalRows[0]?.total ?? 0
+  const totalCommits = commitTotalRows[0]?.total ?? 0
+  const prTotalPages = Math.max(1, Math.ceil(totalPRs / PAGE_SIZE))
+  const commitTotalPages = Math.max(1, Math.ceil(totalCommits / PAGE_SIZE))
+  const prAuthors = prAuthorRows.map((r) => r.authorLogin).filter(Boolean) as string[]
+  const commitAuthors = commitAuthorRows.map((r) => r.authorLogin).filter(Boolean) as string[]
 
   const activeIssues = issues.filter((issue) => !['completed', 'cancelled'].includes(issue.statusType ?? ''))
   const openPullRequests = pullRequests.filter((pullRequest) => pullRequest.state === 'open')
@@ -230,13 +328,13 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Open PRs</CardDescription>
-                <CardTitle>{openPullRequests.length}</CardTitle>
+                <CardTitle>{totalPRs}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Recent Commits</CardDescription>
-                <CardTitle>{commits.length}</CardTitle>
+                <CardDescription>Commits</CardDescription>
+                <CardTitle>{totalCommits}</CardTitle>
               </CardHeader>
             </Card>
             <Card>
@@ -356,38 +454,54 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 <CardTitle className="flex items-center gap-2 text-base">
                   <GitPullRequest className="h-4 w-4" />
                   Pull Requests
+                  {totalPRs > 0 && (
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">{totalPRs} total</span>
+                  )}
                 </CardTitle>
-                <CardDescription>Recent PRs from attached repositories.</CardDescription>
+                <CardDescription>All PRs from attached repositories.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                {pullRequests.length === 0 ? (
+                <PRFilters authors={prAuthors} />
+                {pullRequests.length === 0 && prPage === 1 ? (
                   <p className="text-sm text-muted-foreground">
-                    Attach a repository and sync GitHub to import pull requests.
+                    {prStateFilter || prAuthorFilter
+                      ? 'No pull requests match the current filters.'
+                      : 'Attach a repository and sync GitHub to import pull requests.'}
                   </p>
                 ) : (
-                  pullRequests.map((pullRequest) => (
-                    <a
-                      key={pullRequest.id}
-                      href={pullRequest.htmlUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent/40"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="line-clamp-1 font-medium">
-                            #{pullRequest.number} {pullRequest.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {pullRequest.authorLogin ?? 'Unknown'} · {formatDate(pullRequest.githubUpdatedAt)}
-                          </p>
+                  <>
+                    {pullRequests.map((pullRequest) => (
+                      <a
+                        key={pullRequest.id}
+                        href={pullRequest.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="line-clamp-1 font-medium">
+                              #{pullRequest.number} {pullRequest.title}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {pullRequest.authorLogin ?? 'Unknown'} · {formatDate(pullRequest.githubUpdatedAt)}
+                            </p>
+                          </div>
+                          <Badge variant={pullRequest.state === 'open' ? 'default' : 'secondary'}>
+                            {pullRequest.state}
+                          </Badge>
                         </div>
-                        <Badge variant={pullRequest.state === 'open' ? 'default' : 'secondary'}>
-                          {pullRequest.state}
-                        </Badge>
-                      </div>
-                    </a>
-                  ))
+                      </a>
+                    ))}
+                    <PaginationControls
+                      page={prPage}
+                      totalPages={prTotalPages}
+                      prPage={prPage}
+                      commitPage={commitPage}
+                      paramName="prPage"
+                      productId={id}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -397,27 +511,43 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 <CardTitle className="flex items-center gap-2 text-base">
                   <GitCommit className="h-4 w-4" />
                   Commits
+                  {totalCommits > 0 && (
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">{totalCommits} total</span>
+                  )}
                 </CardTitle>
-                <CardDescription>Recent commits imported from the last 90 days.</CardDescription>
+                <CardDescription>All commits imported from the last 90 days.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                {commits.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No commits imported yet.</p>
+                <CommitFilters authors={commitAuthors} />
+                {commits.length === 0 && commitPage === 1 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {commitAuthorFilter ? 'No commits match the current filters.' : 'No commits imported yet.'}
+                  </p>
                 ) : (
-                  commits.map((commit) => (
-                    <a
-                      key={commit.id}
-                      href={commit.htmlUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent/40"
-                    >
-                      <p className="line-clamp-1 font-medium">{commit.message.split('\n')[0]}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {commit.authorLogin ?? commit.authorName ?? 'Unknown'} · {formatDate(commit.committedAt)}
-                      </p>
-                    </a>
-                  ))
+                  <>
+                    {commits.map((commit) => (
+                      <a
+                        key={commit.id}
+                        href={commit.htmlUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent/40"
+                      >
+                        <p className="line-clamp-1 font-medium">{commit.message.split('\n')[0]}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {commit.authorLogin ?? commit.authorName ?? 'Unknown'} · {formatDate(commit.committedAt)}
+                        </p>
+                      </a>
+                    ))}
+                    <PaginationControls
+                      page={commitPage}
+                      totalPages={commitTotalPages}
+                      prPage={prPage}
+                      commitPage={commitPage}
+                      paramName="commitPage"
+                      productId={id}
+                    />
+                  </>
                 )}
               </CardContent>
             </Card>
