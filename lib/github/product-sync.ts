@@ -29,6 +29,12 @@ export interface ProductGitHubSyncResult {
   linksCreated: number
 }
 
+export type SyncProgressEvent =
+  | { phase: 'fetching_prs'; page: number; fetched: number }
+  | { phase: 'fetching_commits'; page: number; fetched: number }
+
+export type SyncProgressCallback = (event: SyncProgressEvent) => void
+
 type GitHubApiError = {
   status?: number
 }
@@ -197,6 +203,8 @@ export async function getGitHubRepositoryMetadata(owner: string, repo: string) {
 export async function syncProductGitHubRepository(
   userId: string,
   repository: ProductGitHubRepository,
+  since?: Date | null,
+  onProgress?: SyncProgressCallback,
 ): Promise<ProductGitHubSyncResult> {
   const token = await getGitHubTokenForUserId(userId)
   if (!token) {
@@ -205,53 +213,43 @@ export async function syncProductGitHubRepository(
   const octokit = new Octokit({ auth: token })
 
   const now = new Date()
-  const since = getSinceDate()
+  const effectiveSince = since !== undefined ? since : getSinceDate()
   let pullRequestsSynced = 0
   let commitsSynced = 0
   let linksCreated = 0
 
-  const pullRequests = await octokit.paginate(octokit.rest.pulls.list, {
+  // Fetch PRs page by page so we can report progress and exit early once we pass the date window
+  let prPage = 0
+  let prsFetched = 0
+
+  prLoop: for await (const response of octokit.paginate.iterator(octokit.rest.pulls.list, {
     owner: repository.owner,
     repo: repository.repo,
     state: 'all',
     sort: 'updated',
     direction: 'desc',
     per_page: 100,
-  })
+  })) {
+    prPage++
+    prsFetched += response.data.length
+    onProgress?.({ phase: 'fetching_prs', page: prPage, fetched: prsFetched })
 
-  for (const pr of pullRequests) {
-    const updatedAt = toDate(pr.updated_at)
-    if (updatedAt && updatedAt < since && pr.state !== 'open') {
-      continue
-    }
+    for (const pr of response.data) {
+      const updatedAt = toDate(pr.updated_at)
+      if (effectiveSince && updatedAt && updatedAt < effectiveSince && pr.state !== 'open') {
+        continue
+      }
 
-    const reviewers = pr.requested_reviewers?.map((reviewer) => reviewer.login).filter(Boolean) ?? []
-    const labels = pr.labels.map((label) => label.name).filter(Boolean)
-    const [row] = await db
-      .insert(githubPullRequests)
-      .values({
-        id: nanoid(),
-        productId: repository.productId,
-        repositoryId: repository.id,
-        githubPrId: `${pr.id}`,
-        number: pr.number,
-        title: pr.title,
-        body: pr.body ?? null,
-        state: pr.merged_at ? 'merged' : pr.state,
-        authorLogin: pr.user?.login ?? null,
-        headRefName: pr.head.ref,
-        baseRefName: pr.base.ref,
-        reviewers,
-        labels,
-        htmlUrl: pr.html_url,
-        githubCreatedAt: toDate(pr.created_at),
-        githubUpdatedAt: updatedAt,
-        githubMergedAt: toDate(pr.merged_at),
-        lastSyncedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [githubPullRequests.repositoryId, githubPullRequests.githubPrId],
-        set: {
+      const reviewers = pr.requested_reviewers?.map((reviewer) => reviewer.login).filter(Boolean) ?? []
+      const labels = pr.labels.map((label) => label.name).filter(Boolean)
+      const [row] = await db
+        .insert(githubPullRequests)
+        .values({
+          id: nanoid(),
+          productId: repository.productId,
+          repositoryId: repository.id,
+          githubPrId: `${pr.id}`,
+          number: pr.number,
           title: pr.title,
           body: pr.body ?? null,
           state: pr.merged_at ? 'merged' : pr.state,
@@ -265,55 +263,90 @@ export async function syncProductGitHubRepository(
           githubUpdatedAt: updatedAt,
           githubMergedAt: toDate(pr.merged_at),
           lastSyncedAt: now,
-          updatedAt: now,
-        },
-      })
-      .returning({ id: githubPullRequests.id })
+        })
+        .onConflictDoUpdate({
+          target: [githubPullRequests.repositoryId, githubPullRequests.githubPrId],
+          set: {
+            title: pr.title,
+            body: pr.body ?? null,
+            state: pr.merged_at ? 'merged' : pr.state,
+            authorLogin: pr.user?.login ?? null,
+            headRefName: pr.head.ref,
+            baseRefName: pr.base.ref,
+            reviewers,
+            labels,
+            htmlUrl: pr.html_url,
+            githubCreatedAt: toDate(pr.created_at),
+            githubUpdatedAt: updatedAt,
+            githubMergedAt: toDate(pr.merged_at),
+            lastSyncedAt: now,
+            updatedAt: now,
+          },
+        })
+        .returning({ id: githubPullRequests.id })
 
-    pullRequestsSynced++
-    const identifiers = extractLinearIdentifiers(pr.title, pr.body, pr.head.ref)
-    linksCreated += await ensurePullRequestLinks(repository.productId, userId, row.id, identifiers)
+      pullRequestsSynced++
+      const identifiers = extractLinearIdentifiers(pr.title, pr.body, pr.head.ref)
+      linksCreated += await ensurePullRequestLinks(repository.productId, userId, row.id, identifiers)
+    }
+
+    // PRs are sorted by updated_at desc — once the last PR on a page is older than our window,
+    // all subsequent pages will be too, so we can stop paginating.
+    if (effectiveSince && response.data.length > 0) {
+      const lastUpdatedAt = toDate(response.data[response.data.length - 1].updated_at)
+      if (lastUpdatedAt && lastUpdatedAt < effectiveSince) {
+        break prLoop
+      }
+    }
   }
 
-  const commits = await octokit.paginate(octokit.rest.repos.listCommits, {
+  // Fetch commits page by page
+  let commitPage = 0
+  let commitsFetched = 0
+
+  for await (const response of octokit.paginate.iterator(octokit.rest.repos.listCommits, {
     owner: repository.owner,
     repo: repository.repo,
-    since: since.toISOString(),
+    ...(effectiveSince ? { since: effectiveSince.toISOString() } : {}),
     per_page: 100,
-  })
+  })) {
+    commitPage++
+    commitsFetched += response.data.length
+    onProgress?.({ phase: 'fetching_commits', page: commitPage, fetched: commitsFetched })
 
-  for (const commit of commits) {
-    const [row] = await db
-      .insert(githubCommits)
-      .values({
-        id: nanoid(),
-        productId: repository.productId,
-        repositoryId: repository.id,
-        sha: commit.sha,
-        message: commit.commit.message,
-        authorName: commit.commit.author?.name ?? null,
-        authorLogin: commit.author?.login ?? null,
-        htmlUrl: commit.html_url,
-        committedAt: toDate(commit.commit.author?.date),
-        lastSyncedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [githubCommits.repositoryId, githubCommits.sha],
-        set: {
+    for (const commit of response.data) {
+      const [row] = await db
+        .insert(githubCommits)
+        .values({
+          id: nanoid(),
+          productId: repository.productId,
+          repositoryId: repository.id,
+          sha: commit.sha,
           message: commit.commit.message,
           authorName: commit.commit.author?.name ?? null,
           authorLogin: commit.author?.login ?? null,
           htmlUrl: commit.html_url,
           committedAt: toDate(commit.commit.author?.date),
           lastSyncedAt: now,
-          updatedAt: now,
-        },
-      })
-      .returning({ id: githubCommits.id })
+        })
+        .onConflictDoUpdate({
+          target: [githubCommits.repositoryId, githubCommits.sha],
+          set: {
+            message: commit.commit.message,
+            authorName: commit.commit.author?.name ?? null,
+            authorLogin: commit.author?.login ?? null,
+            htmlUrl: commit.html_url,
+            committedAt: toDate(commit.commit.author?.date),
+            lastSyncedAt: now,
+            updatedAt: now,
+          },
+        })
+        .returning({ id: githubCommits.id })
 
-    commitsSynced++
-    const identifiers = extractLinearIdentifiers(commit.commit.message)
-    linksCreated += await ensureCommitLinks(repository.productId, userId, row.id, identifiers)
+      commitsSynced++
+      const identifiers = extractLinearIdentifiers(commit.commit.message)
+      linksCreated += await ensureCommitLinks(repository.productId, userId, row.id, identifiers)
+    }
   }
 
   return {

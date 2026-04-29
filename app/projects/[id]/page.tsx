@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq } from 'drizzle-orm'
 import { ArrowLeft, ExternalLink, Github, GitCommit, GitPullRequest, ListTodo, Settings, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import {
@@ -94,6 +94,27 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     ? (attachedLinearWorkspaces.find((connection) => connection.linearWorkspaceId === linearConnection.workspaceId) ??
       null)
     : null
+
+  const [prCountRows, commitCountRows] = await Promise.all([
+    db
+      .select({ repositoryId: githubPullRequests.repositoryId, total: count(githubPullRequests.id) })
+      .from(githubPullRequests)
+      .where(eq(githubPullRequests.productId, id))
+      .groupBy(githubPullRequests.repositoryId),
+    db
+      .select({ repositoryId: githubCommits.repositoryId, total: count(githubCommits.id) })
+      .from(githubCommits)
+      .where(eq(githubCommits.productId, id))
+      .groupBy(githubCommits.repositoryId),
+  ])
+
+  const prCountMap = new Map(prCountRows.map((r) => [r.repositoryId, r.total]))
+  const commitCountMap = new Map(commitCountRows.map((r) => [r.repositoryId, r.total]))
+  const repositoriesWithStats = repositories.map((repo) => ({
+    ...repo,
+    pullRequestCount: prCountMap.get(repo.id) ?? 0,
+    commitCount: commitCountMap.get(repo.id) ?? 0,
+  }))
 
   const [issues, pullRequests, commits, links, knowledgeDocumentRows, knowledgeSignalRows] = await Promise.all([
     attachedLinearWorkspace
@@ -439,7 +460,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             attachedLinearWorkspace={attachedLinearWorkspace}
             githubConnected={githubConnection.connected}
             githubUsername={githubConnection.username}
-            repositories={repositories}
+            repositories={repositoriesWithStats}
           />
         </TabsContent>
       </Tabs>
