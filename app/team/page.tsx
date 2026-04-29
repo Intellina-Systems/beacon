@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { db } from '@/lib/db/client'
@@ -46,9 +47,9 @@ export default async function TeamPage() {
             </thead>
             <tbody className="divide-y">
               {teamMembers.map((member) => (
-                <tr key={member.id} className="hover:bg-muted/30 transition-colors">
+                <tr key={member.id} className="hover:bg-muted/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
+                    <Link href={`/team/${member.id}`} className="flex items-center gap-3">
                       <Avatar className="h-7 w-7">
                         <AvatarImage src={member.avatarUrl ?? undefined} alt={member.name} />
                         <AvatarFallback className="text-xs">
@@ -61,22 +62,19 @@ export default async function TeamPage() {
                         </AvatarFallback>
                       </Avatar>
                       <span className="font-medium">{member.name}</span>
-                    </div>
+                    </Link>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{member.role ?? '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{member.email ?? '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    <Link href={`/team/${member.id}`} className="block">{member.role ?? '—'}</Link>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    <Link href={`/team/${member.id}`} className="block">{member.email ?? '—'}</Link>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {member.githubUsername ? (
-                      <a
-                        href={`https://github.com/${member.githubUsername}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:text-foreground transition-colors"
-                      >
-                        @{member.githubUsername}
-                      </a>
+                      <span>@{member.githubUsername}</span>
                     ) : (
-                      '—'
+                      <Link href={`/team/${member.id}`} className="block">—</Link>
                     )}
                   </td>
                 </tr>
