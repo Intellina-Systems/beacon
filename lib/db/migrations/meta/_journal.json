@@ -183,6 +183,13 @@
       "when": 1777392600000,
       "tag": "0025_knowledge_ingestion",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777478400000,
+      "tag": "0026_drop_projects_workitems",
+      "breakpoints": true
     }
   ]
 }

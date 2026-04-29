@@ -108,50 +108,6 @@ export const linearConnections = pgTable(
 export type LinearConnection = typeof linearConnections.$inferSelect
 export type InsertLinearConnection = typeof linearConnections.$inferInsert
 
-// Projects - top-level PM containers
-export const projects = pgTable('projects', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  linearProjectId: text('linear_project_id'),
-  linearTeamId: text('linear_team_id'),
-  repoUrl: text('repo_url'),
-  clientVertical: text('client_vertical'),
-  trackedTopics: jsonb('tracked_topics').$type<string[]>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
-
-export type Project = typeof projects.$inferSelect
-export type InsertProject = typeof projects.$inferInsert
-
-// Work items - synced from Linear (or manually created)
-export const workItems = pgTable('work_items', {
-  id: text('id').primaryKey(),
-  projectId: text('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  description: text('description'),
-  status: text('status').notNull().default('todo'),
-  statusType: text('status_type'), // 'triage'|'backlog'|'unstarted'|'started'|'completed'|'cancelled'
-  priority: integer('priority').default(0), // 0=none, 1=urgent, 2=high, 3=medium, 4=low
-  assigneeLinearId: text('assignee_linear_id'),
-  assigneeName: text('assignee_name'),
-  linearId: text('linear_id'),
-  linearUrl: text('linear_url'),
-  source: text('source').default('linear'),
-  dueDate: timestamp('due_date'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
-
-export type WorkItem = typeof workItems.$inferSelect
-export type InsertWorkItem = typeof workItems.$inferInsert
-
 // Linear issues - workspace-wide issue cache grouped for board views
 export const linearIssues = pgTable(
   'linear_issues',

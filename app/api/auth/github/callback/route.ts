@@ -1,7 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { users, accounts, projects, members } from '@/lib/db/schema'
+import { users, accounts, products, members } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { createGitHubSession, saveSession } from '@/lib/session/create-github'
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
         if (connectedUserId !== storedUserId) {
           // Merge: transfer Beacon data from old user to new user
-          await db.update(projects).set({ userId: storedUserId! }).where(eq(projects.userId, connectedUserId))
+          await db.update(products).set({ userId: storedUserId! }).where(eq(products.userId, connectedUserId))
           await db.update(members).set({ userId: storedUserId! }).where(eq(members.userId, connectedUserId))
           await db.update(accounts).set({ userId: storedUserId! }).where(eq(accounts.userId, connectedUserId))
           await db.delete(users).where(eq(users.id, connectedUserId))
