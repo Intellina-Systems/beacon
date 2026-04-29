@@ -12,13 +12,9 @@ import {
 import { redirectToSignOut } from '@/lib/session/redirect-to-sign-out'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
-import { useSetAtom, useAtomValue } from 'jotai'
-import { sessionAtom } from '@/lib/atoms/session'
-import { githubConnectionAtom } from '@/lib/atoms/github-connection'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { getEnabledAuthProviders } from '@/lib/auth/providers'
 
-// Inline GitHub SVG to avoid external icon dependency
 function GitHubIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} fill="currentColor">
@@ -27,25 +23,25 @@ function GitHubIcon({ className }: { className?: string }) {
   )
 }
 
-export function SignOut({ user, authProvider }: Pick<Session, 'user' | 'authProvider'>) {
+interface SignOutProps {
+  user: Session['user']
+  authProvider: Session['authProvider']
+  githubConnection: { connected: boolean; username: string | null }
+}
+
+export function SignOut({ user, authProvider, githubConnection }: SignOutProps) {
   const router = useRouter()
-  const setSession = useSetAtom(sessionAtom)
-  const githubConnection = useAtomValue(githubConnectionAtom)
-  const setGitHubConnection = useSetAtom(githubConnectionAtom)
   const { github: hasGitHub } = getEnabledAuthProviders()
 
   const handleSignOut = async () => {
     await redirectToSignOut()
     toast.success('You have been logged out.')
-    setSession({ user: undefined })
-    router.refresh()
   }
 
   const handleGitHubDisconnect = async () => {
     try {
       const response = await fetch('/api/auth/github/disconnect', { method: 'POST' })
       if (response.ok) {
-        setGitHubConnection({ connected: false })
         toast.success('GitHub disconnected')
         router.refresh()
       } else {

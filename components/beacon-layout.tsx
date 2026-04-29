@@ -8,6 +8,7 @@ import { User } from '@/components/auth/user'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
+import type { Session } from '@/lib/session/types'
 
 const navItems = [
   { href: '/chat', label: 'Chat', icon: Sparkles },
@@ -45,13 +46,18 @@ function ThemeCycleButton() {
   )
 }
 
-export function BeaconLayout({ children }: { children: React.ReactNode }) {
+interface BeaconLayoutProps {
+  children: React.ReactNode
+  session: Session | null | undefined
+  githubConnection: { connected: boolean; username: string | null }
+}
+
+export function BeaconLayout({ children, session, githubConnection }: BeaconLayoutProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const sidebar = (
     <div className="flex flex-col h-full bg-muted/30">
-      {/* Logo */}
       <div className="px-4 py-4 border-b flex items-center justify-between">
         <Link href="/chat" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <Zap className="h-5 w-5 text-primary" />
@@ -62,7 +68,6 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
         </Button>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
         {navItems.map(({ href, label, icon: Icon }) => (
           <Link
@@ -82,10 +87,13 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
         ))}
       </nav>
 
-      {/* Footer */}
       <div className="px-3 py-3 border-t flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <User />
+          <User
+            user={session?.user ?? null}
+            authProvider={session?.authProvider ?? null}
+            githubConnection={githubConnection}
+          />
         </div>
         <ThemeCycleButton />
       </div>
@@ -94,10 +102,8 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh bg-background">
-      {/* Desktop sidebar */}
       <aside className="hidden lg:block w-56 border-r flex-shrink-0">{sidebar}</aside>
 
-      {/* Mobile sidebar overlay */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="w-56 border-r shadow-xl">{sidebar}</div>
@@ -105,9 +111,7 @@ export function BeaconLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile header */}
         <div className="lg:hidden flex items-center gap-3 px-4 py-3 border-b">
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setMobileOpen(true)}>
             <Menu className="h-4 w-4" />
