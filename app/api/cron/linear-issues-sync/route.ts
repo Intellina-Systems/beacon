@@ -29,12 +29,12 @@ export async function GET(req: NextRequest): Promise<Response> {
     for (const connection of connections) {
       try {
         const accessToken = decrypt(connection.accessToken)
-        const result = await syncLinearIssuesForUser(connection.userId, accessToken)
+        const result = await syncLinearIssuesForUser(connection.userId, accessToken, connection.workspaceId)
         usersSynced++
         issuesSynced += result.issuesSynced
       } catch (err) {
         usersFailed++
-        console.error('[Linear Issues Cron] User sync failed:', err)
+        console.error('[Linear Issues Cron] User sync failed')
       }
     }
 
@@ -45,8 +45,8 @@ export async function GET(req: NextRequest): Promise<Response> {
       issuesSynced,
       scannedConnections: connections.length,
     })
-  } catch (err) {
-    console.error('[Linear Issues Cron] Error occurred:', err)
+  } catch {
+    console.error('[Linear Issues Cron] Error occurred')
     return Response.json({ error: 'Cron sync failed' }, { status: 500 })
   }
 }

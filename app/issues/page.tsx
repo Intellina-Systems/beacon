@@ -1,12 +1,11 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { desc, eq } from 'drizzle-orm'
 import { Zap } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { linearConnections, linearIssues } from '@/lib/db/schema'
+import { linearIssues } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getIssueBucket, type IssueBucket } from '@/lib/linear/issue-bucket'
-import { Button } from '@/components/ui/button'
+import { ensureLinearConnection } from '@/lib/linear/ensure-linear-connection'
 import { Card, CardContent } from '@/components/ui/card'
 import { IssuesSyncButton } from '@/components/issues-sync-button'
 import { IssuesBoard, type IssueBoardItem } from '@/components/issues/board'
@@ -19,16 +18,14 @@ export default async function IssuesPage() {
 
   const userId = session.user.id
 
-  const [connection, issues] = await Promise.all([
-    db.select().from(linearConnections).where(eq(linearConnections.userId, userId)).limit(1),
+  const [linearConnection, issues] = await Promise.all([
+    ensureLinearConnection(userId, { requireConnection: true, validateToken: true }),
     db
       .select()
       .from(linearIssues)
       .where(eq(linearIssues.userId, userId))
       .orderBy(linearIssues.priority, desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt)),
   ])
-
-  const linearConnection = connection[0] ?? null
 
   const buckets: Record<IssueBucket, IssueBoardItem[]> = {
     todo: [],
@@ -61,44 +58,11 @@ export default async function IssuesPage() {
               <span className="font-medium">{linearConnection.workspaceName ?? linearConnection.workspaceSlug}</span>
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground mt-1">Connect Linear to sync your workspace issues.</p>
+            <p className="text-sm text-muted-foreground mt-1">Redirecting to Linear…</p>
           )}
         </div>
-        {linearConnection && issues.length === 0 ? (
-          <IssuesSyncButton />
-        ) : (
-          !linearConnection && (
-            <Button asChild>
-              <Link href="/api/auth/linear/signin">
-                <Zap className="h-4 w-4 mr-2" />
-                Connect Linear
-              </Link>
-            </Button>
-          )
-        )}
+        {linearConnection && issues.length === 0 ? <IssuesSyncButton /> : null}
       </div>
-
-      {!linearConnection && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-              <Zap className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div>
-              <p className="font-medium">Connect Linear to get started</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Sync all issues from your workspace and review them by status.
-              </p>
-            </div>
-            <Button asChild>
-              <Link href="/api/auth/linear/signin">
-                <Zap className="h-4 w-4 mr-2" />
-                Connect Linear
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
 
       {linearConnection && issues.length === 0 && (
         <Card className="border-dashed">

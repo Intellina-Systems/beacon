@@ -145,9 +145,7 @@ export function MemberConnections({
             <Github className="h-4 w-4" />
             GitHub
           </CardTitle>
-          <CardDescription>
-            {githubUsername ? `Connected as @${githubUsername}` : 'Not connected'}
-          </CardDescription>
+          <CardDescription>{githubUsername ? `Connected as @${githubUsername}` : 'Not connected'}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="space-y-1.5">

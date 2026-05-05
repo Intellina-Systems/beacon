@@ -1,7 +1,18 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { and, count, desc, eq, isNotNull } from 'drizzle-orm'
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Github, GitCommit, GitPullRequest, ListTodo, Settings, Users } from 'lucide-react'
+import { and, count, desc, eq, gte, isNotNull } from 'drizzle-orm'
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Github,
+  GitCommit,
+  GitPullRequest,
+  ListTodo,
+  Settings,
+  Users,
+} from 'lucide-react'
 import { db } from '@/lib/db/client'
 import {
   accounts,
@@ -10,7 +21,6 @@ import {
   githubPullRequests,
   knowledgeDocuments,
   knowledgeSignals,
-  linearConnections,
   linearIssues,
   members,
   productGitHubRepositories,
@@ -26,6 +36,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { KnowledgeIngestion } from '@/components/products/knowledge-ingestion'
 import { ProductSettings } from '@/components/products/product-settings'
 import { CommitFilters, PRFilters } from '@/components/products/code-filters'
+import { CommitSummary } from '@/components/products/commit-summary'
+import { ensureLinearConnection } from '@/lib/linear/ensure-linear-connection'
 
 const PRIORITY_LABEL: Record<number, string> = {
   0: 'None',
@@ -64,32 +76,46 @@ function formatDate(value: Date | null) {
   return value.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+const COMMIT_RANGE_OPTIONS = {
+  '7': { days: 7, label: 'Last 7 days' },
+  '30': { days: 30, label: 'Last 30 days' },
+  '90': { days: 90, label: 'Last 90 days' },
+  '365': { days: 365, label: 'Last year' },
+} as const
+
+function getCommitRange(value: string | undefined) {
+  return COMMIT_RANGE_OPTIONS[value as keyof typeof COMMIT_RANGE_OPTIONS] ?? COMMIT_RANGE_OPTIONS['90']
+}
+
 const PAGE_SIZE = 25
 
 function PaginationControls({
   page,
   totalPages,
-  prPage,
-  commitPage,
   paramName,
   productId,
+  searchParams,
 }: {
   page: number
   totalPages: number
-  prPage: number
-  commitPage: number
   paramName: 'prPage' | 'commitPage'
   productId: string
+  searchParams: Record<string, string>
 }) {
   if (totalPages <= 1) return null
 
   const buildHref = (newPage: number) => {
-    const p = paramName === 'prPage' ? newPage : prPage
-    const c = paramName === 'commitPage' ? newPage : commitPage
-    const parts: string[] = []
-    if (p !== 1) parts.push(`prPage=${p}`)
-    if (c !== 1) parts.push(`commitPage=${c}`)
-    return `/projects/${productId}${parts.length ? `?${parts.join('&')}` : ''}`
+    const params = new URLSearchParams(searchParams)
+    if (paramName === 'prPage') {
+      if (newPage === 1) params.delete('prPage')
+      else params.set('prPage', `${newPage}`)
+    } else if (newPage === 1) {
+      params.delete('commitPage')
+    } else {
+      params.set('commitPage', `${newPage}`)
+    }
+    const query = params.toString()
+    return `/projects/${productId}${query ? `?${query}` : ''}`
   }
 
   return (
@@ -137,6 +163,15 @@ export default async function ProductDetailPage({
   const prStateFilter = resolvedSearchParams.prState ?? ''
   const prAuthorFilter = resolvedSearchParams.prAuthor ?? ''
   const commitAuthorFilter = resolvedSearchParams.commitAuthor ?? ''
+  const allowedTabs = ['overview', 'work', 'knowledge', 'code', 'team', 'settings'] as const
+  const requestedTab = allowedTabs.includes(resolvedSearchParams.tab as (typeof allowedTabs)[number])
+    ? (resolvedSearchParams.tab as (typeof allowedTabs)[number])
+    : 'overview'
+  const commitRangeValue = resolvedSearchParams.commitRange
+  const selectedCommitRange = commitRangeValue && commitRangeValue in COMMIT_RANGE_OPTIONS ? commitRangeValue : '90'
+  const commitRange = getCommitRange(selectedCommitRange)
+  const commitSince = new Date()
+  commitSince.setDate(commitSince.getDate() - commitRange.days)
   const [product] = await db
     .select()
     .from(products)
@@ -147,16 +182,15 @@ export default async function ProductDetailPage({
     notFound()
   }
 
-  const [linearConnectionRows, attachedLinearWorkspaces, repositories, teamMembers, githubConnection] =
-    await Promise.all([
-      db.select().from(linearConnections).where(eq(linearConnections.userId, session.user.id)).limit(1),
-      db.select().from(productLinearConnections).where(eq(productLinearConnections.productId, id)),
-      db.select().from(productGitHubRepositories).where(eq(productGitHubRepositories.productId, id)),
-      db.select().from(members).where(eq(members.userId, session.user.id)).orderBy(members.name),
-      getGitHubConnection(session.user.id),
-    ])
+  const shouldValidateLinear = requestedTab === 'work' || requestedTab === 'settings'
 
-  const linearConnection = linearConnectionRows[0] ?? null
+  const [linearConnection, attachedLinearWorkspaces, repositories, teamMembers, githubConnection] = await Promise.all([
+    ensureLinearConnection(session.user.id, { requireConnection: false, validateToken: shouldValidateLinear }),
+    db.select().from(productLinearConnections).where(eq(productLinearConnections.productId, id)),
+    db.select().from(productGitHubRepositories).where(eq(productGitHubRepositories.productId, id)),
+    db.select().from(members).where(eq(members.userId, session.user.id)).orderBy(members.name),
+    getGitHubConnection(session.user.id),
+  ])
   const attachedLinearWorkspace = linearConnection
     ? (attachedLinearWorkspaces.find((connection) => connection.linearWorkspaceId === linearConnection.workspaceId) ??
       null)
@@ -190,10 +224,22 @@ export default async function ProductDetailPage({
   )
   const commitWhere = and(
     eq(githubCommits.productId, id),
+    gte(githubCommits.committedAt, commitSince),
     commitAuthorFilter ? eq(githubCommits.authorLogin, commitAuthorFilter) : undefined,
   )
 
-  const [issues, pullRequests, commits, prTotalRows, commitTotalRows, prAuthorRows, commitAuthorRows, links, knowledgeDocumentRows, knowledgeSignalRows] = await Promise.all([
+  const [
+    issues,
+    pullRequests,
+    commits,
+    prTotalRows,
+    commitTotalRows,
+    prAuthorRows,
+    commitAuthorRows,
+    links,
+    knowledgeDocumentRows,
+    knowledgeSignalRows,
+  ] = await Promise.all([
     attachedLinearWorkspace
       ? db
           .select()
@@ -225,7 +271,13 @@ export default async function ProductDetailPage({
     db
       .selectDistinct({ authorLogin: githubCommits.authorLogin })
       .from(githubCommits)
-      .where(and(eq(githubCommits.productId, id), isNotNull(githubCommits.authorLogin)))
+      .where(
+        and(
+          eq(githubCommits.productId, id),
+          gte(githubCommits.committedAt, commitSince),
+          isNotNull(githubCommits.authorLogin),
+        ),
+      )
       .orderBy(githubCommits.authorLogin),
     db
       .select({
@@ -273,16 +325,29 @@ export default async function ProductDetailPage({
   ])
 
   const totalPRs = prTotalRows[0]?.total ?? 0
-  const totalCommits = commitTotalRows[0]?.total ?? 0
+  const totalCommits = commitCountRows.reduce((sum, row) => sum + row.total, 0)
+  const filteredCommits = commitTotalRows[0]?.total ?? 0
   const prTotalPages = Math.max(1, Math.ceil(totalPRs / PAGE_SIZE))
-  const commitTotalPages = Math.max(1, Math.ceil(totalCommits / PAGE_SIZE))
+  const commitTotalPages = Math.max(1, Math.ceil(filteredCommits / PAGE_SIZE))
   const prAuthors = prAuthorRows.map((r) => r.authorLogin).filter(Boolean) as string[]
   const commitAuthors = commitAuthorRows.map((r) => r.authorLogin).filter(Boolean) as string[]
+  const commitRangeLabel = commitRange.label
 
   const activeIssues = issues.filter((issue) => !['completed', 'cancelled'].includes(issue.statusType ?? ''))
   const openPullRequests = pullRequests.filter((pullRequest) => pullRequest.state === 'open')
   const acceptedLinks = links.filter((link) => link.status === 'accepted')
   const suggestedLinks = links.filter((link) => link.status === 'suggested')
+
+  const buildTabHref = (tab: (typeof allowedTabs)[number]) => {
+    const params = new URLSearchParams(resolvedSearchParams)
+    if (tab === 'overview') {
+      params.delete('tab')
+    } else {
+      params.set('tab', tab)
+    }
+    const query = params.toString()
+    return `/projects/${id}${query ? `?${query}` : ''}`
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -307,14 +372,26 @@ export default async function ProductDetailPage({
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="gap-5">
+      <Tabs defaultValue={requestedTab} className="gap-5">
         <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="work">Work</TabsTrigger>
-          <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-          <TabsTrigger value="code">Code</TabsTrigger>
-          <TabsTrigger value="team">Team</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="overview" asChild>
+            <Link href={buildTabHref('overview')}>Overview</Link>
+          </TabsTrigger>
+          <TabsTrigger value="work" asChild>
+            <Link href={buildTabHref('work')}>Work</Link>
+          </TabsTrigger>
+          <TabsTrigger value="knowledge" asChild>
+            <Link href={buildTabHref('knowledge')}>Knowledge</Link>
+          </TabsTrigger>
+          <TabsTrigger value="code" asChild>
+            <Link href={buildTabHref('code')}>Code</Link>
+          </TabsTrigger>
+          <TabsTrigger value="team" asChild>
+            <Link href={buildTabHref('team')}>Team</Link>
+          </TabsTrigger>
+          <TabsTrigger value="settings" asChild>
+            <Link href={buildTabHref('settings')}>Settings</Link>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -496,10 +573,9 @@ export default async function ProductDetailPage({
                     <PaginationControls
                       page={prPage}
                       totalPages={prTotalPages}
-                      prPage={prPage}
-                      commitPage={commitPage}
                       paramName="prPage"
                       productId={id}
+                      searchParams={resolvedSearchParams}
                     />
                   </>
                 )}
@@ -511,17 +587,29 @@ export default async function ProductDetailPage({
                 <CardTitle className="flex items-center gap-2 text-base">
                   <GitCommit className="h-4 w-4" />
                   Commits
-                  {totalCommits > 0 && (
-                    <span className="ml-auto text-xs font-normal text-muted-foreground">{totalCommits} total</span>
+                  {filteredCommits > 0 && (
+                    <span className="ml-auto text-xs font-normal text-muted-foreground">{filteredCommits} total</span>
                   )}
                 </CardTitle>
-                <CardDescription>All commits imported from the last 90 days.</CardDescription>
+                <CardDescription>Commits imported from the {commitRangeLabel.toLowerCase()}.</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                <CommitFilters authors={commitAuthors} />
+              <CardContent className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CommitFilters authors={commitAuthors} range={selectedCommitRange} />
+                  {(commits.length > 0 || pullRequests.length > 0) && (
+                    <CommitSummary
+                      commits={commits}
+                      productId={id}
+                      rangeDays={commitRange.days}
+                      rangeLabel={commitRange.label}
+                    />
+                  )}
+                </div>
                 {commits.length === 0 && commitPage === 1 ? (
                   <p className="text-sm text-muted-foreground">
-                    {commitAuthorFilter ? 'No commits match the current filters.' : 'No commits imported yet.'}
+                    {commitAuthorFilter || selectedCommitRange !== '90'
+                      ? 'No commits match the current filters.'
+                      : 'No commits imported yet.'}
                   </p>
                 ) : (
                   <>
@@ -542,10 +630,9 @@ export default async function ProductDetailPage({
                     <PaginationControls
                       page={commitPage}
                       totalPages={commitTotalPages}
-                      prPage={prPage}
-                      commitPage={commitPage}
                       paramName="commitPage"
                       productId={id}
+                      searchParams={resolvedSearchParams}
                     />
                   </>
                 )}

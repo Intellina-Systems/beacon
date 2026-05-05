@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { linearIssues, productLinearConnections } from '@/lib/db/schema'
 import { getLinearIssues } from '@/lib/linear/client'
+import { ALL_PROJECT_SCOPE_ID, getCachedLinearIssuesByScope } from '@/lib/linear/issues-cache'
 import { getIssueBucket, type IssueBucket } from '@/lib/linear/issue-bucket'
 
 export interface ProductLinearSyncResult {
@@ -35,7 +36,18 @@ export async function syncProductLinearIssues(
     return { issuesSynced: 0, buckets }
   }
 
-  const issues = await getLinearIssues(accessToken)
+  const dedupedByIssueId = new Map<string, Awaited<ReturnType<typeof getLinearIssues>>[number]>()
+
+  for (const connection of connections) {
+    const projectScopeId = connection.linearProjectId ?? ALL_PROJECT_SCOPE_ID
+    const scopedIssues = await getCachedLinearIssuesByScope(connection.linearWorkspaceId, projectScopeId, accessToken)
+
+    for (const issue of scopedIssues) {
+      dedupedByIssueId.set(issue.id, issue)
+    }
+  }
+
+  const issues = [...dedupedByIssueId.values()]
   const now = new Date()
   const syncedIssueIds: string[] = []
 
@@ -101,6 +113,8 @@ export async function syncProductLinearIssues(
     await db
       .delete(linearIssues)
       .where(and(eq(linearIssues.userId, userId), notInArray(linearIssues.linearIssueId, syncedIssueIds)))
+  } else {
+    await db.delete(linearIssues).where(eq(linearIssues.userId, userId))
   }
 
   return {

@@ -3,13 +3,7 @@ import Link from 'next/link'
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
 import { ArrowLeft, ExternalLink, GitCommit, GitPullRequest, ListTodo } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import {
-  githubCommits,
-  githubPullRequests,
-  linearIssues,
-  members,
-  products,
-} from '@/lib/db/schema'
+import { githubCommits, githubPullRequests, linearIssues, members, products } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -53,19 +47,14 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
     .where(and(eq(linearIssues.userId, session.user.id), isNotNull(linearIssues.assigneeLinearId)))
     .orderBy(linearIssues.assigneeName)
 
-  const availableLinearUsers = linearUserRows
-    .filter((u) => u.id && u.name)
-    .map((u) => ({ id: u.id!, name: u.name! }))
+  const availableLinearUsers = linearUserRows.filter((u) => u.id && u.name).map((u) => ({ id: u.id!, name: u.name! }))
 
   const linearUserName = member.linearUserId
     ? (availableLinearUsers.find((u) => u.id === member.linearUserId)?.name ?? null)
     : null
 
   // Fetch user's product IDs for scoping GitHub data
-  const userProducts = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(eq(products.userId, session.user.id))
+  const userProducts = await db.select({ id: products.id }).from(products).where(eq(products.userId, session.user.id))
 
   const productIds = userProducts.map((p) => p.id)
 
@@ -74,12 +63,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       ? db
           .select()
           .from(linearIssues)
-          .where(
-            and(
-              eq(linearIssues.userId, session.user.id),
-              eq(linearIssues.assigneeLinearId, member.linearUserId),
-            ),
-          )
+          .where(and(eq(linearIssues.userId, session.user.id), eq(linearIssues.assigneeLinearId, member.linearUserId)))
           .orderBy(linearIssues.priority, desc(linearIssues.linearUpdatedAt))
           .limit(50)
       : Promise.resolve([]),
@@ -103,10 +87,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           .select()
           .from(githubCommits)
           .where(
-            and(
-              inArray(githubCommits.productId, productIds),
-              eq(githubCommits.authorLogin, member.githubUsername),
-            ),
+            and(inArray(githubCommits.productId, productIds), eq(githubCommits.authorLogin, member.githubUsername)),
           )
           .orderBy(desc(githubCommits.committedAt))
           .limit(50)
@@ -201,7 +182,9 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
                     <div key={issue.id} className="rounded-md border px-3 py-2 text-sm">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium text-xs text-muted-foreground">{issue.identifier}</span>
-                        <Badge variant="outline" className="text-xs">{issue.status}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {issue.status}
+                        </Badge>
                       </div>
                       <p className="line-clamp-1 mt-0.5">{issue.title}</p>
                     </div>
@@ -214,7 +197,9 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               <CardHeader>
                 <CardTitle className="text-sm font-medium">Recent GitHub Activity</CardTitle>
                 <CardDescription>
-                  {member.githubUsername ? `@${member.githubUsername} across all products.` : 'Connect a GitHub account in Connections.'}
+                  {member.githubUsername
+                    ? `@${member.githubUsername} across all products.`
+                    : 'Connect a GitHub account in Connections.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
@@ -345,7 +330,9 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="line-clamp-1 font-medium">#{pr.number} {pr.title}</p>
+                          <p className="line-clamp-1 font-medium">
+                            #{pr.number} {pr.title}
+                          </p>
                           <p className="text-xs text-muted-foreground">{formatDate(pr.githubUpdatedAt)}</p>
                         </div>
                         <Badge variant={pr.state === 'open' ? 'default' : 'secondary'}>{pr.state}</Badge>
