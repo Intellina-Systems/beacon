@@ -76,51 +76,91 @@ type LinearIssuesPage = {
   }
 }
 
-export async function getLinearIssues(accessToken: string): Promise<LinearWorkspaceIssue[]> {
+export async function getLinearIssues(accessToken: string, projectId?: string): Promise<LinearWorkspaceIssue[]> {
   const allIssues: LinearWorkspaceIssue[] = []
   let after: string | null = null
+
+  const workspaceIssuesQuery = `query GetIssues($after: String) {
+    issues(first: 100, after: $after) {
+      nodes {
+        id
+        identifier
+        title
+        description
+        state {
+          id
+          name
+          type
+        }
+        priority
+        assignee {
+          id
+          name
+        }
+        dueDate
+        url
+        createdAt
+        updatedAt
+        project {
+          id
+          name
+        }
+        team {
+          id
+          name
+          key
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }`
+
+  const projectIssuesQuery = `query GetIssuesByProject($after: String, $projectId: String!) {
+    issues(first: 100, after: $after, filter: { project: { id: { eq: $projectId } } }) {
+      nodes {
+        id
+        identifier
+        title
+        description
+        state {
+          id
+          name
+          type
+        }
+        priority
+        assignee {
+          id
+          name
+        }
+        dueDate
+        url
+        createdAt
+        updatedAt
+        project {
+          id
+          name
+        }
+        team {
+          id
+          name
+          key
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }`
 
   while (true) {
     const page: LinearIssuesPage = await linearQuery<LinearIssuesPage>(
       accessToken,
-      `query GetIssues($after: String) {
-        issues(first: 100, after: $after) {
-          nodes {
-            id
-            identifier
-            title
-            description
-            state {
-              id
-              name
-              type
-            }
-            priority
-            assignee {
-              id
-              name
-            }
-            dueDate
-            url
-            createdAt
-            updatedAt
-            project {
-              id
-              name
-            }
-            team {
-              id
-              name
-              key
-            }
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
-      }`,
-      { after },
+      projectId ? projectIssuesQuery : workspaceIssuesQuery,
+      projectId ? { after, projectId } : { after },
     )
 
     allIssues.push(...page.issues.nodes)
@@ -133,4 +173,3 @@ export async function getLinearIssues(accessToken: string): Promise<LinearWorksp
 
   return allIssues
 }
-

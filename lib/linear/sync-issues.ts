@@ -1,13 +1,37 @@
 import { and, eq, notInArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
-import { linearIssues } from '@/lib/db/schema'
+import { linearIssues, productLinearConnections, products } from '@/lib/db/schema'
 import { getLinearIssues } from '@/lib/linear/client'
+import { ALL_PROJECT_SCOPE_ID, getCachedLinearIssuesByScope } from '@/lib/linear/issues-cache'
 import { getIssueBucket, type IssueBucket } from '@/lib/linear/issue-bucket'
 
 export interface LinearIssuesSyncResult {
   issuesSynced: number
   buckets: Record<IssueBucket, number>
+}
+
+async function getUserProjectScopeIds(userId: string, workspaceId: string): Promise<string[]> {
+  const rows = await db
+    .select({ projectId: productLinearConnections.linearProjectId })
+    .from(productLinearConnections)
+    .innerJoin(products, eq(productLinearConnections.productId, products.id))
+    .where(
+      and(
+        eq(products.userId, userId),
+        eq(productLinearConnections.linearWorkspaceId, workspaceId),
+        eq(productLinearConnections.syncEnabled, true),
+      ),
+    )
+
+  const ids = new Set<string>()
+  for (const row of rows) {
+    if (row.projectId) {
+      ids.add(row.projectId)
+    }
+  }
+
+  return [...ids]
 }
 
 function createEmptyBuckets(): Record<IssueBucket, number> {
@@ -19,8 +43,34 @@ function createEmptyBuckets(): Record<IssueBucket, number> {
   }
 }
 
-export async function syncLinearIssuesForUser(userId: string, accessToken: string): Promise<LinearIssuesSyncResult> {
-  const issues = await getLinearIssues(accessToken)
+export async function syncLinearIssuesForUser(
+  userId: string,
+  accessToken: string,
+  workspaceId?: string,
+): Promise<LinearIssuesSyncResult> {
+  let issues: Awaited<ReturnType<typeof getLinearIssues>>
+
+  if (workspaceId) {
+    const projectScopeIds = await getUserProjectScopeIds(userId, workspaceId)
+
+    if (projectScopeIds.length === 0) {
+      issues = await getCachedLinearIssuesByScope(workspaceId, ALL_PROJECT_SCOPE_ID, accessToken)
+    } else {
+      const dedupedByIssueId = new Map<string, (typeof issues)[number]>()
+
+      for (const projectScopeId of projectScopeIds) {
+        const scopedIssues = await getCachedLinearIssuesByScope(workspaceId, projectScopeId, accessToken)
+        for (const issue of scopedIssues) {
+          dedupedByIssueId.set(issue.id, issue)
+        }
+      }
+
+      issues = [...dedupedByIssueId.values()]
+    }
+  } else {
+    issues = await getLinearIssues(accessToken)
+  }
+
   const now = new Date()
   const syncedIssueIds: string[] = []
   const buckets = createEmptyBuckets()

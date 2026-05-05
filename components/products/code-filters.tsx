@@ -69,9 +69,17 @@ export function PRFilters(props: PRFiltersProps) {
 
 interface CommitFiltersProps {
   authors: string[]
+  range: string
 }
 
-function CommitFiltersInner({ authors }: CommitFiltersProps) {
+const COMMIT_RANGE_OPTIONS = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '30', label: 'Last 30 days' },
+  { value: '90', label: 'Last 90 days' },
+  { value: '365', label: 'Last year' },
+]
+
+function CommitFiltersInner({ authors, range }: CommitFiltersProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -88,24 +96,38 @@ function CommitFiltersInner({ authors }: CommitFiltersProps) {
   }
 
   const currentAuthor = searchParams.get('commitAuthor') ?? 'all'
-
-  if (authors.length === 0) return null
+  const currentRange = COMMIT_RANGE_OPTIONS.some((option) => option.value === range) ? range : '90'
 
   return (
     <div className="flex flex-wrap gap-2 pb-3">
-      <Select value={currentAuthor} onValueChange={(v) => update('commitAuthor', v)}>
+      <Select value={currentRange} onValueChange={(v) => update('commitRange', v)}>
         <SelectTrigger className="h-7 w-36 text-xs">
-          <SelectValue placeholder="Author" />
+          <SelectValue placeholder="Range" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All authors</SelectItem>
-          {authors.map((author) => (
-            <SelectItem key={author} value={author}>
-              {author}
+          {COMMIT_RANGE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+
+      {authors.length > 0 && (
+        <Select value={currentAuthor} onValueChange={(v) => update('commitAuthor', v)}>
+          <SelectTrigger className="h-7 w-36 text-xs">
+            <SelectValue placeholder="Author" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All authors</SelectItem>
+            {authors.map((author) => (
+              <SelectItem key={author} value={author}>
+                {author}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   )
 }

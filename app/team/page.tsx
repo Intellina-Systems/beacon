@@ -65,16 +65,22 @@ export default async function TeamPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    <Link href={`/team/${member.id}`} className="block">{member.role ?? '—'}</Link>
+                    <Link href={`/team/${member.id}`} className="block">
+                      {member.role ?? '—'}
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    <Link href={`/team/${member.id}`} className="block">{member.email ?? '—'}</Link>
+                    <Link href={`/team/${member.id}`} className="block">
+                      {member.email ?? '—'}
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {member.githubUsername ? (
                       <span>@{member.githubUsername}</span>
                     ) : (
-                      <Link href={`/team/${member.id}`} className="block">—</Link>
+                      <Link href={`/team/${member.id}`} className="block">
+                        —
+                      </Link>
                     )}
                   </td>
                 </tr>

@@ -147,6 +147,31 @@ export const linearIssues = pgTable(
 export type LinearIssue = typeof linearIssues.$inferSelect
 export type InsertLinearIssue = typeof linearIssues.$inferInsert
 
+// Linear issue fetch cache - shared persistent cache scoped by workspace and project
+export const linearIssueFetchCache = pgTable(
+  'linear_issue_fetch_cache',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id').notNull(),
+    projectScopeId: text('project_scope_id').notNull(),
+    issues: jsonb('issues').notNull(),
+    fetchedAt: timestamp('fetched_at').defaultNow().notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceProjectUnique: uniqueIndex('linear_issue_fetch_cache_workspace_project_idx').on(
+      table.workspaceId,
+      table.projectScopeId,
+    ),
+    expiresAtIdx: index('linear_issue_fetch_cache_expires_idx').on(table.expiresAt),
+  }),
+)
+
+export type LinearIssueFetchCache = typeof linearIssueFetchCache.$inferSelect
+export type InsertLinearIssueFetchCache = typeof linearIssueFetchCache.$inferInsert
+
 // Products - top-level Beacon container for the product a user is building
 export const products = pgTable('products', {
   id: text('id').primaryKey(),

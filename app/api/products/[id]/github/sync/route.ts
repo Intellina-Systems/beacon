@@ -2,7 +2,11 @@ import { type NextRequest } from 'next/server'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { productGitHubRepositories } from '@/lib/db/schema'
-import { getGitHubApiErrorMessage, syncProductGitHubRepository, type SyncProgressCallback } from '@/lib/github/product-sync'
+import {
+  getGitHubApiErrorMessage,
+  syncProductGitHubRepository,
+  type SyncProgressCallback,
+} from '@/lib/github/product-sync'
 import { getUserProduct } from '@/lib/products/access'
 import { getServerSession } from '@/lib/session/get-server-session'
 
@@ -23,7 +27,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .from(productGitHubRepositories)
     .where(and(eq(productGitHubRepositories.productId, id), eq(productGitHubRepositories.syncEnabled, true)))
 
-  const body = await req.json().catch(() => ({})) as { since?: string | null }
+  const body = (await req.json().catch(() => ({}))) as { since?: string | null }
   const since = body.since ? new Date(body.since) : undefined
 
   const userId = session.user.id
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
     },
   })
 }

@@ -483,7 +483,9 @@ export function ProductSettings({
                           <button
                             key={fullName}
                             type="button"
-                            onClick={() => !alreadyAttached && attachRepository({ owner: repository.owner, repo: repository.repo })}
+                            onClick={() =>
+                              !alreadyAttached && attachRepository({ owner: repository.owner, repo: repository.repo })
+                            }
                             disabled={alreadyAttached || loading === 'github'}
                             className="flex w-full items-center justify-between gap-3 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-accent disabled:opacity-50 disabled:cursor-default"
                           >
@@ -556,12 +558,8 @@ export function ProductSettings({
                           {entry.status === 'syncing' && (
                             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
                           )}
-                          {entry.status === 'done' && (
-                            <Check className="h-3.5 w-3.5 shrink-0 text-green-500" />
-                          )}
-                          {entry.status === 'error' && (
-                            <X className="h-3.5 w-3.5 shrink-0 text-destructive" />
-                          )}
+                          {entry.status === 'done' && <Check className="h-3.5 w-3.5 shrink-0 text-green-500" />}
+                          {entry.status === 'error' && <X className="h-3.5 w-3.5 shrink-0 text-destructive" />}
                           <span className="font-mono text-xs font-medium">
                             {entry.owner}/{entry.repo}
                           </span>

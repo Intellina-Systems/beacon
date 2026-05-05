@@ -64,14 +64,27 @@ export function EditMemberDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={emailVal} onChange={(e) => setEmailVal(e.target.value)} placeholder="jane@example.com" />
+              <Input
+                id="email"
+                type="email"
+                value={emailVal}
+                onChange={(e) => setEmailVal(e.target.value)}
+                placeholder="jane@example.com"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">Role</Label>
-              <Input id="role" value={roleVal} onChange={(e) => setRoleVal(e.target.value)} placeholder="Engineer, Designer, PM…" />
+              <Input
+                id="role"
+                value={roleVal}
+                onChange={(e) => setRoleVal(e.target.value)}
+                placeholder="Engineer, Designer, PM…"
+              />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
               <Button type="submit" disabled={saving || !nameVal.trim()}>
                 {saving ? 'Saving…' : 'Save'}
               </Button>

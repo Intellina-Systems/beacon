@@ -6,6 +6,10 @@ import { decrypt } from '@/lib/crypto'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { syncLinearIssuesForUser } from '@/lib/linear/sync-issues'
 
+function isLinearUnauthorizedError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('status 401')
+}
+
 export async function POST(req: NextRequest): Promise<Response> {
   const session = await getServerSession()
   if (!session?.user) {
@@ -22,7 +26,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const accessToken = decrypt(connection.accessToken)
 
   try {
-    const result = await syncLinearIssuesForUser(userId, accessToken)
+    const result = await syncLinearIssuesForUser(userId, accessToken, connection.workspaceId)
 
     return Response.json({
       success: true,
@@ -30,7 +34,11 @@ export async function POST(req: NextRequest): Promise<Response> {
       buckets: result.buckets,
     })
   } catch (err) {
-    console.error('[Linear Issues Sync] Error occurred:', err)
+    if (isLinearUnauthorizedError(err)) {
+      return Response.json({ error: 'Linear connection expired. Reconnect Linear.' }, { status: 401 })
+    }
+
+    console.error('[Linear Issues Sync] Error occurred')
     return Response.json({ error: 'Sync failed' }, { status: 500 })
   }
 }
