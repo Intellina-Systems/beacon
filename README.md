@@ -38,16 +38,19 @@ Market shifts        ─┘   Linear (sync)        ─┘
 ```
 
 ### External signals — Web search
+
 - Scheduled nightly pulls on configured topics per project (competitor names, industry keywords, stack terms, client verticals)
 - On-demand: triggered manually or when a new client requirement is ingested
 - Powers market-aware roadmap recommendations
 
 ### Internal signals — Unstructured ingestion
+
 - Paste or upload anything: WhatsApp export, email thread, Google Sheets CSV, client requirement doc, meeting notes, raw text
 - AI extracts: tasks, decisions, blockers, risks, client requirements
 - Review queue → human approves → pushed to Linear
 
 ### Code signals — GitHub (read-only)
+
 - Open PRs, open issues, stale reviews, commit activity
 - AI identifies: incomplete features, risk areas, high-churn modules, TODO/FIXME density
 - Surfaced alongside operational signals in the project dashboard
@@ -102,6 +105,7 @@ The review queue is the trust boundary. AI proposes, human approves, Beacon post
 ## Database Schema
 
 ### Core tables
+
 - `projects` — top-level container (name, description, repo URL, Linear project ID, client vertical, tracked topics for web search)
 - `workItems` — synced from Linear (title, description, status, priority, assignee, projectId, linearId, source, sourceId)
 - `members` — team roster (name, GitHub username, Linear user ID, role, inferred skills, current workload)
@@ -221,25 +225,30 @@ Goal: Beacon builds a picture of each team member and surfaces skill gaps before
 ## Environment Variables
 
 ### Required
+
 - `POSTGRES_URL` — PostgreSQL connection string
 - `JWE_SECRET` — Session encryption (`openssl rand -base64 32`)
 - `ENCRYPTION_KEY` — Data encryption (`openssl rand -hex 32`)
 - `NEXT_PUBLIC_AUTH_PROVIDERS` — `github`, `vercel`, or both
 
 ### Authentication
+
 - `NEXT_PUBLIC_GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET`
 - `NEXT_PUBLIC_VERCEL_CLIENT_ID` + `VERCEL_CLIENT_SECRET`
 
 ### Linear
+
 - `LINEAR_CLIENT_ID` + `LINEAR_CLIENT_SECRET` — OAuth app credentials
 - Per-user Linear tokens stored encrypted in DB after OAuth flow
 
 ### AI
+
 - `ANTHROPIC_API_KEY` — Claude (primary)
 - `OPENAI_API_KEY` — OpenAI fallback
 - `AI_GATEWAY_API_KEY` — Vercel AI Gateway routing
 
 ### Web Search
+
 - `TAVILY_API_KEY` or `PERPLEXITY_API_KEY`
 
 ---
@@ -261,6 +270,7 @@ pnpm dev
 Open [http://localhost:3000](http://localhost:3000).
 
 ### Database commands
+
 ```bash
 pnpm db:generate   # Generate migrations
 pnpm db:push       # Push schema changes
