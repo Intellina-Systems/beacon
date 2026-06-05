@@ -536,11 +536,25 @@ export async function POST(req: Request) {
             return { items: [] }
           }
 
-          const productScope = eq(linearIssues.userId, userId)
+          const productLinearRow = productLinearRows[0] ?? null
 
-          const whereClause = projectNameFilter
-            ? and(productScope, sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`)
-            : productScope
+          // Scope to the product's connected Linear project or team, falling back to userId only
+          const linearProjectScope = productLinearRow?.linearProjectId
+            ? eq(linearIssues.linearProjectId, productLinearRow.linearProjectId)
+            : productLinearRow?.linearTeamId
+              ? eq(linearIssues.linearTeamId, productLinearRow.linearTeamId)
+              : undefined
+
+          // Only apply text-based project name filter when it differs from the selected product name,
+          // because the LLM often passes the Beacon product name which won't match Linear's projectName field
+          const isProductNamePassthrough =
+            !projectNameFilter || projectNameFilter === selectedProduct.name.toLowerCase().trim()
+          const textProjectFilter =
+            !isProductNamePassthrough
+              ? sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`
+              : undefined
+
+          const whereClause = and(eq(linearIssues.userId, userId), linearProjectScope, textProjectFilter)
 
           const rows = await db
             .select({

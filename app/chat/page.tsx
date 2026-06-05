@@ -2,9 +2,10 @@
 
 import { useRef, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { FolderKanban, Sparkles, Send, StopCircle } from 'lucide-react'
+import { FolderKanban, Sparkles, Send, StopCircle, SquarePen, Bug, X, ChevronDown } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -19,17 +20,122 @@ import {
 import type { UIMessage } from 'ai'
 
 // ---------------------------------------------------------------------------
-// Tool part renderer — maps tool name → component
+// Debug panel — shows every tool call with its input + output
 // ---------------------------------------------------------------------------
 
 type AnyPart = { type: string; state?: string; input?: unknown; output?: unknown; toolCallId?: string }
 
+function resolveToolName(part: AnyPart): string {
+  if (part.type.startsWith('tool-')) return part.type.slice(5)
+  if (part.type === 'dynamic-tool') return (part as { toolName?: string }).toolName ?? 'unknown'
+  return part.type
+}
+
+function ToolDebugEntry({
+  index,
+  toolName,
+  input,
+  output,
+  state,
+}: {
+  index: number
+  toolName: string
+  input: unknown
+  output: unknown
+  state: string | undefined
+}) {
+  const [expanded, setExpanded] = useState(true)
+
+  return (
+    <div className="rounded-lg border text-xs font-mono overflow-hidden">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-muted-foreground shrink-0">#{index + 1}</span>
+          <span className="font-semibold text-foreground truncate">{toolName}</span>
+          {state === 'input-streaming' && (
+            <span className="text-amber-500 shrink-0">running…</span>
+          )}
+          {state === 'output-available' && (
+            <span className="text-green-500 shrink-0">done</span>
+          )}
+        </div>
+        <ChevronDown
+          className={cn('h-3 w-3 shrink-0 transition-transform ml-2', !expanded && '-rotate-90')}
+        />
+      </button>
+
+      {expanded && (
+        <div className="border-t divide-y">
+          <div className="px-3 py-2">
+            <p className="text-muted-foreground mb-1 text-[10px] uppercase tracking-wide">Input</p>
+            <pre className="text-foreground overflow-auto max-h-40 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+              {JSON.stringify(input, null, 2) ?? 'null'}
+            </pre>
+          </div>
+          <div className="px-3 py-2">
+            <p className="text-muted-foreground mb-1 text-[10px] uppercase tracking-wide">Output</p>
+            {output !== undefined ? (
+              <pre className="text-foreground overflow-auto max-h-56 text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+                {JSON.stringify(output, null, 2)}
+              </pre>
+            ) : (
+              <span className="text-muted-foreground italic text-[11px]">
+                {state === 'input-streaming' ? 'pending…' : 'no output'}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DebugPanel({ messages, onClose }: { messages: UIMessage[]; onClose: () => void }) {
+  const toolCalls = messages.flatMap((msg) =>
+    msg.parts
+      .filter((p) => p.type.startsWith('tool-') || p.type === 'dynamic-tool')
+      .map((p) => {
+        const part = p as AnyPart
+        return {
+          toolName: resolveToolName(part),
+          input: part.input,
+          output: part.output,
+          state: part.state,
+        }
+      }),
+  )
+
+  return (
+    <div className="fixed right-0 top-0 bottom-0 w-[26rem] border-l bg-background z-50 flex flex-col shadow-xl">
+      <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+        <div className="flex items-center gap-2">
+          <Bug className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Tool Debug</span>
+          <Badge variant="secondary" className="text-xs">{toolCalls.length}</Badge>
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {toolCalls.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-12">No tool calls yet.</p>
+        ) : (
+          toolCalls.map((tc, i) => (
+            <ToolDebugEntry key={i} index={i} {...tc} />
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ToolPartRenderer({ part }: { part: AnyPart }) {
-  const toolName = part.type.startsWith('tool-')
-    ? part.type.slice(5)
-    : part.type === 'dynamic-tool'
-      ? ((part as { toolName?: string }).toolName ?? 'unknown')
-      : ''
+  const toolName = resolveToolName(part)
 
   if (part.state === 'input-streaming') {
     return <ToolLoading label={`Running ${toolName}…`} />
@@ -50,6 +156,25 @@ function ToolPartRenderer({ part }: { part: AnyPart }) {
   if (output !== undefined) return null // known tool ran, no custom renderer → suppress
 
   return <UnknownToolDisplay toolName={toolName} input={part.input} />
+}
+
+// ---------------------------------------------------------------------------
+// Thinking indicator
+// ---------------------------------------------------------------------------
+
+function ThinkingBubble() {
+  return (
+    <div className="flex gap-3">
+      <div className="h-7 w-7 rounded-full bg-foreground flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Sparkles className="h-3.5 w-3.5 text-background" />
+      </div>
+      <div className="rounded-2xl bg-muted px-4 py-3 flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+      </div>
+    </div>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -129,8 +254,14 @@ function ChatConversation({ productId }: { productId: string | null }) {
   const { messages, status, sendMessage, stop } = useBeaconChat(productId)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const [showDebug, setShowDebug] = useState(false)
 
   const isStreaming = status === 'streaming' || status === 'submitted'
+
+  const toolCallCount = messages.reduce(
+    (n, m) => n + m.parts.filter((p) => p.type.startsWith('tool-') || p.type === 'dynamic-tool').length,
+    0,
+  )
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -157,6 +288,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
 
   return (
     <>
+      {showDebug && <DebugPanel messages={messages} onClose={() => setShowDebug(false)} />}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
@@ -190,6 +322,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
+            {status === 'submitted' && <ThinkingBubble />}
             <div ref={bottomRef} />
           </div>
         )}
@@ -205,6 +338,20 @@ function ChatConversation({ productId }: { productId: string | null }) {
             className="max-h-40 min-h-[40px] resize-none overflow-y-auto py-2.5 text-sm"
             disabled={isStreaming || !productId}
           />
+          <Button
+            variant={showDebug ? 'secondary' : 'ghost'}
+            size="icon"
+            onClick={() => setShowDebug((v) => !v)}
+            className="h-10 w-10 flex-shrink-0 relative"
+            title="Toggle tool debug panel"
+          >
+            <Bug className="h-4 w-4" />
+            {toolCallCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-medium text-primary-foreground flex items-center justify-center">
+                {toolCallCount > 9 ? '9+' : toolCallCount}
+              </span>
+            )}
+          </Button>
           {isStreaming ? (
             <Button variant="outline" size="icon" onClick={stop} className="h-10 w-10 flex-shrink-0">
               <StopCircle className="h-4 w-4" />
@@ -224,6 +371,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
 export default function ChatPage() {
   const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
   const [productId, setProductId] = useState<string | null>(null)
+  const [chatKey, setChatKey] = useState(0)
 
   useEffect(() => {
     const storedProductId = window.localStorage.getItem('beacon:selected-product-id')
@@ -256,31 +404,36 @@ export default function ChatPage() {
             <p className="text-sm font-medium">Beacon AI</p>
             <p className="text-xs text-muted-foreground">Answers stay scoped to the selected product.</p>
           </div>
-          {products.length > 0 ? (
-            <Select value={productId ?? undefined} onValueChange={handleProductChange}>
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Select product" />
-              </SelectTrigger>
-              <SelectContent>
-                {products.map((product) => (
-                  <SelectItem key={product.id} value={product.id}>
-                    {product.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/projects">
-                <FolderKanban className="h-4 w-4 mr-2" />
-                Create Product
-              </Link>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {products.length > 0 ? (
+              <Select value={productId ?? undefined} onValueChange={handleProductChange}>
+                <SelectTrigger className="w-56">
+                  <SelectValue placeholder="Select product" />
+                </SelectTrigger>
+                <SelectContent>
+                  {products.map((product) => (
+                    <SelectItem key={product.id} value={product.id}>
+                      {product.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Button asChild variant="outline" size="sm">
+                <Link href="/projects">
+                  <FolderKanban className="h-4 w-4 mr-2" />
+                  Create Product
+                </Link>
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setChatKey((k) => k + 1)} title="New chat">
+              <SquarePen className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
       </div>
 
-      <ChatConversation key={productId ?? 'no-product'} productId={productId} />
+      <ChatConversation key={`${productId ?? 'no-product'}-${chatKey}`} productId={productId} />
     </div>
   )
 }
