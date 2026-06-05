@@ -549,10 +549,9 @@ export async function POST(req: Request) {
           // because the LLM often passes the Beacon product name which won't match Linear's projectName field
           const isProductNamePassthrough =
             !projectNameFilter || projectNameFilter === selectedProduct.name.toLowerCase().trim()
-          const textProjectFilter =
-            !isProductNamePassthrough
-              ? sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`
-              : undefined
+          const textProjectFilter = !isProductNamePassthrough
+            ? sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`
+            : undefined
 
           const whereClause = and(eq(linearIssues.userId, userId), linearProjectScope, textProjectFilter)
 

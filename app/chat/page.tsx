@@ -55,16 +55,10 @@ function ToolDebugEntry({
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-muted-foreground shrink-0">#{index + 1}</span>
           <span className="font-semibold text-foreground truncate">{toolName}</span>
-          {state === 'input-streaming' && (
-            <span className="text-amber-500 shrink-0">running…</span>
-          )}
-          {state === 'output-available' && (
-            <span className="text-green-500 shrink-0">done</span>
-          )}
+          {state === 'input-streaming' && <span className="text-amber-500 shrink-0">running…</span>}
+          {state === 'output-available' && <span className="text-green-500 shrink-0">done</span>}
         </div>
-        <ChevronDown
-          className={cn('h-3 w-3 shrink-0 transition-transform ml-2', !expanded && '-rotate-90')}
-        />
+        <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform ml-2', !expanded && '-rotate-90')} />
       </button>
 
       {expanded && (
@@ -114,7 +108,9 @@ function DebugPanel({ messages, onClose }: { messages: UIMessage[]; onClose: () 
         <div className="flex items-center gap-2">
           <Bug className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Tool Debug</span>
-          <Badge variant="secondary" className="text-xs">{toolCalls.length}</Badge>
+          <Badge variant="secondary" className="text-xs">
+            {toolCalls.length}
+          </Badge>
         </div>
         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -125,9 +121,7 @@ function DebugPanel({ messages, onClose }: { messages: UIMessage[]; onClose: () 
         {toolCalls.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-12">No tool calls yet.</p>
         ) : (
-          toolCalls.map((tc, i) => (
-            <ToolDebugEntry key={i} index={i} {...tc} />
-          ))
+          toolCalls.map((tc, i) => <ToolDebugEntry key={i} index={i} {...tc} />)
         )}
       </div>
     </div>
@@ -426,7 +420,13 @@ export default function ChatPage() {
                 </Link>
               </Button>
             )}
-            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => setChatKey((k) => k + 1)} title="New chat">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setChatKey((k) => k + 1)}
+              title="New chat"
+            >
               <SquarePen className="h-4 w-4" />
             </Button>
           </div>
