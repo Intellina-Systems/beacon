@@ -301,6 +301,107 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
 }
 
 // ---------------------------------------------------------------------------
+// generate_github_changelog
+// ---------------------------------------------------------------------------
+
+type ChangelogEntry = {
+  number: number
+  title: string
+  authorLogin: string | null
+  htmlUrl: string
+  state: string
+  updatedAt: string | null
+  mergedAt: string | null
+  additions: number
+  deletions: number
+  changedFiles: number
+  summary: {
+    briefSummary: string
+    whatChanged: string[]
+    important: string[]
+  }
+}
+
+type ChangelogOutput = {
+  range: { from: string; to: string } | null
+  entries: ChangelogEntry[]
+  error: string | null
+}
+
+export function GitHubChangelogDisplay({ output }: { output: ChangelogOutput | undefined }) {
+  if (!output) return <ToolLoading label="Generating changelog…" />
+
+  if (output.error) {
+    return <p className="text-sm text-muted-foreground">{output.error}</p>
+  }
+
+  if (output.entries.length === 0) {
+    return <p className="text-sm text-muted-foreground">No pull requests found in this range.</p>
+  }
+
+  return (
+    <div className="w-full space-y-3">
+      {output.entries.map((entry) => {
+        const updatedLabel = entry.mergedAt ?? entry.updatedAt
+        const updatedText = updatedLabel
+          ? new Date(updatedLabel).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'Unknown date'
+
+        return (
+          <div key={`${entry.number}-${entry.htmlUrl}`} className="rounded-xl border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <a
+                href={entry.htmlUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-semibold hover:underline"
+              >
+                #{entry.number} {entry.title}
+              </a>
+              <div className="text-xs text-muted-foreground flex-shrink-0">
+                {entry.authorLogin ? `@${entry.authorLogin}` : 'Unknown author'}
+              </div>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {entry.state} · {updatedText} · +{entry.additions} -{entry.deletions} · {entry.changedFiles} files
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {entry.summary.briefSummary && (
+                <div className="space-y-1 sm:col-span-2">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Summary</p>
+                  <p className="text-sm">{entry.summary.briefSummary}</p>
+                </div>
+              )}
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">What changed</p>
+                <ul className="list-disc space-y-0.5 pl-4 text-sm">
+                  {entry.summary.whatChanged.length > 0 ? (
+                    entry.summary.whatChanged.map((item) => <li key={item}>{item}</li>)
+                  ) : (
+                    <li>Details unavailable.</li>
+                  )}
+                </ul>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Important to know</p>
+                <ul className="list-disc space-y-0.5 pl-4 text-sm">
+                  {entry.summary.important.length > 0 ? (
+                    entry.summary.important.map((item) => <li key={item}>{item}</li>)
+                  ) : (
+                    <li>No additional notes.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Generic fallback for unknown tools
 // ---------------------------------------------------------------------------
 
