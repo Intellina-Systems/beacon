@@ -350,7 +350,20 @@ export const knowledgeDocuments = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     sourceType: text('source_type', {
-      enum: ['note', 'email', 'doc', 'pdf', 'whatsapp', 'word', 'excel', 'notion', 'google_doc', 'google_sheet', 'url', 'other'],
+      enum: [
+        'note',
+        'email',
+        'doc',
+        'pdf',
+        'whatsapp',
+        'word',
+        'excel',
+        'notion',
+        'google_doc',
+        'google_sheet',
+        'url',
+        'other',
+      ],
     })
       .notNull()
       .default('note'),

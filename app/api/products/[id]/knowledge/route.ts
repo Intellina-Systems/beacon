@@ -52,7 +52,10 @@ function detectFileKind(file: File): FileKind | null {
 
   if (file.type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf'
 
-  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) {
+  if (
+    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    name.endsWith('.docx')
+  ) {
     return 'word'
   }
 
@@ -140,7 +143,13 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
 
   const body = (await req.json()) as unknown
 
-  if (body && typeof body === 'object' && 'sourceUrl' in body && typeof body.sourceUrl === 'string' && body.sourceUrl.trim()) {
+  if (
+    body &&
+    typeof body === 'object' &&
+    'sourceUrl' in body &&
+    typeof body.sourceUrl === 'string' &&
+    body.sourceUrl.trim()
+  ) {
     const trimmedUrl = body.sourceUrl.trim()
     const fetched = await fetchLinkContent(trimmedUrl)
     const providedTitle = 'title' in body && typeof body.title === 'string' ? body.title.trim() : ''

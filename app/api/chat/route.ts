@@ -265,7 +265,9 @@ function buildSystemPrompt(
     '- Do not output markdown tables for Linear issue lists when display_work_items can render a visual artifact view.',
   )
   parts.push('- Keep narrative short when a tool-rendered view is shown.')
-  parts.push('- For GitHub questions (commits, pull requests, what changed in code, merges), never call display_work_items.')
+  parts.push(
+    '- For GitHub questions (commits, pull requests, what changed in code, merges), never call display_work_items.',
+  )
   parts.push(
     '- If the user asks for a "changelog", "release notes", or a detailed per-PR breakdown/summary of GitHub changes, call generate_github_changelog (renders visual cards with AI-written per-PR summaries). Do not also write a prose summary afterward.',
   )
@@ -436,7 +438,10 @@ export async function POST(req: Request) {
       : Promise.resolve([[], [], []] as const),
     selectedProduct
       ? Promise.all([
-          db.select({ total: count() }).from(githubPullRequests).where(eq(githubPullRequests.productId, selectedProduct.id)),
+          db
+            .select({ total: count() })
+            .from(githubPullRequests)
+            .where(eq(githubPullRequests.productId, selectedProduct.id)),
           db.select({ total: count() }).from(githubCommits).where(eq(githubCommits.productId, selectedProduct.id)),
         ])
       : Promise.resolve([[{ total: 0 }], [{ total: 0 }]] as const),

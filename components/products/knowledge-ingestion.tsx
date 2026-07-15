@@ -2,16 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  FileSpreadsheet,
-  FileText,
-  Link2,
-  Loader2,
-  Paperclip,
-  RefreshCw,
-  Sparkles,
-  X,
-} from 'lucide-react'
+import { FileSpreadsheet, FileText, Link2, Loader2, Paperclip, RefreshCw, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -122,7 +113,10 @@ async function getErrorMessage(response: Response, fallback: string) {
 function detectClientFileKind(file: File): 'pdf' | 'word' | 'excel' | null {
   const name = file.name.toLowerCase()
   if (file.type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf'
-  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) {
+  if (
+    file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    name.endsWith('.docx')
+  ) {
     return 'word'
   }
   if (
@@ -242,7 +236,9 @@ export function KnowledgeIngestion({ productId, documents, signals }: KnowledgeI
 
       if (response.ok) {
         const data = (await response.json()) as KnowledgeIngestResponse
-        toast.success(data.extractionStatus === 'complete' ? 'Source re-synced.' : 'Source re-synced (retry signals later).')
+        toast.success(
+          data.extractionStatus === 'complete' ? 'Source re-synced.' : 'Source re-synced (retry signals later).',
+        )
         router.refresh()
       } else {
         toast.error(await getErrorMessage(response, 'Failed to re-sync source'))
