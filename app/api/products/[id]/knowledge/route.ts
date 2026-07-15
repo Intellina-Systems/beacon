@@ -5,17 +5,36 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
-import { buildKnowledgeEmbeddingInput, embedKnowledgeText } from '@/lib/knowledge/embeddings'
-import { extractKnowledgeSignals } from '@/lib/knowledge/extract-signals'
+import { runKnowledgeExtraction } from '@/lib/knowledge/ingest-pipeline'
+import {
+  UnreachableUrlError,
+  UnsupportedContentError,
+  extractDocxText,
+  extractSpreadsheetText,
+  fetchLinkContent,
+} from '@/lib/knowledge/ingest-sources'
 import { getUserProduct } from '@/lib/products/access'
 import { getServerSession } from '@/lib/session/get-server-session'
 
 export const runtime = 'nodejs'
 
-const MAX_PDF_BYTES = 10 * 1024 * 1024
+const MAX_FILE_BYTES = 10 * 1024 * 1024
 const MAX_KNOWLEDGE_CHARS = 20000
 
-const knowledgeSourceSchema = z.enum(['note', 'email', 'doc', 'pdf', 'whatsapp', 'other'])
+const knowledgeSourceSchema = z.enum([
+  'note',
+  'email',
+  'doc',
+  'pdf',
+  'whatsapp',
+  'word',
+  'excel',
+  'notion',
+  'google_doc',
+  'google_sheet',
+  'url',
+  'other',
+])
 
 const ingestSchema = z.object({
   title: z.string().trim().min(1).max(160),
@@ -24,56 +43,119 @@ const ingestSchema = z.object({
 })
 
 type KnowledgeIngestInput = z.infer<typeof ingestSchema>
+type ParsedKnowledgeRequest = { input: KnowledgeIngestInput; sourceUrl: string | null }
 
-function getPdfTitle(fileName: string) {
+type FileKind = 'pdf' | 'word' | 'excel'
+
+function detectFileKind(file: File): FileKind | null {
+  const name = file.name.toLowerCase()
+
+  if (file.type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf'
+
+  if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || name.endsWith('.docx')) {
+    return 'word'
+  }
+
+  if (
+    file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    file.type === 'application/vnd.ms-excel' ||
+    file.type === 'text/csv' ||
+    name.endsWith('.xlsx') ||
+    name.endsWith('.xls') ||
+    name.endsWith('.csv')
+  ) {
+    return 'excel'
+  }
+
+  return null
+}
+
+function getFileTitle(fileName: string, fallback: string) {
   const trimmed = fileName.trim()
-  if (!trimmed) return 'PDF upload'
+  if (!trimmed) return fallback
 
-  return trimmed.replace(/\.pdf$/i, '').slice(0, 160) || 'PDF upload'
+  return trimmed.replace(/\.[a-z0-9]+$/i, '').slice(0, 160) || fallback
 }
 
 function normalizePdfText(value: string) {
   return value
-    .replace(/\u0000/g, '')
+    .replace(/\0/g, '')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
 
-async function extractPdfText(file: File) {
-  if (file.size > MAX_PDF_BYTES) {
-    throw new Error('PDF_TOO_LARGE')
-  }
-
-  const arrayBuffer = await file.arrayBuffer()
-  const result = await pdfParse(Buffer.from(arrayBuffer))
-
-  return normalizePdfText(result.text).slice(0, MAX_KNOWLEDGE_CHARS)
+function defaultLinkTitle(sourceType: string) {
+  if (sourceType === 'notion') return 'Notion page'
+  if (sourceType === 'google_doc') return 'Google Doc'
+  if (sourceType === 'google_sheet') return 'Google Sheet'
+  return 'Linked page'
 }
 
-async function parseKnowledgeRequest(req: NextRequest): Promise<KnowledgeIngestInput | null> {
+async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeRequest | null> {
   const contentType = req.headers.get('content-type') ?? ''
 
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData()
     const file = formData.get('file')
 
-    if (!(file instanceof File) || file.type !== 'application/pdf') {
-      return null
+    if (!(file instanceof File)) return null
+
+    const kind = detectFileKind(file)
+    if (!kind) return null
+
+    if (file.size > MAX_FILE_BYTES) {
+      throw new Error('FILE_TOO_LARGE')
     }
 
-    const content = await extractPdfText(file)
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    let content: string
+    let sourceType: KnowledgeIngestInput['sourceType']
+    let fallbackTitle: string
+
+    if (kind === 'pdf') {
+      const result = await pdfParse(buffer)
+      content = normalizePdfText(result.text)
+      sourceType = 'pdf'
+      fallbackTitle = 'PDF upload'
+    } else if (kind === 'word') {
+      content = await extractDocxText(buffer)
+      sourceType = 'word'
+      fallbackTitle = 'Word document'
+    } else {
+      content = await extractSpreadsheetText(buffer)
+      sourceType = 'excel'
+      fallbackTitle = 'Spreadsheet'
+    }
+
     const parsed = ingestSchema.safeParse({
-      title: formData.get('title') || getPdfTitle(file.name),
-      sourceType: 'pdf',
-      content,
+      title: formData.get('title') || getFileTitle(file.name, fallbackTitle),
+      sourceType,
+      content: content.slice(0, MAX_KNOWLEDGE_CHARS),
     })
 
-    return parsed.success ? parsed.data : null
+    return parsed.success ? { input: parsed.data, sourceUrl: null } : null
   }
 
-  const parsed = ingestSchema.safeParse(await req.json())
-  return parsed.success ? parsed.data : null
+  const body = (await req.json()) as unknown
+
+  if (body && typeof body === 'object' && 'sourceUrl' in body && typeof body.sourceUrl === 'string' && body.sourceUrl.trim()) {
+    const trimmedUrl = body.sourceUrl.trim()
+    const fetched = await fetchLinkContent(trimmedUrl)
+    const providedTitle = 'title' in body && typeof body.title === 'string' ? body.title.trim() : ''
+
+    const parsed = ingestSchema.safeParse({
+      title: providedTitle || fetched.title || defaultLinkTitle(fetched.sourceType),
+      sourceType: fetched.sourceType,
+      content: fetched.text.slice(0, MAX_KNOWLEDGE_CHARS),
+    })
+
+    return parsed.success ? { input: parsed.data, sourceUrl: trimmedUrl } : null
+  }
+
+  const parsed = ingestSchema.safeParse(body)
+  return parsed.success ? { input: parsed.data, sourceUrl: null } : null
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
@@ -118,21 +200,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 
-  let knowledgeInput: KnowledgeIngestInput | null = null
+  let parsedRequest: ParsedKnowledgeRequest | null = null
   try {
-    knowledgeInput = await parseKnowledgeRequest(req)
+    parsedRequest = await parseKnowledgeRequest(req)
   } catch (error) {
-    if (error instanceof Error && error.message === 'PDF_TOO_LARGE') {
-      return Response.json({ error: 'PDF must be 10MB or smaller' }, { status: 400 })
+    if (error instanceof Error && error.message === 'FILE_TOO_LARGE') {
+      return Response.json({ error: 'File must be 10MB or smaller' }, { status: 400 })
+    }
+    if (error instanceof UnreachableUrlError || error instanceof UnsupportedContentError) {
+      return Response.json({ error: error.message }, { status: 400 })
     }
 
     return Response.json({ error: 'Invalid knowledge input' }, { status: 400 })
   }
 
-  if (!knowledgeInput) {
+  if (!parsedRequest) {
     return Response.json({ error: 'Invalid knowledge input' }, { status: 400 })
   }
 
+  const { input: knowledgeInput, sourceUrl } = parsedRequest
   const documentId = nanoid()
   const now = new Date()
 
@@ -146,7 +232,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         userId: session.user.id,
         title: knowledgeInput.title,
         sourceType: knowledgeInput.sourceType,
+        sourceUrl,
         content: knowledgeInput.content,
+        lastSyncedAt: sourceUrl ? now : null,
         createdAt: now,
         updatedAt: now,
       })
@@ -157,81 +245,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return Response.json({ error: 'Knowledge source could not be saved' }, { status: 500 })
   }
 
-  const extraction = await extractKnowledgeSignals({
+  const result = await runKnowledgeExtraction({
+    documentId,
+    productId: id,
     productName: product.name,
     productDescription: product.description,
     title: knowledgeInput.title,
     content: knowledgeInput.content,
-  }).catch(() => null)
+    initialDocument: document,
+  })
 
-  if (!extraction) {
-    return Response.json({ document, signals: [], extractionStatus: 'stored_without_signals' }, { status: 201 })
-  }
-
-  const embedding = await embedKnowledgeText(
-    buildKnowledgeEmbeddingInput({
-      title: knowledgeInput.title,
-      summary: extraction.summary,
-      content: knowledgeInput.content,
-    }),
-  ).catch(() => null)
-
-  try {
-    const [updatedDocument] = await db
-      .update(knowledgeDocuments)
-      .set({
-        summary: extraction.summary,
-        updatedAt: new Date(),
-      })
-      .where(eq(knowledgeDocuments.id, documentId))
-      .returning()
-
-    document = updatedDocument
-  } catch {
-    return Response.json({ document, signals: [], extractionStatus: 'stored_without_summary' }, { status: 201 })
-  }
-
-  if (embedding) {
-    try {
-      const [updatedDocument] = await db
-        .update(knowledgeDocuments)
-        .set({
-          embedding,
-          updatedAt: new Date(),
-        })
-        .where(eq(knowledgeDocuments.id, documentId))
-        .returning()
-
-      document = updatedDocument
-    } catch {
-      // The source and extracted signals can still be useful without a retrieval embedding.
-    }
-  }
-
-  try {
-    const insertedSignals =
-      extraction.signals.length > 0
-        ? await db
-            .insert(knowledgeSignals)
-            .values(
-              extraction.signals.map((signal) => ({
-                id: nanoid(),
-                productId: id,
-                documentId,
-                kind: signal.kind,
-                title: signal.title,
-                detail: signal.detail,
-                evidence: signal.evidence,
-                confidence: signal.confidence,
-                createdAt: now,
-                updatedAt: now,
-              })),
-            )
-            .returning()
-        : []
-
-    return Response.json({ document, signals: insertedSignals, extractionStatus: 'complete' }, { status: 201 })
-  } catch {
-    return Response.json({ document, signals: [], extractionStatus: 'stored_without_signals' }, { status: 201 })
-  }
+  return Response.json(result, { status: 201 })
 }

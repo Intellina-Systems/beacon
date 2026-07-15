@@ -1,4 +1,4 @@
-import { streamText, tool, zodSchema, convertToModelMessages } from 'ai'
+import { streamText, tool, zodSchema, convertToModelMessages, stepCountIs } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { getServerSession } from '@/lib/session/get-server-session'
@@ -13,10 +13,11 @@ import {
   linearConnections,
   linearIssues,
 } from '@/lib/db/schema'
-import { eq, sql, desc, and } from 'drizzle-orm'
+import { eq, sql, desc, and, gte, count } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
 import { getIssueBucket } from '@/lib/linear/issue-bucket'
 import { retrieveKnowledgeContext } from '@/lib/knowledge/retrieve'
+import { GitHubNotConnectedError, generateProductChangelog } from '@/lib/github/changelog'
 
 const PRIORITY_LABEL: Record<number, string> = { 0: 'none', 1: 'urgent', 2: 'high', 3: 'medium', 4: 'low' }
 const MAX_LINEAR_ISSUES_CONTEXT_ACTIVE = 30
@@ -236,6 +237,7 @@ function buildSystemPrompt(
   memberRows: (typeof members.$inferSelect)[],
   issueContext: IssueContextSummary,
   githubContext: GitHubContextRow[],
+  githubTotals: { totalPullRequestCount: number; totalCommitCount: number },
   knowledgeContext: Awaited<ReturnType<typeof retrieveKnowledgeContext>>,
 ): string {
   const parts: string[] = []
@@ -256,11 +258,23 @@ function buildSystemPrompt(
   }
 
   parts.push('\n## Response Rendering Rules')
-  parts.push('- For issue snapshots, priority breakdowns, or current task lists, always call display_work_items first.')
   parts.push(
-    '- Do not output markdown tables for issue lists when display_work_items can render a visual artifact view.',
+    '- display_work_items shows Linear issues/tasks ONLY. For Linear issue snapshots, priority breakdowns, or current task lists, always call display_work_items first.',
+  )
+  parts.push(
+    '- Do not output markdown tables for Linear issue lists when display_work_items can render a visual artifact view.',
   )
   parts.push('- Keep narrative short when a tool-rendered view is shown.')
+  parts.push('- For GitHub questions (commits, pull requests, what changed in code, merges), never call display_work_items.')
+  parts.push(
+    '- If the user asks for a "changelog", "release notes", or a detailed per-PR breakdown/summary of GitHub changes, call generate_github_changelog (renders visual cards with AI-written per-PR summaries). Do not also write a prose summary afterward.',
+  )
+  parts.push(
+    '- For lighter GitHub questions (a quick list of recent commits/PRs, filtering by author or date, without needing per-PR AI summaries), call query_github_activity and answer in prose.',
+  )
+  parts.push(
+    '- The GitHub Context Snapshot below only covers the most recent items — do not guess or extrapolate dates from it alone; use the tools above for anything beyond it.',
+  )
 
   parts.push('\n## Linear Issue Context Policy')
   parts.push('- Current-issues mode: use only todo and in-progress issues.')
@@ -279,6 +293,9 @@ function buildSystemPrompt(
   }
 
   parts.push('\n## GitHub Context Snapshot')
+  parts.push(
+    `- Totals in database: ${githubTotals.totalPullRequestCount} pull requests, ${githubTotals.totalCommitCount} commits. This snapshot below only lists the ${Math.min(15, githubTotals.totalPullRequestCount)} most recently updated PRs and ${Math.min(15, githubTotals.totalCommitCount)} most recent commits. Use query_github_activity for date-ranged, author-filtered, or larger queries.`,
+  )
   if (githubContext.length > 0) {
     for (const row of githubContext) {
       parts.push(`- ${row.type}: ${row.label} | ${row.detail}`)
@@ -356,7 +373,7 @@ export async function POST(req: Request) {
     ? productLinearRows.some((connection) => connection.linearWorkspaceId === linearConnection.workspaceId)
     : false
 
-  const [linearIssueRows, githubRows, knowledgeContext] = await Promise.all([
+  const [linearIssueRows, githubRows, githubTotals, knowledgeContext] = await Promise.all([
     selectedProduct && hasLinearWorkspace
       ? db
           .select({
@@ -384,6 +401,7 @@ export async function POST(req: Request) {
               state: githubPullRequests.state,
               authorLogin: githubPullRequests.authorLogin,
               githubUpdatedAt: githubPullRequests.githubUpdatedAt,
+              githubMergedAt: githubPullRequests.githubMergedAt,
             })
             .from(githubPullRequests)
             .where(eq(githubPullRequests.productId, selectedProduct.id))
@@ -417,6 +435,12 @@ export async function POST(req: Request) {
         ])
       : Promise.resolve([[], [], []] as const),
     selectedProduct
+      ? Promise.all([
+          db.select({ total: count() }).from(githubPullRequests).where(eq(githubPullRequests.productId, selectedProduct.id)),
+          db.select({ total: count() }).from(githubCommits).where(eq(githubCommits.productId, selectedProduct.id)),
+        ])
+      : Promise.resolve([[{ total: 0 }], [{ total: 0 }]] as const),
+    selectedProduct
       ? retrieveKnowledgeContext({
           productId: selectedProduct.id,
           query: latestUserText,
@@ -424,19 +448,23 @@ export async function POST(req: Request) {
       : Promise.resolve({ documents: [], signals: [] }),
   ])
 
+  const totalPullRequestCount = githubTotals[0][0]?.total ?? 0
+  const totalCommitCount = githubTotals[1][0]?.total ?? 0
+
   const workspaceName = linearConnection?.workspaceName ?? linearConnection?.workspaceSlug ?? null
   const issueContext = buildLinearIssuesContext(linearIssueRows, latestUserText)
   const [pullRequestRows, commitRows, linkRows] = githubRows
+
   const githubContext: GitHubContextRow[] = [
     ...pullRequestRows.map((pullRequest) => ({
       type: 'pull_request' as const,
       label: `#${pullRequest.number} ${pullRequest.title}`,
-      detail: `state: ${pullRequest.state}; author: ${pullRequest.authorLogin ?? 'unknown'}`,
+      detail: `state: ${pullRequest.state}; author: ${pullRequest.authorLogin ?? 'unknown'}; updated: ${pullRequest.githubUpdatedAt?.toISOString() ?? 'unknown'}${pullRequest.githubMergedAt ? `; merged: ${pullRequest.githubMergedAt.toISOString()}` : ''}`,
     })),
     ...commitRows.map((commit) => ({
       type: 'commit' as const,
       label: truncateText(normalizeWhitespace(commit.message.split('\n')[0] ?? commit.message), 140),
-      detail: `author: ${commit.authorLogin ?? commit.authorName ?? 'unknown'}`,
+      detail: `author: ${commit.authorLogin ?? commit.authorName ?? 'unknown'}; committed: ${commit.committedAt?.toISOString() ?? 'unknown'}`,
     })),
     ...linkRows.map((link) => ({
       type: 'link' as const,
@@ -450,6 +478,7 @@ export async function POST(req: Request) {
     memberRows,
     issueContext,
     githubContext,
+    { totalPullRequestCount, totalCommitCount },
     knowledgeContext,
   )
 
@@ -457,6 +486,7 @@ export async function POST(req: Request) {
     model: openai('gpt-5.4-nano'),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
+    stopWhen: stepCountIs(5),
     tools: {
       display_projects: tool({
         description:
@@ -511,10 +541,15 @@ export async function POST(req: Request) {
 
       display_work_items: tool({
         description:
-          'Display work items as visual issue artifact cards with status, priority, assignee, and issue details. Optionally filter by project name. Use this when the user asks to see tasks, issues, or work items.',
+          'Display Linear work items (issues/tasks) as visual issue artifact cards with status, priority, assignee, and issue details. Results are already scoped to the current product — do not pass projectName unless the user asks to narrow to a specific Linear sub-project or epic by name. Use this only for Linear issues/tasks, never for GitHub commits, pull requests, or code changes — GitHub questions should be answered from the GitHub Context Snapshot text instead.',
         inputSchema: zodSchema(
           z.object({
-            projectName: z.string().optional().describe('Filter by project name (partial match)'),
+            projectName: z
+              .string()
+              .optional()
+              .describe(
+                'Optional partial match on a Linear sub-project/epic name (e.g. "Creative Hub", "Research Hub") to narrow within the current product. This is NOT the product name — leave this empty to show all work items in the current product.',
+              ),
             statusFilter: z
               .enum(['all', 'active', 'urgent', 'inProgress', 'todo'])
               .default('active')
@@ -530,7 +565,11 @@ export async function POST(req: Request) {
           const effectiveStatusFilter: WorkItemsStatusFilter =
             input.statusFilter === 'active' && inferredStatusFilter ? inferredStatusFilter : input.statusFilter
 
-          const projectNameFilter = projectName?.trim().toLowerCase() ?? null
+          const rawProjectNameFilter = projectName?.trim().toLowerCase() ?? null
+          const projectNameFilter =
+            rawProjectNameFilter && rawProjectNameFilter === selectedProduct?.name.trim().toLowerCase()
+              ? null
+              : rawProjectNameFilter
 
           if (!selectedProduct || !hasLinearWorkspace) {
             return { items: [] }
@@ -616,6 +655,145 @@ export async function POST(req: Request) {
               linearUrl: item.linearUrl,
               projectName: item.projectName ?? '',
             })),
+          }
+        },
+      }),
+
+      query_github_activity: tool({
+        description:
+          'Query GitHub pull requests and commits for the current product, filtered by a time range and optionally by author. Use this whenever the user asks about GitHub activity over a specific period (e.g. "last 7 days"), by a specific person, or anything beyond the few most-recent items already in the GitHub Context Snapshot. Returns raw data with exact timestamps for you to summarize in prose — there is no visual renderer for this tool.',
+        inputSchema: zodSchema(
+          z.object({
+            sinceDays: z.number().int().min(1).max(365).default(7).describe('How many days back to look, from now.'),
+            type: z
+              .enum(['all', 'pull_requests', 'commits'])
+              .default('all')
+              .describe('Restrict to pull requests only, commits only, or both.'),
+            authorLogin: z.string().optional().describe('Filter to a specific GitHub username (partial match).'),
+          }),
+        ),
+        execute: async (input: {
+          sinceDays: number
+          type: 'all' | 'pull_requests' | 'commits'
+          authorLogin?: string
+        }) => {
+          if (!selectedProduct) {
+            return { pullRequests: [], commits: [] }
+          }
+
+          const since = new Date()
+          since.setDate(since.getDate() - input.sinceDays)
+          const authorFilter = input.authorLogin?.trim().toLowerCase() || null
+
+          const [pullRequests, commits] = await Promise.all([
+            input.type === 'commits'
+              ? Promise.resolve([])
+              : db
+                  .select({
+                    number: githubPullRequests.number,
+                    title: githubPullRequests.title,
+                    state: githubPullRequests.state,
+                    authorLogin: githubPullRequests.authorLogin,
+                    htmlUrl: githubPullRequests.htmlUrl,
+                    githubCreatedAt: githubPullRequests.githubCreatedAt,
+                    githubUpdatedAt: githubPullRequests.githubUpdatedAt,
+                    githubMergedAt: githubPullRequests.githubMergedAt,
+                  })
+                  .from(githubPullRequests)
+                  .where(
+                    and(
+                      eq(githubPullRequests.productId, selectedProduct.id),
+                      gte(githubPullRequests.githubUpdatedAt, since),
+                      authorFilter
+                        ? sql`lower(coalesce(${githubPullRequests.authorLogin}, '')) like ${`%${authorFilter}%`}`
+                        : undefined,
+                    ),
+                  )
+                  .orderBy(desc(githubPullRequests.githubUpdatedAt))
+                  .limit(200),
+            input.type === 'pull_requests'
+              ? Promise.resolve([])
+              : db
+                  .select({
+                    sha: githubCommits.sha,
+                    message: githubCommits.message,
+                    authorLogin: githubCommits.authorLogin,
+                    authorName: githubCommits.authorName,
+                    htmlUrl: githubCommits.htmlUrl,
+                    committedAt: githubCommits.committedAt,
+                  })
+                  .from(githubCommits)
+                  .where(
+                    and(
+                      eq(githubCommits.productId, selectedProduct.id),
+                      gte(githubCommits.committedAt, since),
+                      authorFilter
+                        ? sql`lower(coalesce(${githubCommits.authorLogin}, '')) like ${`%${authorFilter}%`}`
+                        : undefined,
+                    ),
+                  )
+                  .orderBy(desc(githubCommits.committedAt))
+                  .limit(300),
+          ])
+
+          return {
+            rangeSince: since.toISOString(),
+            pullRequests: pullRequests.map((pr) => ({
+              number: pr.number,
+              title: pr.title,
+              state: pr.state,
+              merged: pr.githubMergedAt != null,
+              authorLogin: pr.authorLogin,
+              url: pr.htmlUrl,
+              createdAt: pr.githubCreatedAt?.toISOString() ?? null,
+              updatedAt: pr.githubUpdatedAt?.toISOString() ?? null,
+              mergedAt: pr.githubMergedAt?.toISOString() ?? null,
+            })),
+            commits: commits.map((commit) => ({
+              sha: commit.sha.slice(0, 7),
+              message: commit.message.split('\n')[0],
+              authorLogin: commit.authorLogin ?? commit.authorName ?? 'unknown',
+              url: commit.htmlUrl,
+              committedAt: commit.committedAt?.toISOString() ?? null,
+            })),
+          }
+        },
+      }),
+
+      generate_github_changelog: tool({
+        description:
+          'Generate a detailed, AI-written changelog of pull requests for the current product over a time range, with per-PR summaries (what changed, important notes) and diff stats, rendered as a visual card view. Use this when the user asks for a "changelog", "release notes", or a detailed per-PR breakdown of GitHub changes. The rendered cards are the full answer — do not also write a prose summary afterward, just a short lead-in sentence at most.',
+        inputSchema: zodSchema(
+          z.object({
+            sinceDays: z
+              .number()
+              .int()
+              .min(1)
+              .max(180)
+              .default(7)
+              .describe('How many days back to include pull requests from.'),
+          }),
+        ),
+        execute: async (input: { sinceDays: number }) => {
+          if (!selectedProduct) {
+            return { range: null, entries: [], error: 'No product selected.' }
+          }
+
+          const since = new Date()
+          since.setDate(since.getDate() - input.sinceDays)
+
+          try {
+            const result = await generateProductChangelog(userId, selectedProduct.id, since)
+            return { range: result.range, entries: result.entries, error: null }
+          } catch (error) {
+            return {
+              range: null,
+              entries: [],
+              error:
+                error instanceof GitHubNotConnectedError
+                  ? 'GitHub account not connected.'
+                  : 'Failed to generate changelog.',
+            }
           }
         },
       }),

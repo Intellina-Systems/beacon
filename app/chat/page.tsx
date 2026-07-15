@@ -14,6 +14,7 @@ import {
   ProjectsDisplay,
   TeamDisplay,
   WorkItemsDisplay,
+  GitHubChangelogDisplay,
   UnknownToolDisplay,
   ToolLoading,
 } from '@/components/chat/tool-renderers'
@@ -145,6 +146,9 @@ function ToolPartRenderer({ part }: { part: AnyPart }) {
   }
   if (part.type === 'tool-display_work_items') {
     return <WorkItemsDisplay output={output as Parameters<typeof WorkItemsDisplay>[0]['output']} />
+  }
+  if (part.type === 'tool-generate_github_changelog') {
+    return <GitHubChangelogDisplay output={output as Parameters<typeof GitHubChangelogDisplay>[0]['output']} />
   }
 
   if (output !== undefined) return null // known tool ran, no custom renderer → suppress

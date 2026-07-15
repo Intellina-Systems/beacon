@@ -302,7 +302,9 @@ export default async function ProductDetailPage({
         id: knowledgeDocuments.id,
         title: knowledgeDocuments.title,
         sourceType: knowledgeDocuments.sourceType,
+        sourceUrl: knowledgeDocuments.sourceUrl,
         summary: knowledgeDocuments.summary,
+        lastSyncedAt: knowledgeDocuments.lastSyncedAt,
         createdAt: knowledgeDocuments.createdAt,
       })
       .from(knowledgeDocuments)
