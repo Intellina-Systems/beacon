@@ -1,16 +1,16 @@
 {
   "functions": {
-    "app/api/tasks/route.ts": {
+    "app/api/cron/sync/route.ts": {
       "maxDuration": 300
     },
-    "app/api/cron/linear-issues-sync/route.ts": {
+    "app/api/sources/[id]/sync/route.ts": {
       "maxDuration": 300
     }
   },
   "crons": [
     {
-      "path": "/api/cron/linear-issues-sync",
-      "schedule": "30 19 * * *"
+      "path": "/api/cron/sync",
+      "schedule": "0 * * * *"
     }
   ]
 }

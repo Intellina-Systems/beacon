@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderKanban, Users, ListChecks, Loader2, ExternalLink } from 'lucide-react'
+import { AlertTriangle, Loader2, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,43 +26,6 @@ export function ToolLoading({ label }: { label: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// display_projects
-// ---------------------------------------------------------------------------
-
-type ProjectItem = {
-  id: string
-  name: string
-  description: string | null
-  issueCount: number
-}
-
-export function ProjectsDisplay({ output }: { output: { projects: ProjectItem[] } | undefined }) {
-  if (!output) return <ToolLoading label="Loading products…" />
-
-  const { projects } = output
-  if (projects.length === 0) return <p className="text-sm text-muted-foreground">No products found.</p>
-
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
-      {projects.map((p) => (
-        <div key={p.id} className="rounded-xl border bg-card p-4 flex flex-col gap-1.5">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <FolderKanban className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-sm font-medium truncate">{p.name}</span>
-            </div>
-            <Badge variant="secondary" className="flex-shrink-0 text-xs">
-              {p.issueCount} open
-            </Badge>
-          </div>
-          {p.description && <p className="text-xs text-muted-foreground line-clamp-2">{p.description}</p>}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // display_team
 // ---------------------------------------------------------------------------
 
@@ -70,27 +33,9 @@ type MemberItem = {
   id: string
   name: string
   role: string | null
-  currentWorkload: number | null
-  inferredSkills: string[] | null
   avatarUrl: string | null
-}
-
-function WorkloadBar({ value }: { value: number }) {
-  const pct = Math.min(100, Math.round((value / 10) * 100))
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
-        <div
-          className={cn(
-            'h-full rounded-full transition-all',
-            pct >= 80 ? 'bg-red-500' : pct >= 60 ? 'bg-amber-500' : 'bg-green-500',
-          )}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-xs text-muted-foreground w-6 text-right">{value}</span>
-    </div>
-  )
+  weeklyEvents: number
+  skills: string[] | null
 }
 
 export function TeamDisplay({ output }: { output: { members: MemberItem[] } | undefined }) {
@@ -112,20 +57,17 @@ export function TeamDisplay({ output }: { output: { members: MemberItem[] } | un
                 {m.name.charAt(0).toUpperCase()}
               </div>
             )}
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{m.name}</p>
               {m.role && <p className="text-xs text-muted-foreground truncate">{m.role}</p>}
             </div>
+            <Badge variant={m.weeklyEvents > 0 ? 'secondary' : 'outline'} className="text-xs shrink-0">
+              {m.weeklyEvents} events
+            </Badge>
           </div>
-          {m.currentWorkload != null && m.currentWorkload > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Workload</p>
-              <WorkloadBar value={m.currentWorkload} />
-            </div>
-          )}
-          {m.inferredSkills && m.inferredSkills.length > 0 && (
+          {m.skills && m.skills.length > 0 && (
             <div className="flex flex-wrap gap-1">
-              {m.inferredSkills.slice(0, 4).map((s) => (
+              {m.skills.slice(0, 4).map((s) => (
                 <Badge key={s} variant="outline" className="text-xs px-1.5 py-0">
                   {s}
                 </Badge>
@@ -148,13 +90,11 @@ type WorkItem = {
   title: string
   description: string | null
   status: string
-  statusType: string | null
   priority: number | null
   priorityLabel: string
   assigneeName: string | null
   dueDate: string | null
-  linearUrl: string | null
-  projectName: string
+  url: string | null
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -222,13 +162,15 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium tracking-wide text-muted-foreground">{item.identifier}</p>
+                    {item.identifier && (
+                      <p className="text-[11px] font-medium tracking-wide text-muted-foreground">{item.identifier}</p>
+                    )}
                     <p className="text-sm font-semibold leading-snug mt-0.5 line-clamp-1">{item.title}</p>
                   </div>
 
-                  {item.linearUrl && (
+                  {item.url && (
                     <a
-                      href={item.linearUrl}
+                      href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-muted-foreground hover:text-foreground flex-shrink-0"
@@ -241,7 +183,7 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
 
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <Badge variant="outline" className="text-[11px] px-1.5 py-0 h-5">
-                    {item.status}
+                    {item.status.replace('_', ' ')}
                   </Badge>
                   <span
                     className={cn(
@@ -254,8 +196,7 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
                 </div>
 
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[11px] text-muted-foreground">
-                  {item.projectName && <span>{item.projectName}</span>}
-                  {item.assigneeName && <span>• @{item.assigneeName}</span>}
+                  {item.assigneeName && <span>@{item.assigneeName}</span>}
                   {formatDueDate(item.dueDate) && <span>• due {formatDueDate(item.dueDate)}</span>}
                 </div>
               </div>
@@ -268,12 +209,12 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {selectedItem?.identifier}: {selectedItem?.title}
+              {selectedItem?.identifier ? `${selectedItem.identifier}: ` : ''}
+              {selectedItem?.title}
             </DialogTitle>
             <DialogDescription>
-              {selectedItem?.projectName || 'No project'}
-              {selectedItem?.assigneeName ? ` • @${selectedItem.assigneeName}` : ''}
-              {selectedItem?.status ? ` • ${selectedItem.status}` : ''}
+              {selectedItem?.assigneeName ? `@${selectedItem.assigneeName} • ` : ''}
+              {selectedItem?.status.replace('_', ' ')}
             </DialogDescription>
           </DialogHeader>
 
@@ -281,15 +222,15 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
             {selectedItem?.description?.trim() ? (
               <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{selectedItem.description}</p>
             ) : (
-              <p className="text-sm text-muted-foreground">No issue description is available for this item.</p>
+              <p className="text-sm text-muted-foreground">No description is available for this item.</p>
             )}
           </div>
 
           <DialogFooter className="sm:justify-start">
-            {selectedItem?.linearUrl && (
+            {selectedItem?.url && (
               <Button asChild variant="outline" size="sm">
-                <a href={selectedItem.linearUrl} target="_blank" rel="noopener noreferrer">
-                  View in Linear
+                <a href={selectedItem.url} target="_blank" rel="noopener noreferrer">
+                  Open source
                 </a>
               </Button>
             )}
@@ -301,102 +242,41 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
 }
 
 // ---------------------------------------------------------------------------
-// generate_github_changelog
+// get_blockers
 // ---------------------------------------------------------------------------
 
-type ChangelogEntry = {
-  number: number
-  title: string
-  authorLogin: string | null
-  htmlUrl: string
-  state: string
-  updatedAt: string | null
-  mergedAt: string | null
-  additions: number
-  deletions: number
-  changedFiles: number
-  summary: {
-    briefSummary: string
-    whatChanged: string[]
-    important: string[]
-  }
+type BlockerItem = {
+  summary: string
+  type: string
+  source: string
+  member: string | null
+  workItem: string | null
+  since: string
 }
 
-type ChangelogOutput = {
-  range: { from: string; to: string } | null
-  entries: ChangelogEntry[]
-  error: string | null
-}
+export function BlockersDisplay({ output }: { output: { blockers: BlockerItem[] } | undefined }) {
+  if (!output) return <ToolLoading label="Checking blockers…" />
 
-export function GitHubChangelogDisplay({ output }: { output: ChangelogOutput | undefined }) {
-  if (!output) return <ToolLoading label="Generating changelog…" />
-
-  if (output.error) {
-    return <p className="text-sm text-muted-foreground">{output.error}</p>
-  }
-
-  if (output.entries.length === 0) {
-    return <p className="text-sm text-muted-foreground">No pull requests found in this range.</p>
+  if (output.blockers.length === 0) {
+    return <p className="text-sm text-muted-foreground">No active blockers. 🎉</p>
   }
 
   return (
-    <div className="w-full space-y-3">
-      {output.entries.map((entry) => {
-        const updatedLabel = entry.mergedAt ?? entry.updatedAt
-        const updatedText = updatedLabel
-          ? new Date(updatedLabel).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : 'Unknown date'
-
-        return (
-          <div key={`${entry.number}-${entry.htmlUrl}`} className="rounded-xl border bg-card p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <a
-                href={entry.htmlUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm font-semibold hover:underline"
-              >
-                #{entry.number} {entry.title}
-              </a>
-              <div className="text-xs text-muted-foreground flex-shrink-0">
-                {entry.authorLogin ? `@${entry.authorLogin}` : 'Unknown author'}
-              </div>
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {entry.state} · {updatedText} · +{entry.additions} -{entry.deletions} · {entry.changedFiles} files
-            </div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {entry.summary.briefSummary && (
-                <div className="space-y-1 sm:col-span-2">
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Summary</p>
-                  <p className="text-sm">{entry.summary.briefSummary}</p>
-                </div>
-              )}
-              <div className="space-y-1">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">What changed</p>
-                <ul className="list-disc space-y-0.5 pl-4 text-sm">
-                  {entry.summary.whatChanged.length > 0 ? (
-                    entry.summary.whatChanged.map((item) => <li key={item}>{item}</li>)
-                  ) : (
-                    <li>Details unavailable.</li>
-                  )}
-                </ul>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Important to know</p>
-                <ul className="list-disc space-y-0.5 pl-4 text-sm">
-                  {entry.summary.important.length > 0 ? (
-                    entry.summary.important.map((item) => <li key={item}>{item}</li>)
-                  ) : (
-                    <li>No additional notes.</li>
-                  )}
-                </ul>
-              </div>
+    <div className="w-full space-y-2">
+      {output.blockers.map((blocker, index) => (
+        <div key={index} className="rounded-lg border border-red-500/40 bg-card px-3 py-2.5">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm leading-snug">{blocker.summary}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {[blocker.member, blocker.workItem, blocker.source].filter(Boolean).join(' · ')} ·{' '}
+                {new Date(blocker.since).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              </p>
             </div>
           </div>
-        )
-      })}
+        </div>
+      ))}
     </div>
   )
 }

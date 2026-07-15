@@ -1,344 +1,38 @@
 import { streamText, tool, zodSchema, convertToModelMessages, stepCountIs } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import type { UIMessage } from 'ai'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { db } from '@/lib/db/client'
-import {
-  githubCommits,
-  githubLinearLinks,
-  githubPullRequests,
-  members,
-  products,
-  productLinearConnections,
-  linearConnections,
-  linearIssues,
-} from '@/lib/db/schema'
-import { eq, sql, desc, and, gte, count } from 'drizzle-orm'
-import type { UIMessage } from 'ai'
-import { getIssueBucket } from '@/lib/linear/issue-bucket'
+import { members, workItems, EVENT_SOURCES, WORK_ITEM_STATUSES, type Event } from '@/lib/db/schema'
+import { getActiveBlockers, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import { retrieveKnowledgeContext } from '@/lib/knowledge/retrieve'
-import { GitHubNotConnectedError, generateProductChangelog } from '@/lib/github/changelog'
 
 const PRIORITY_LABEL: Record<number, string> = { 0: 'none', 1: 'urgent', 2: 'high', 3: 'medium', 4: 'low' }
-const MAX_LINEAR_ISSUES_CONTEXT_ACTIVE = 30
-const MAX_LINEAR_ISSUES_CONTEXT_IDEATION = 50
-
-const LINEAR_CONTEXT_STOP_WORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'with',
-  'that',
-  'this',
-  'from',
-  'about',
-  'into',
-  'have',
-  'what',
-  'when',
-  'where',
-  'which',
-  'would',
-  'could',
-  'should',
-  'please',
-  'current',
-  'linear',
-  'issues',
-  'issue',
-  'task',
-  'tasks',
-  'show',
-  'list',
-  'know',
-])
-
-type IssueContextMode = 'activeOnly' | 'includeCompleted'
-type WorkItemsStatusFilter = 'all' | 'active' | 'urgent' | 'inProgress' | 'todo'
-
-type LinearIssueContextRow = {
-  identifier: string
-  title: string
-  description: string | null
-  status: string
-  statusType: string | null
-  priority: number | null
-  assigneeName: string | null
-  linearUpdatedAt: Date | null
-  updatedAt: Date
-}
-
-type IssueContextSummary = {
-  mode: IssueContextMode
-  totalCached: number
-  totalInScope: number
-  injectedCount: number
-  lines: string[]
-}
-
-type ProductContext = {
-  id: string
-  name: string
-  description: string | null
-}
-
-type GitHubContextRow = {
-  type: 'pull_request' | 'commit' | 'link'
-  label: string
-  detail: string
-}
 
 function extractLatestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (message.role !== 'user') continue
-
     const parts = Array.isArray(message.parts) ? message.parts : []
-    const textFromParts = parts
-      .map((part) => {
-        if (
-          typeof part === 'object' &&
-          part !== null &&
-          'type' in part &&
-          (part as { type?: string }).type === 'text' &&
-          'text' in part &&
-          typeof (part as { text?: unknown }).text === 'string'
-        ) {
-          return (part as { text: string }).text
-        }
-        return ''
-      })
+    const text = parts
+      .map((part) =>
+        typeof part === 'object' && part !== null && 'type' in part && part.type === 'text' && 'text' in part
+          ? String((part as { text: unknown }).text)
+          : '',
+      )
       .filter(Boolean)
-
-    if (textFromParts.length > 0) {
-      return textFromParts.join(' ').trim()
-    }
-
-    if ('content' in message && typeof message.content === 'string') {
-      return message.content
-    }
+      .join(' ')
+      .trim()
+    if (text) return text
   }
-
   return ''
 }
 
-function detectIssueContextMode(userText: string): IssueContextMode {
-  if (!userText) return 'activeOnly'
-
-  const ideationPattern =
-    /\b(new idea|new ideas|brainstorm|ideate|ideation|strategy|roadmap|opportunit(?:y|ies)|what should we build|next feature|innovation|innovate|improve|improvement)\b/i
-
-  return ideationPattern.test(userText) ? 'includeCompleted' : 'activeOnly'
-}
-
-function inferWorkItemsStatusFilter(userText: string): WorkItemsStatusFilter | null {
-  if (!userText) return null
-
-  if (/\b(in progress|in-progress|ongoing|currently working|wip)\b/i.test(userText)) {
-    return 'inProgress'
-  }
-
-  if (/\b(todo|to-do|unstarted|not started|pending)\b/i.test(userText)) {
-    return 'todo'
-  }
-
-  if (/\b(urgent|critical|high priority|p0|p1)\b/i.test(userText)) {
-    return 'urgent'
-  }
-
-  if (/\b(all issues|everything|all tasks|all work items)\b/i.test(userText)) {
-    return 'all'
-  }
-
-  return null
-}
-
-function extractSearchTokens(userText: string): string[] {
-  const rawTokens = userText.toLowerCase().match(/[a-z0-9][a-z0-9_-]{2,}/g) ?? []
-  const filtered = rawTokens.filter((token) => !LINEAR_CONTEXT_STOP_WORDS.has(token))
-  return Array.from(new Set(filtered)).slice(0, 10)
-}
-
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength - 1)}…`
-}
-
-function issueRecencyTimestamp(issue: LinearIssueContextRow): number {
-  return (issue.linearUpdatedAt ?? issue.updatedAt).getTime()
-}
-
-function buildLinearIssuesContext(rows: LinearIssueContextRow[], latestUserText: string): IssueContextSummary {
-  const mode = detectIssueContextMode(latestUserText)
-
-  const inScope = rows.filter((issue) => {
-    if (mode === 'includeCompleted') return true
-
-    const bucket = getIssueBucket(issue.statusType, issue.status)
-    return bucket === 'todo' || bucket === 'inProgress'
-  })
-
-  const searchTokens = extractSearchTokens(latestUserText)
-  const ranked = inScope
-    .map((issue) => {
-      const haystack = normalizeWhitespace(
-        `${issue.identifier} ${issue.title} ${issue.description ?? ''} ${issue.assigneeName ?? ''} ${issue.status}`,
-      ).toLowerCase()
-
-      let score = 0
-      for (const token of searchTokens) {
-        if (haystack.includes(token)) score++
-      }
-
-      return { issue, score }
-    })
-    .sort(
-      (left, right) =>
-        right.score - left.score || issueRecencyTimestamp(right.issue) - issueRecencyTimestamp(left.issue),
-    )
-
-  const maxItems = mode === 'includeCompleted' ? MAX_LINEAR_ISSUES_CONTEXT_IDEATION : MAX_LINEAR_ISSUES_CONTEXT_ACTIVE
-  const selectedIssues = ranked.slice(0, maxItems).map((entry) => entry.issue)
-
-  const lines = selectedIssues.map((issue) => {
-    const bucket = getIssueBucket(issue.statusType, issue.status)
-    const bucketLabel = bucket === 'inProgress' ? 'in-progress' : bucket
-    const priorityLabel = issue.priority != null ? (PRIORITY_LABEL[issue.priority] ?? 'none') : 'none'
-    const description = issue.description ? truncateText(normalizeWhitespace(issue.description), 240) : ''
-
-    return [
-      `- ${issue.identifier}`,
-      `bucket: ${bucketLabel}`,
-      `title: ${truncateText(normalizeWhitespace(issue.title), 140)}`,
-      issue.assigneeName ? `owner: ${issue.assigneeName}` : null,
-      `priority: ${priorityLabel}`,
-      description ? `description: ${description}` : null,
-    ]
-      .filter(Boolean)
-      .join(' | ')
-  })
-
-  return {
-    mode,
-    totalCached: rows.length,
-    totalInScope: inScope.length,
-    injectedCount: selectedIssues.length,
-    lines,
-  }
-}
-
-function buildSystemPrompt(
-  product: ProductContext | null,
-  workspaceName: string | null,
-  memberRows: (typeof members.$inferSelect)[],
-  issueContext: IssueContextSummary,
-  githubContext: GitHubContextRow[],
-  githubTotals: { totalPullRequestCount: number; totalCommitCount: number },
-  knowledgeContext: Awaited<ReturnType<typeof retrieveKnowledgeContext>>,
-): string {
-  const parts: string[] = []
-  const workspace = workspaceName ? ` for the **${workspaceName}** workspace` : ''
-  if (!product) {
-    parts.push(
-      'You are Beacon AI, an intelligent PM assistant. The user has not selected a product. Ask them to create or select a product before giving project, Linear, GitHub, or team analysis.',
-    )
-    return parts.join('\n')
-  }
-
-  parts.push(
-    `You are Beacon AI, an intelligent PM assistant${workspace}. The selected product is **${product.name}**. Keep every answer scoped to this product unless the user explicitly asks for all products.\n\nYou have access to tools to display products, team info, and product-scoped work items visually — use them proactively when the user asks to see or show something.\n\nBe concise and direct.`,
-  )
-
-  if (product.description) {
-    parts.push(`\n## Product\n${product.description}`)
-  }
-
-  parts.push('\n## Response Rendering Rules')
-  parts.push(
-    '- display_work_items shows Linear issues/tasks ONLY. For Linear issue snapshots, priority breakdowns, or current task lists, always call display_work_items first.',
-  )
-  parts.push(
-    '- Do not output markdown tables for Linear issue lists when display_work_items can render a visual artifact view.',
-  )
-  parts.push('- Keep narrative short when a tool-rendered view is shown.')
-  parts.push(
-    '- For GitHub questions (commits, pull requests, what changed in code, merges), never call display_work_items.',
-  )
-  parts.push(
-    '- If the user asks for a "changelog", "release notes", or a detailed per-PR breakdown/summary of GitHub changes, call generate_github_changelog (renders visual cards with AI-written per-PR summaries). Do not also write a prose summary afterward.',
-  )
-  parts.push(
-    '- For lighter GitHub questions (a quick list of recent commits/PRs, filtering by author or date, without needing per-PR AI summaries), call query_github_activity and answer in prose.',
-  )
-  parts.push(
-    '- The GitHub Context Snapshot below only covers the most recent items — do not guess or extrapolate dates from it alone; use the tools above for anything beyond it.',
-  )
-
-  parts.push('\n## Linear Issue Context Policy')
-  parts.push('- Current-issues mode: use only todo and in-progress issues.')
-  parts.push('- Ideation mode: include completed issues only to avoid duplicate suggestions and repeated work.')
-  parts.push('- Never recommend redoing issues that are already completed unless explicitly asked to reopen/regress.')
-
-  parts.push('\n## Linear Issue Context Snapshot')
-  parts.push(
-    `- Scope mode: ${issueContext.mode === 'activeOnly' ? 'current issues (todo + in-progress only)' : 'ideation (all statuses, including completed)'}; cached: ${issueContext.totalCached}; in-scope: ${issueContext.totalInScope}; injected: ${issueContext.injectedCount}.`,
-  )
-
-  if (issueContext.lines.length > 0) {
-    parts.push(...issueContext.lines)
-  } else {
-    parts.push('- No synced Linear issue context is available yet.')
-  }
-
-  parts.push('\n## GitHub Context Snapshot')
-  parts.push(
-    `- Totals in database: ${githubTotals.totalPullRequestCount} pull requests, ${githubTotals.totalCommitCount} commits. This snapshot below only lists the ${Math.min(15, githubTotals.totalPullRequestCount)} most recently updated PRs and ${Math.min(15, githubTotals.totalCommitCount)} most recent commits. Use query_github_activity for date-ranged, author-filtered, or larger queries.`,
-  )
-  if (githubContext.length > 0) {
-    for (const row of githubContext) {
-      parts.push(`- ${row.type}: ${row.label} | ${row.detail}`)
-    }
-  } else {
-    parts.push('- No product-scoped GitHub pull requests, commits, or links are available yet.')
-  }
-
-  parts.push('\n## Retrieved Knowledge Sources')
-  if (knowledgeContext.documents.length > 0) {
-    for (const document of knowledgeContext.documents) {
-      const summary = document.summary ?? truncateText(normalizeWhitespace(document.content), 260)
-      parts.push(
-        `- ${document.title} | source: ${document.sourceType} | similarity: ${document.similarity.toFixed(2)} | ${truncateText(normalizeWhitespace(summary), 260)}`,
-      )
-    }
-  } else {
-    parts.push('- No semantically relevant knowledge sources are available yet.')
-  }
-
-  parts.push('\n## Knowledge Signal Snapshot')
-  if (knowledgeContext.signals.length > 0) {
-    for (const signal of knowledgeContext.signals) {
-      const evidence = signal.evidence ? ` | evidence: ${truncateText(normalizeWhitespace(signal.evidence), 140)}` : ''
-      parts.push(
-        `- ${signal.kind} | confidence: ${signal.confidence}/5 | ${signal.title}: ${truncateText(normalizeWhitespace(signal.detail), 220)}${evidence}`,
-      )
-    }
-  } else {
-    parts.push('- No product-scoped knowledge signals are available yet.')
-  }
-
-  if (memberRows.length > 0) {
-    parts.push('\n## Team')
-    for (const m of memberRows) {
-      const role = m.role ? ` (${m.role})` : ''
-      parts.push(`- ${m.name}${role}`)
-    }
-  }
-
-  return parts.join('\n')
+function truncate(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`
 }
 
 export async function POST(req: Request) {
@@ -346,199 +40,133 @@ export async function POST(req: Request) {
   if (!session?.user) return new Response('Unauthorized', { status: 401 })
 
   const userId = session.user.id
-  const productId = new URL(req.url).searchParams.get('productId')
   const { messages }: { messages: UIMessage[] } = await req.json()
   const latestUserText = extractLatestUserText(messages)
 
-  const [connectionRows, memberRows, productRows, productLinearRows] = await Promise.all([
-    db.select().from(linearConnections).where(eq(linearConnections.userId, userId)).limit(1),
+  const [pulse, blockers, roster, memberActivity, activeItems, recentEvents, knowledge] = await Promise.all([
+    getPulse(userId, 7),
+    getActiveBlockers(userId),
     db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name),
-    productId
-      ? db
-          .select({
-            id: products.id,
-            name: products.name,
-            description: products.description,
-          })
-          .from(products)
-          .where(and(eq(products.id, productId), eq(products.userId, userId)))
-          .limit(1)
-      : Promise.resolve([]),
-    productId
-      ? db.select().from(productLinearConnections).where(eq(productLinearConnections.productId, productId))
-      : Promise.resolve([]),
+    getMemberActivity(userId, 7),
+    db
+      .select({
+        key: workItems.key,
+        title: workItems.title,
+        status: workItems.status,
+        priority: workItems.priority,
+        assigneeMemberId: workItems.assigneeMemberId,
+      })
+      .from(workItems)
+      .where(and(eq(workItems.userId, userId), inArray(workItems.status, ['in_progress', 'in_review', 'blocked'])))
+      .orderBy(desc(workItems.updatedAt))
+      .limit(40),
+    listEvents(userId, { limit: 25 }),
+    retrieveKnowledgeContext({ userId, query: latestUserText }),
   ])
 
-  const selectedProduct = productRows[0] ?? null
-  const linearConnection = connectionRows[0] ?? null
-  const hasLinearWorkspace = linearConnection
-    ? productLinearRows.some((connection) => connection.linearWorkspaceId === linearConnection.workspaceId)
-    : false
+  const memberById = new Map(roster.map((member) => [member.id, member]))
 
-  const [linearIssueRows, githubRows, githubTotals, knowledgeContext] = await Promise.all([
-    selectedProduct && hasLinearWorkspace
-      ? db
-          .select({
-            identifier: linearIssues.identifier,
-            title: linearIssues.title,
-            description: linearIssues.description,
-            status: linearIssues.status,
-            statusType: linearIssues.statusType,
-            priority: linearIssues.priority,
-            assigneeName: linearIssues.assigneeName,
-            linearUpdatedAt: linearIssues.linearUpdatedAt,
-            updatedAt: linearIssues.updatedAt,
-          })
-          .from(linearIssues)
-          .where(eq(linearIssues.userId, userId))
-          .orderBy(desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
-          .limit(600)
-      : Promise.resolve([]),
-    selectedProduct
-      ? Promise.all([
-          db
-            .select({
-              title: githubPullRequests.title,
-              number: githubPullRequests.number,
-              state: githubPullRequests.state,
-              authorLogin: githubPullRequests.authorLogin,
-              githubUpdatedAt: githubPullRequests.githubUpdatedAt,
-              githubMergedAt: githubPullRequests.githubMergedAt,
-            })
-            .from(githubPullRequests)
-            .where(eq(githubPullRequests.productId, selectedProduct.id))
-            .orderBy(desc(githubPullRequests.githubUpdatedAt), desc(githubPullRequests.updatedAt))
-            .limit(15),
-          db
-            .select({
-              message: githubCommits.message,
-              authorLogin: githubCommits.authorLogin,
-              authorName: githubCommits.authorName,
-              committedAt: githubCommits.committedAt,
-            })
-            .from(githubCommits)
-            .where(eq(githubCommits.productId, selectedProduct.id))
-            .orderBy(desc(githubCommits.committedAt), desc(githubCommits.updatedAt))
-            .limit(15),
-          db
-            .select({
-              status: githubLinearLinks.status,
-              source: githubLinearLinks.source,
-              issueIdentifier: linearIssues.identifier,
-              prTitle: githubPullRequests.title,
-              commitMessage: githubCommits.message,
-            })
-            .from(githubLinearLinks)
-            .innerJoin(linearIssues, eq(linearIssues.id, githubLinearLinks.linearIssueId))
-            .leftJoin(githubPullRequests, eq(githubPullRequests.id, githubLinearLinks.githubPullRequestId))
-            .leftJoin(githubCommits, eq(githubCommits.id, githubLinearLinks.githubCommitId))
-            .where(eq(githubLinearLinks.productId, selectedProduct.id))
-            .limit(20),
-        ])
-      : Promise.resolve([[], [], []] as const),
-    selectedProduct
-      ? Promise.all([
-          db
-            .select({ total: count() })
-            .from(githubPullRequests)
-            .where(eq(githubPullRequests.productId, selectedProduct.id)),
-          db.select({ total: count() }).from(githubCommits).where(eq(githubCommits.productId, selectedProduct.id)),
-        ])
-      : Promise.resolve([[{ total: 0 }], [{ total: 0 }]] as const),
-    selectedProduct
-      ? retrieveKnowledgeContext({
-          productId: selectedProduct.id,
-          query: latestUserText,
+  const systemParts: string[] = [
+    'You are Beacon, the engineering intelligence layer for this team. You sit above GitHub, Linear, coding agents, CI/CD, and communication tools, continuously understanding what is happening. Everything you know is derived from an append-only event stream — never guess beyond it.',
+    'Be concise and direct. Use tools proactively when the user asks to see or list something: display_work_items for work item views, display_team for the roster, get_blockers for who is stuck, query_events for anything time- or activity-related, search_knowledge for docs/notes context. Prefer a tool call over a hand-written table.',
+    '',
+    `## Pulse — last ${pulse.sinceDays} days`,
+    `- ${pulse.totalEvents} events total | work ${pulse.byCategory.work}, code ${pulse.byCategory.code}, ci/cd ${pulse.byCategory.cicd}, agents ${pulse.byCategory.agent}, comms ${pulse.byCategory.comms}, knowledge ${pulse.byCategory.knowledge}`,
+    `- ${pulse.prsMerged} PRs merged, ${pulse.ciFailures} CI failures, ${pulse.activeMemberIds.length} active engineers`,
+    '',
+    '## Active blockers',
+    ...(blockers.length > 0
+      ? blockers
+          .slice(0, 10)
+          .map(
+            (blocker) =>
+              `- ${truncate(blocker.event.summary, 200)}${blocker.member ? ` (${blocker.member.name})` : ''}`,
+          )
+      : ['- none detected']),
+    '',
+    '## Work in flight',
+    ...(activeItems.length > 0
+      ? activeItems.map((item) => {
+          const assignee = item.assigneeMemberId ? memberById.get(item.assigneeMemberId)?.name : null
+          return `- ${item.key ?? ''} ${truncate(item.title, 120)} | ${item.status}${item.priority ? ` | ${PRIORITY_LABEL[item.priority]}` : ''}${assignee ? ` | ${assignee}` : ''}`
         })
-      : Promise.resolve({ documents: [], signals: [] }),
-  ])
+      : ['- nothing in flight']),
+    '',
+    '## Latest events',
+    ...(recentEvents.length > 0
+      ? recentEvents.map(
+          (event) =>
+            `- [${event.source}] ${event.type}: ${truncate(event.summary, 160)} (${event.occurredAt.toISOString()})`,
+        )
+      : ['- no events yet — suggest connecting sources in /integrations or pushing events to /api/events']),
+    '',
+    '## Team',
+    ...(roster.length > 0
+      ? roster.map((member) => {
+          const activity = memberActivity.get(member.id)
+          return `- ${member.name}${member.role ? ` (${member.role})` : ''} — ${activity ? `${activity.total} events this week` : 'quiet this week'}`
+        })
+      : ['- no members on the roster yet']),
+  ]
 
-  const totalPullRequestCount = githubTotals[0][0]?.total ?? 0
-  const totalCommitCount = githubTotals[1][0]?.total ?? 0
-
-  const workspaceName = linearConnection?.workspaceName ?? linearConnection?.workspaceSlug ?? null
-  const issueContext = buildLinearIssuesContext(linearIssueRows, latestUserText)
-  const [pullRequestRows, commitRows, linkRows] = githubRows
-
-  const githubContext: GitHubContextRow[] = [
-    ...pullRequestRows.map((pullRequest) => ({
-      type: 'pull_request' as const,
-      label: `#${pullRequest.number} ${pullRequest.title}`,
-      detail: `state: ${pullRequest.state}; author: ${pullRequest.authorLogin ?? 'unknown'}; updated: ${pullRequest.githubUpdatedAt?.toISOString() ?? 'unknown'}${pullRequest.githubMergedAt ? `; merged: ${pullRequest.githubMergedAt.toISOString()}` : ''}`,
-    })),
-    ...commitRows.map((commit) => ({
-      type: 'commit' as const,
-      label: truncateText(normalizeWhitespace(commit.message.split('\n')[0] ?? commit.message), 140),
-      detail: `author: ${commit.authorLogin ?? commit.authorName ?? 'unknown'}; committed: ${commit.committedAt?.toISOString() ?? 'unknown'}`,
-    })),
-    ...linkRows.map((link) => ({
-      type: 'link' as const,
-      label: `${link.issueIdentifier} -> ${link.prTitle ?? truncateText(normalizeWhitespace(link.commitMessage ?? ''), 100)}`,
-      detail: `source: ${link.source}; status: ${link.status}`,
-    })),
-  ].slice(0, 35)
-  const systemPrompt = buildSystemPrompt(
-    selectedProduct,
-    workspaceName,
-    memberRows,
-    issueContext,
-    githubContext,
-    { totalPullRequestCount, totalCommitCount },
-    knowledgeContext,
-  )
+  if (knowledge.documents.length > 0 || knowledge.signals.length > 0) {
+    systemParts.push('', '## Relevant knowledge')
+    for (const document of knowledge.documents) {
+      systemParts.push(`- doc: ${document.title} | ${truncate(document.summary ?? document.content, 200)}`)
+    }
+    for (const signal of knowledge.signals.slice(0, 10)) {
+      systemParts.push(
+        `- signal (${signal.kind}, ${signal.confidence}/5): ${signal.title} — ${truncate(signal.detail, 160)}`,
+      )
+    }
+  }
 
   const result = streamText({
     model: openai('gpt-5.4-nano'),
-    system: systemPrompt,
+    system: systemParts.join('\n'),
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(5),
     tools: {
-      display_projects: tool({
+      query_events: tool({
         description:
-          'Display all products as visual cards showing name, description, and active issue counts. Use this when the user asks to see, show, or list their products.',
-        inputSchema: zodSchema(z.object({})),
-        execute: async () => {
-          const rows = await db
-            .select({
-              id: products.id,
-              name: products.name,
-              description: products.description,
-              issueCount: sql<number>`(
-                select count(*)
-                from linear_issues
-                where linear_issues.user_id = ${userId}
-                  and exists (
-                    select 1
-                    from product_linear_connections
-                    inner join linear_connections
-                      on linear_connections.user_id = ${userId}
-                     and linear_connections.workspace_id = product_linear_connections.linear_workspace_id
-                    where product_linear_connections.product_id = "products"."id"
-                  )
-                  and (linear_issues.status_type is null or linear_issues.status_type not in ('completed','cancelled'))
-              )::int`,
-            })
-            .from(products)
-            .where(eq(products.userId, userId))
-            .orderBy(products.updatedAt)
-          return { projects: rows }
-        },
-      }),
-
-      display_team: tool({
-        description:
-          'Display the team roster as cards showing name, role, skills, and workload. Use this when the user asks about the team, capacity, or who is working on what.',
-        inputSchema: zodSchema(z.object({})),
-        execute: async () => {
-          const rows = await db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name)
+          'Query the raw event stream with filters — time range, source (github, linear, agent, cicd…), event types, or a member name. Use for questions like "what happened yesterday", "what did X do this week", "any deploys?", "what merged?". Returns raw events for you to summarize in prose.',
+        inputSchema: zodSchema(
+          z.object({
+            sinceDays: z.number().int().min(1).max(90).default(7),
+            source: z.enum(EVENT_SOURCES).optional(),
+            types: z
+              .array(z.string())
+              .optional()
+              .describe('Dot-namespaced event types, e.g. ["pr.merged", "ci.failed"]'),
+            memberName: z.string().optional().describe('Filter to one engineer by name'),
+            limit: z.number().int().min(1).max(200).default(50),
+          }),
+        ),
+        execute: async (input: {
+          sinceDays: number
+          source?: Event['source']
+          types?: string[]
+          memberName?: string
+          limit: number
+        }) => {
+          const memberId = input.memberName
+            ? roster.find((member) => member.name.toLowerCase().includes(input.memberName!.toLowerCase()))?.id
+            : undefined
+          const rows = await listEvents(userId, {
+            sinceDays: input.sinceDays,
+            source: input.source,
+            types: input.types,
+            memberId,
+            limit: input.limit,
+          })
           return {
-            members: rows.map((m) => ({
-              id: m.id,
-              name: m.name,
-              role: m.role,
-              currentWorkload: m.currentWorkload,
-              inferredSkills: m.inferredSkills,
-              avatarUrl: m.avatarUrl,
+            events: rows.map((row) => ({
+              source: row.source,
+              type: row.type,
+              summary: row.summary,
+              actor: row.memberName ?? row.actorLabel,
+              workItem: row.workItemKey,
+              occurredAt: row.occurredAt.toISOString(),
             })),
           }
         },
@@ -546,259 +174,113 @@ export async function POST(req: Request) {
 
       display_work_items: tool({
         description:
-          'Display Linear work items (issues/tasks) as visual issue artifact cards with status, priority, assignee, and issue details. Results are already scoped to the current product — do not pass projectName unless the user asks to narrow to a specific Linear sub-project or epic by name. Use this only for Linear issues/tasks, never for GitHub commits, pull requests, or code changes — GitHub questions should be answered from the GitHub Context Snapshot text instead.',
+          'Display work items as visual cards with status, priority, and assignee. Use when the user asks to see tasks, work, the backlog, or what is in progress.',
         inputSchema: zodSchema(
           z.object({
-            projectName: z
-              .string()
+            statuses: z
+              .array(z.enum(WORK_ITEM_STATUSES))
               .optional()
-              .describe(
-                'Optional partial match on a Linear sub-project/epic name (e.g. "Creative Hub", "Research Hub") to narrow within the current product. This is NOT the product name — leave this empty to show all work items in the current product.',
-              ),
-            statusFilter: z
-              .enum(['all', 'active', 'urgent', 'inProgress', 'todo'])
-              .default('active')
-              .describe(
-                'active = todo + in-progress + backlog, inProgress = only started work, todo = unstarted/todo, urgent = priority 1 or 2',
-              ),
+              .describe('Statuses to include. Defaults to active work (todo, in_progress, in_review, blocked).'),
+            assigneeName: z.string().optional().describe('Filter to one engineer by name'),
           }),
         ),
-        execute: async (input: { projectName?: string; statusFilter: WorkItemsStatusFilter }) => {
-          const { projectName } = input
-
-          const inferredStatusFilter = inferWorkItemsStatusFilter(latestUserText)
-          const effectiveStatusFilter: WorkItemsStatusFilter =
-            input.statusFilter === 'active' && inferredStatusFilter ? inferredStatusFilter : input.statusFilter
-
-          const rawProjectNameFilter = projectName?.trim().toLowerCase() ?? null
-          const projectNameFilter =
-            rawProjectNameFilter && rawProjectNameFilter === selectedProduct?.name.trim().toLowerCase()
-              ? null
-              : rawProjectNameFilter
-
-          if (!selectedProduct || !hasLinearWorkspace) {
-            return { items: [] }
-          }
-
-          const productLinearRow = productLinearRows[0] ?? null
-
-          // Scope to the product's connected Linear project or team, falling back to userId only
-          const linearProjectScope = productLinearRow?.linearProjectId
-            ? eq(linearIssues.linearProjectId, productLinearRow.linearProjectId)
-            : productLinearRow?.linearTeamId
-              ? eq(linearIssues.linearTeamId, productLinearRow.linearTeamId)
-              : undefined
-
-          // Only apply text-based project name filter when it differs from the selected product name,
-          // because the LLM often passes the Beacon product name which won't match Linear's projectName field
-          const isProductNamePassthrough =
-            !projectNameFilter || projectNameFilter === selectedProduct.name.toLowerCase().trim()
-          const textProjectFilter = !isProductNamePassthrough
-            ? sql`lower(coalesce(${linearIssues.projectName}, '')) like ${`%${projectNameFilter}%`}`
+        execute: async (input: { statuses?: string[]; assigneeName?: string }) => {
+          const statuses = input.statuses?.length ? input.statuses : ['todo', 'in_progress', 'in_review', 'blocked']
+          const assignee = input.assigneeName
+            ? roster.find((member) => member.name.toLowerCase().includes(input.assigneeName!.toLowerCase()))
             : undefined
-
-          const whereClause = and(eq(linearIssues.userId, userId), linearProjectScope, textProjectFilter)
 
           const rows = await db
             .select({
-              id: linearIssues.id,
-              identifier: linearIssues.identifier,
-              title: linearIssues.title,
-              description: linearIssues.description,
-              status: linearIssues.status,
-              statusType: linearIssues.statusType,
-              priority: linearIssues.priority,
-              assigneeName: linearIssues.assigneeName,
-              dueDate: linearIssues.dueDate,
-              linearUrl: linearIssues.linearUrl,
-              projectName: linearIssues.projectName,
-              linearUpdatedAt: linearIssues.linearUpdatedAt,
-              updatedAt: linearIssues.updatedAt,
+              id: workItems.id,
+              key: workItems.key,
+              title: workItems.title,
+              description: workItems.description,
+              status: workItems.status,
+              priority: workItems.priority,
+              assigneeMemberId: workItems.assigneeMemberId,
+              dueDate: workItems.dueDate,
+              externalUrl: workItems.externalUrl,
             })
-            .from(linearIssues)
-            .where(whereClause)
-            .orderBy(desc(linearIssues.linearUpdatedAt), desc(linearIssues.updatedAt))
-            .limit(800)
-
-          const filteredRows = rows.filter((row) => {
-            const bucket = getIssueBucket(row.statusType, row.status)
-
-            if (effectiveStatusFilter === 'all') {
-              return true
-            }
-
-            if (effectiveStatusFilter === 'inProgress') {
-              return bucket === 'inProgress'
-            }
-
-            if (effectiveStatusFilter === 'todo') {
-              return bucket === 'todo'
-            }
-
-            if (effectiveStatusFilter === 'urgent') {
-              const isUrgentPriority = row.priority === 1 || row.priority === 2
-              return isUrgentPriority && (bucket === 'todo' || bucket === 'inProgress' || bucket === 'backlog')
-            }
-
-            return bucket === 'todo' || bucket === 'inProgress' || bucket === 'backlog'
-          })
-
-          const topRows = filteredRows.slice(0, 50)
+            .from(workItems)
+            .where(
+              and(
+                eq(workItems.userId, userId),
+                inArray(workItems.status, statuses as never),
+                assignee ? eq(workItems.assigneeMemberId, assignee.id) : undefined,
+              ),
+            )
+            .orderBy(desc(workItems.updatedAt))
+            .limit(50)
 
           return {
-            items: topRows.map((item) => ({
+            items: rows.map((item) => ({
               id: item.id,
-              identifier: item.identifier,
+              identifier: item.key ?? '',
               title: item.title,
               description: item.description,
               status: item.status,
-              statusType: item.statusType,
               priority: item.priority,
-              priorityLabel: item.priority != null ? (PRIORITY_LABEL[item.priority] ?? 'unknown') : 'none',
-              assigneeName: item.assigneeName,
+              priorityLabel: item.priority != null ? (PRIORITY_LABEL[item.priority] ?? 'none') : 'none',
+              assigneeName: item.assigneeMemberId ? (memberById.get(item.assigneeMemberId)?.name ?? null) : null,
               dueDate: item.dueDate?.toISOString() ?? null,
-              linearUrl: item.linearUrl,
-              projectName: item.projectName ?? '',
+              url: item.externalUrl,
             })),
           }
         },
       }),
 
-      query_github_activity: tool({
+      display_team: tool({
         description:
-          'Query GitHub pull requests and commits for the current product, filtered by a time range and optionally by author. Use this whenever the user asks about GitHub activity over a specific period (e.g. "last 7 days"), by a specific person, or anything beyond the few most-recent items already in the GitHub Context Snapshot. Returns raw data with exact timestamps for you to summarize in prose — there is no visual renderer for this tool.',
-        inputSchema: zodSchema(
-          z.object({
-            sinceDays: z.number().int().min(1).max(365).default(7).describe('How many days back to look, from now.'),
-            type: z
-              .enum(['all', 'pull_requests', 'commits'])
-              .default('all')
-              .describe('Restrict to pull requests only, commits only, or both.'),
-            authorLogin: z.string().optional().describe('Filter to a specific GitHub username (partial match).'),
-          }),
-        ),
-        execute: async (input: {
-          sinceDays: number
-          type: 'all' | 'pull_requests' | 'commits'
-          authorLogin?: string
-        }) => {
-          if (!selectedProduct) {
-            return { pullRequests: [], commits: [] }
-          }
+          'Display the team roster as cards with role and weekly activity. Use when the user asks about the team, who is active, or capacity.',
+        inputSchema: zodSchema(z.object({})),
+        execute: async () => ({
+          members: roster.map((member) => ({
+            id: member.id,
+            name: member.name,
+            role: member.role,
+            avatarUrl: member.avatarUrl,
+            weeklyEvents: memberActivity.get(member.id)?.total ?? 0,
+            skills: member.skills,
+          })),
+        }),
+      }),
 
-          const since = new Date()
-          since.setDate(since.getDate() - input.sinceDays)
-          const authorFilter = input.authorLogin?.trim().toLowerCase() || null
+      get_blockers: tool({
+        description:
+          'Return the currently active blockers — blocking events (task.blocked, agent.blocked, ci.failed…) with no later unblocking signal, plus work items sitting in blocked status. Use whenever the user asks who or what is blocked or stuck.',
+        inputSchema: zodSchema(z.object({})),
+        execute: async () => ({
+          blockers: blockers.map((blocker) => ({
+            summary: blocker.event.summary,
+            type: blocker.event.type,
+            source: blocker.event.source,
+            member: blocker.member?.name ?? null,
+            workItem: blocker.workItem ? `${blocker.workItem.key ?? ''} ${blocker.workItem.title}`.trim() : null,
+            since: blocker.event.occurredAt.toISOString(),
+          })),
+        }),
+      }),
 
-          const [pullRequests, commits] = await Promise.all([
-            input.type === 'commits'
-              ? Promise.resolve([])
-              : db
-                  .select({
-                    number: githubPullRequests.number,
-                    title: githubPullRequests.title,
-                    state: githubPullRequests.state,
-                    authorLogin: githubPullRequests.authorLogin,
-                    htmlUrl: githubPullRequests.htmlUrl,
-                    githubCreatedAt: githubPullRequests.githubCreatedAt,
-                    githubUpdatedAt: githubPullRequests.githubUpdatedAt,
-                    githubMergedAt: githubPullRequests.githubMergedAt,
-                  })
-                  .from(githubPullRequests)
-                  .where(
-                    and(
-                      eq(githubPullRequests.productId, selectedProduct.id),
-                      gte(githubPullRequests.githubUpdatedAt, since),
-                      authorFilter
-                        ? sql`lower(coalesce(${githubPullRequests.authorLogin}, '')) like ${`%${authorFilter}%`}`
-                        : undefined,
-                    ),
-                  )
-                  .orderBy(desc(githubPullRequests.githubUpdatedAt))
-                  .limit(200),
-            input.type === 'pull_requests'
-              ? Promise.resolve([])
-              : db
-                  .select({
-                    sha: githubCommits.sha,
-                    message: githubCommits.message,
-                    authorLogin: githubCommits.authorLogin,
-                    authorName: githubCommits.authorName,
-                    htmlUrl: githubCommits.htmlUrl,
-                    committedAt: githubCommits.committedAt,
-                  })
-                  .from(githubCommits)
-                  .where(
-                    and(
-                      eq(githubCommits.productId, selectedProduct.id),
-                      gte(githubCommits.committedAt, since),
-                      authorFilter
-                        ? sql`lower(coalesce(${githubCommits.authorLogin}, '')) like ${`%${authorFilter}%`}`
-                        : undefined,
-                    ),
-                  )
-                  .orderBy(desc(githubCommits.committedAt))
-                  .limit(300),
-          ])
-
+      search_knowledge: tool({
+        description:
+          'Semantic search over the ingested knowledge base (meeting notes, docs, emails, links) and its extracted signals. Use for questions about decisions, requirements, user needs, or anything discussed outside the code/work trackers.',
+        inputSchema: zodSchema(z.object({ query: z.string().min(1).max(500) })),
+        execute: async (input: { query: string }) => {
+          const context = await retrieveKnowledgeContext({ userId, query: input.query, maxDocuments: 6 })
           return {
-            rangeSince: since.toISOString(),
-            pullRequests: pullRequests.map((pr) => ({
-              number: pr.number,
-              title: pr.title,
-              state: pr.state,
-              merged: pr.githubMergedAt != null,
-              authorLogin: pr.authorLogin,
-              url: pr.htmlUrl,
-              createdAt: pr.githubCreatedAt?.toISOString() ?? null,
-              updatedAt: pr.githubUpdatedAt?.toISOString() ?? null,
-              mergedAt: pr.githubMergedAt?.toISOString() ?? null,
+            documents: context.documents.map((document) => ({
+              title: document.title,
+              sourceType: document.sourceType,
+              summary: document.summary ?? truncate(document.content, 300),
+              similarity: document.similarity,
             })),
-            commits: commits.map((commit) => ({
-              sha: commit.sha.slice(0, 7),
-              message: commit.message.split('\n')[0],
-              authorLogin: commit.authorLogin ?? commit.authorName ?? 'unknown',
-              url: commit.htmlUrl,
-              committedAt: commit.committedAt?.toISOString() ?? null,
+            signals: context.signals.map((signal) => ({
+              kind: signal.kind,
+              title: signal.title,
+              detail: signal.detail,
+              confidence: signal.confidence,
             })),
-          }
-        },
-      }),
-
-      generate_github_changelog: tool({
-        description:
-          'Generate a detailed, AI-written changelog of pull requests for the current product over a time range, with per-PR summaries (what changed, important notes) and diff stats, rendered as a visual card view. Use this when the user asks for a "changelog", "release notes", or a detailed per-PR breakdown of GitHub changes. The rendered cards are the full answer — do not also write a prose summary afterward, just a short lead-in sentence at most.',
-        inputSchema: zodSchema(
-          z.object({
-            sinceDays: z
-              .number()
-              .int()
-              .min(1)
-              .max(180)
-              .default(7)
-              .describe('How many days back to include pull requests from.'),
-          }),
-        ),
-        execute: async (input: { sinceDays: number }) => {
-          if (!selectedProduct) {
-            return { range: null, entries: [], error: 'No product selected.' }
-          }
-
-          const since = new Date()
-          since.setDate(since.getDate() - input.sinceDays)
-
-          try {
-            const result = await generateProductChangelog(userId, selectedProduct.id, since)
-            return { range: result.range, entries: result.entries, error: null }
-          } catch (error) {
-            return {
-              range: null,
-              entries: [],
-              error:
-                error instanceof GitHubNotConnectedError
-                  ? 'GitHub account not connected.'
-                  : 'Failed to generate changelog.',
-            }
           }
         },
       }),

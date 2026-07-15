@@ -1,20 +1,17 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { FolderKanban, Sparkles, Send, StopCircle, SquarePen, Bug, X, ChevronDown } from 'lucide-react'
+import { Sparkles, Send, StopCircle, SquarePen, Bug, X, ChevronDown } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useBeaconChat } from '@/hooks/use-beacon-chat'
 import {
-  ProjectsDisplay,
   TeamDisplay,
   WorkItemsDisplay,
-  GitHubChangelogDisplay,
+  BlockersDisplay,
   UnknownToolDisplay,
   ToolLoading,
 } from '@/components/chat/tool-renderers'
@@ -138,17 +135,14 @@ function ToolPartRenderer({ part }: { part: AnyPart }) {
 
   const output = part.state === 'output-available' ? part.output : undefined
 
-  if (part.type === 'tool-display_projects') {
-    return <ProjectsDisplay output={output as Parameters<typeof ProjectsDisplay>[0]['output']} />
-  }
   if (part.type === 'tool-display_team') {
     return <TeamDisplay output={output as Parameters<typeof TeamDisplay>[0]['output']} />
   }
   if (part.type === 'tool-display_work_items') {
     return <WorkItemsDisplay output={output as Parameters<typeof WorkItemsDisplay>[0]['output']} />
   }
-  if (part.type === 'tool-generate_github_changelog') {
-    return <GitHubChangelogDisplay output={output as Parameters<typeof GitHubChangelogDisplay>[0]['output']} />
+  if (part.type === 'tool-get_blockers') {
+    return <BlockersDisplay output={output as Parameters<typeof BlockersDisplay>[0]['output']} />
   }
 
   if (output !== undefined) return null // known tool ran, no custom renderer → suppress
@@ -248,8 +242,10 @@ function MessageBubble({ message }: { message: UIMessage }) {
 // Page
 // ---------------------------------------------------------------------------
 
-function ChatConversation({ productId }: { productId: string | null }) {
-  const { messages, status, sendMessage, stop } = useBeaconChat(productId)
+const SUGGESTIONS = ['What is everyone working on?', 'Who is blocked?', 'What happened this week?']
+
+function ChatConversation() {
+  const { messages, status, sendMessage, stop } = useBeaconChat()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -269,7 +265,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       const text = (e.currentTarget.value ?? '').trim()
-      if (text && !isStreaming && productId) {
+      if (text && !isStreaming) {
         sendMessage(text)
         e.currentTarget.value = ''
       }
@@ -278,7 +274,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
 
   function handleSend() {
     const text = inputRef.current?.value.trim() ?? ''
-    if (text && !isStreaming && productId) {
+    if (text && !isStreaming) {
       sendMessage(text)
       if (inputRef.current) inputRef.current.value = ''
     }
@@ -294,26 +290,22 @@ function ChatConversation({ productId }: { productId: string | null }) {
               <Sparkles className="h-5 w-5 text-muted-foreground" />
             </div>
             <div>
-              <p className="font-medium">Beacon AI</p>
+              <p className="font-medium">Ask Beacon</p>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                {productId
-                  ? 'Ask about this product, its work, code activity, blockers, or anything on your plate.'
-                  : 'Create or select a product before asking Beacon AI.'}
+                It already knows what&apos;s happening — work, code, agents, CI, and knowledge, all in one stream.
               </p>
             </div>
-            {productId && (
-              <div className="flex max-w-sm flex-wrap justify-center gap-2">
-                {['Show active work', 'What changed in GitHub?', 'What are the blockers?'].map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => sendMessage(suggestion)}
-                    className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex max-w-sm flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => sendMessage(suggestion)}
+                  className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
@@ -331,10 +323,10 @@ function ChatConversation({ productId }: { productId: string | null }) {
           <Textarea
             ref={inputRef}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything..."
+            placeholder="What's happening?"
             rows={1}
             className="max-h-40 min-h-[40px] resize-none overflow-y-auto py-2.5 text-sm"
-            disabled={isStreaming || !productId}
+            disabled={isStreaming}
           />
           <Button
             variant={showDebug ? 'secondary' : 'ghost'}
@@ -355,7 +347,7 @@ function ChatConversation({ productId }: { productId: string | null }) {
               <StopCircle className="h-4 w-4" />
             </Button>
           ) : (
-            <Button size="icon" onClick={handleSend} className="h-10 w-10 flex-shrink-0" disabled={!productId}>
+            <Button size="icon" onClick={handleSend} className="h-10 w-10 flex-shrink-0">
               <Send className="h-4 w-4" />
             </Button>
           )}
@@ -367,77 +359,29 @@ function ChatConversation({ productId }: { productId: string | null }) {
 }
 
 export default function ChatPage() {
-  const [products, setProducts] = useState<Array<{ id: string; name: string }>>([])
-  const [productId, setProductId] = useState<string | null>(null)
   const [chatKey, setChatKey] = useState(0)
-
-  useEffect(() => {
-    const storedProductId = window.localStorage.getItem('beacon:selected-product-id')
-
-    async function loadProducts() {
-      const response = await fetch('/api/products')
-      if (!response.ok) return
-      const data = (await response.json()) as { products: Array<{ id: string; name: string }> }
-      setProducts(data.products)
-      const selected = data.products.find((product) => product.id === storedProductId) ?? data.products[0] ?? null
-      if (selected) {
-        setProductId(selected.id)
-        window.localStorage.setItem('beacon:selected-product-id', selected.id)
-      }
-    }
-
-    void loadProducts()
-  }, [])
-
-  function handleProductChange(value: string) {
-    setProductId(value)
-    window.localStorage.setItem('beacon:selected-product-id', value)
-  }
 
   return (
     <div className="flex flex-col h-full">
       <div className="border-b bg-background px-4 py-3">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium">Beacon AI</p>
-            <p className="text-xs text-muted-foreground">Answers stay scoped to the selected product.</p>
+            <p className="text-sm font-medium">Ask Beacon</p>
+            <p className="text-xs text-muted-foreground">Grounded in your live engineering event stream.</p>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {products.length > 0 ? (
-              <Select value={productId ?? undefined} onValueChange={handleProductChange}>
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Select product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Button asChild variant="outline" size="sm">
-                <Link href="/projects">
-                  <FolderKanban className="h-4 w-4 mr-2" />
-                  Create Product
-                </Link>
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => setChatKey((k) => k + 1)}
-              title="New chat"
-            >
-              <SquarePen className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setChatKey((k) => k + 1)}
+            title="New chat"
+          >
+            <SquarePen className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
-      <ChatConversation key={`${productId ?? 'no-product'}-${chatKey}`} productId={productId} />
+      <ChatConversation key={chatKey} />
     </div>
   )
 }

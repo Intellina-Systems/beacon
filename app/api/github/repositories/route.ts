@@ -1,5 +1,5 @@
 import { getServerSession } from '@/lib/session/get-server-session'
-import { getGitHubApiErrorMessage, listGitHubRepositories } from '@/lib/github/product-sync'
+import { getGitHubApiErrorMessage, listGitHubRepositories } from '@/lib/github/repositories'
 
 export async function GET(): Promise<Response> {
   const session = await getServerSession()

@@ -93,7 +93,7 @@ export function MemberConnections({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {availableLinearUsers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Sync Linear issues first to see workspace members.</p>
+            <p className="text-xs text-muted-foreground">Connect Linear in Integrations to see workspace members.</p>
           ) : (
             <>
               <div className="space-y-1.5">

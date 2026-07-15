@@ -13,7 +13,7 @@ export type KnowledgeSignalContextRow = {
 }
 
 export async function retrieveKnowledgeContext(input: {
-  productId: string
+  userId: string
   query: string
   maxDocuments?: number
   maxSignals?: number
@@ -32,7 +32,7 @@ export async function retrieveKnowledgeContext(input: {
         confidence: knowledgeSignals.confidence,
       })
       .from(knowledgeSignals)
-      .where(and(eq(knowledgeSignals.productId, input.productId), eq(knowledgeSignals.status, 'new')))
+      .where(and(eq(knowledgeSignals.userId, input.userId), eq(knowledgeSignals.status, 'new')))
       .orderBy(desc(knowledgeSignals.createdAt))
       .limit(maxSignals),
     queryText
@@ -47,9 +47,7 @@ export async function retrieveKnowledgeContext(input: {
               similarity: sql<number>`1 - (${cosineDistance(knowledgeDocuments.embedding, embedding)})`,
             })
             .from(knowledgeDocuments)
-            .where(
-              and(eq(knowledgeDocuments.productId, input.productId), sql`${knowledgeDocuments.embedding} is not null`),
-            )
+            .where(and(eq(knowledgeDocuments.userId, input.userId), sql`${knowledgeDocuments.embedding} is not null`))
             .orderBy(cosineDistance(knowledgeDocuments.embedding, embedding))
             .limit(maxDocuments),
         )
@@ -63,7 +61,7 @@ export async function retrieveKnowledgeContext(input: {
             similarity: sql<number>`0`,
           })
           .from(knowledgeDocuments)
-          .where(eq(knowledgeDocuments.productId, input.productId))
+          .where(eq(knowledgeDocuments.userId, input.userId))
           .orderBy(desc(knowledgeDocuments.createdAt))
           .limit(maxDocuments),
   ])

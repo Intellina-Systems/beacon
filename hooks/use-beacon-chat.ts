@@ -100,10 +100,10 @@ function createReactiveChatState(): {
 // ---------------------------------------------------------------------------
 
 class BeaconChat extends AbstractChat<UIMessage> {
-  constructor(state: ChatState<UIMessage>, productId: string | null) {
+  constructor(state: ChatState<UIMessage>) {
     super({
       state,
-      transport: new DefaultChatTransport({ api: productId ? `/api/chat?productId=${productId}` : '/api/chat' }),
+      transport: new DefaultChatTransport({ api: '/api/chat' }),
     })
   }
 }
@@ -112,9 +112,9 @@ class BeaconChat extends AbstractChat<UIMessage> {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useBeaconChat(productId: string | null = null) {
+export function useBeaconChat() {
   const [store] = useState(() => createReactiveChatState())
-  const [chat] = useState(() => new BeaconChat(store.state, productId))
+  const [chat] = useState(() => new BeaconChat(store.state))
   const { subscribe, getSnapshot } = store
 
   // Subscribe so React re-renders whenever state changes

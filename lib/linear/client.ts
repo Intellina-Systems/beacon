@@ -42,18 +42,14 @@ export async function getLinearViewer(accessToken: string): Promise<LinearViewer
         id
         name
         email
-        organization {
-          id
-          name
-          urlKey
-        }
+        organization { id name urlKey }
       }
     }`,
   )
   return data.viewer
 }
 
-export interface LinearWorkspaceIssue {
+export interface LinearIssue {
   id: string
   identifier: string
   title: string
@@ -69,107 +65,95 @@ export interface LinearWorkspaceIssue {
   team: { id: string; name: string; key: string } | null
 }
 
-type LinearIssuesPage = {
-  issues: {
-    nodes: LinearWorkspaceIssue[]
-    pageInfo: { hasNextPage: boolean; endCursor: string | null }
-  }
+const ISSUE_FIELDS = `
+  id
+  identifier
+  title
+  description
+  state { id name type }
+  priority
+  assignee { id name }
+  dueDate
+  url
+  createdAt
+  updatedAt
+  project { id name }
+  team { id name key }
+`
+
+export interface LinearIssueScope {
+  projectId?: string
+  teamId?: string
+  updatedSince?: Date
 }
 
-export async function getLinearIssues(accessToken: string, projectId?: string): Promise<LinearWorkspaceIssue[]> {
-  const allIssues: LinearWorkspaceIssue[] = []
+export async function getLinearIssues(accessToken: string, scope: LinearIssueScope = {}): Promise<LinearIssue[]> {
+  const filter: Record<string, unknown> = {}
+  if (scope.projectId) filter.project = { id: { eq: scope.projectId } }
+  if (scope.teamId) filter.team = { id: { eq: scope.teamId } }
+  if (scope.updatedSince) filter.updatedAt = { gt: scope.updatedSince.toISOString() }
+
+  const query = `query GetIssues($after: String, $filter: IssueFilter) {
+    issues(first: 100, after: $after, filter: $filter) {
+      nodes { ${ISSUE_FIELDS} }
+      pageInfo { hasNextPage endCursor }
+    }
+  }`
+
+  const allIssues: LinearIssue[] = []
   let after: string | null = null
 
-  const workspaceIssuesQuery = `query GetIssues($after: String) {
-    issues(first: 100, after: $after) {
-      nodes {
-        id
-        identifier
-        title
-        description
-        state {
-          id
-          name
-          type
-        }
-        priority
-        assignee {
-          id
-          name
-        }
-        dueDate
-        url
-        createdAt
-        updatedAt
-        project {
-          id
-          name
-        }
-        team {
-          id
-          name
-          key
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }`
-
-  const projectIssuesQuery = `query GetIssuesByProject($after: String, $projectId: String!) {
-    issues(first: 100, after: $after, filter: { project: { id: { eq: $projectId } } }) {
-      nodes {
-        id
-        identifier
-        title
-        description
-        state {
-          id
-          name
-          type
-        }
-        priority
-        assignee {
-          id
-          name
-        }
-        dueDate
-        url
-        createdAt
-        updatedAt
-        project {
-          id
-          name
-        }
-        team {
-          id
-          name
-          key
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }`
-
   while (true) {
-    const page: LinearIssuesPage = await linearQuery<LinearIssuesPage>(
-      accessToken,
-      projectId ? projectIssuesQuery : workspaceIssuesQuery,
-      projectId ? { after, projectId } : { after },
-    )
+    const page: {
+      issues: { nodes: LinearIssue[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }
+    } = await linearQuery(accessToken, query, { after, filter: Object.keys(filter).length ? filter : undefined })
 
     allIssues.push(...page.issues.nodes)
 
-    if (!page.issues.pageInfo.hasNextPage || !page.issues.pageInfo.endCursor) {
-      break
-    }
+    if (!page.issues.pageInfo.hasNextPage || !page.issues.pageInfo.endCursor) break
     after = page.issues.pageInfo.endCursor
   }
 
   return allIssues
+}
+
+export interface LinearProjectSummary {
+  id: string
+  name: string
+  url: string | null
+}
+
+export interface LinearTeamSummary {
+  id: string
+  name: string
+  key: string
+}
+
+export async function getLinearProjects(accessToken: string): Promise<LinearProjectSummary[]> {
+  const data = await linearQuery<{ projects: { nodes: LinearProjectSummary[] } }>(
+    accessToken,
+    `query { projects(first: 100) { nodes { id name url } } }`,
+  )
+  return data.projects.nodes
+}
+
+export interface LinearUserSummary {
+  id: string
+  name: string
+}
+
+export async function getLinearUsers(accessToken: string): Promise<LinearUserSummary[]> {
+  const data = await linearQuery<{ users: { nodes: LinearUserSummary[] } }>(
+    accessToken,
+    `query { users(first: 100) { nodes { id name } } }`,
+  )
+  return data.users.nodes
+}
+
+export async function getLinearTeams(accessToken: string): Promise<LinearTeamSummary[]> {
+  const data = await linearQuery<{ teams: { nodes: LinearTeamSummary[] } }>(
+    accessToken,
+    `query { teams(first: 100) { nodes { id name key } } }`,
+  )
+  return data.teams.nodes
 }

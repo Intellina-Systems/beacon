@@ -18,6 +18,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     avatarUrl?: string
     githubUsername?: string | null
     linearUserId?: string | null
+    slackHandle?: string | null
+    aliases?: string[] | null
   }
 
   const updated = await db
@@ -29,6 +31,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl?.trim() ?? null }),
       ...(body.githubUsername !== undefined && { githubUsername: body.githubUsername?.trim() ?? null }),
       ...(body.linearUserId !== undefined && { linearUserId: body.linearUserId ?? null }),
+      ...(body.slackHandle !== undefined && { slackHandle: body.slackHandle?.trim() ?? null }),
+      ...(body.aliases !== undefined && { aliases: body.aliases ?? null }),
       updatedAt: new Date(),
     })
     .where(and(eq(members.id, id), eq(members.userId, session.user.id)))

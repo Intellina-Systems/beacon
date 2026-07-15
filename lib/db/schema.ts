@@ -1,13 +1,26 @@
-import { boolean, pgTable, text, timestamp, integer, jsonb, uniqueIndex, index, vector } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  vector,
+} from 'drizzle-orm/pg-core'
 
-// Users table - user profile and primary OAuth account
+// ---------------------------------------------------------------------------
+// Identity & auth
+// ---------------------------------------------------------------------------
+
 export const users = pgTable(
   'users',
   {
     id: text('id').primaryKey(),
-    provider: text('provider', {
-      enum: ['github', 'vercel'],
-    }).notNull(),
+    provider: text('provider', { enum: ['github', 'vercel'] }).notNull(),
     externalId: text('external_id').notNull(),
     accessToken: text('access_token').notNull(), // encrypted
     refreshToken: text('refresh_token'), // encrypted
@@ -28,7 +41,6 @@ export const users = pgTable(
 export type User = typeof users.$inferSelect
 export type InsertUser = typeof users.$inferInsert
 
-// Accounts table - additional OAuth accounts linked to a user (e.g. Vercel user connecting GitHub)
 export const accounts = pgTable(
   'accounts',
   {
@@ -36,9 +48,7 @@ export const accounts = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: text('provider', {
-      enum: ['github'],
-    })
+    provider: text('provider', { enum: ['github'] })
       .notNull()
       .default('github'),
     externalUserId: text('external_user_id').notNull(),
@@ -58,12 +68,6 @@ export const accounts = pgTable(
 export type Account = typeof accounts.$inferSelect
 export type InsertAccount = typeof accounts.$inferInsert
 
-// Keep legacy export for backwards compatibility
-export const userConnections = accounts
-export type UserConnection = Account
-export type InsertUserConnection = InsertAccount
-
-// Settings table - per-user key-value config overrides
 export const settings = pgTable(
   'settings',
   {
@@ -84,267 +88,255 @@ export const settings = pgTable(
 export type Setting = typeof settings.$inferSelect
 export type InsertSetting = typeof settings.$inferInsert
 
-// Linear connections - stores per-user Linear OAuth tokens
-export const linearConnections = pgTable(
-  'linear_connections',
+// ---------------------------------------------------------------------------
+// Team
+// ---------------------------------------------------------------------------
+
+// Engineers on the team. Signals from every source are attributed to a member
+// through identity aliases (GitHub login, Linear user id, agent name, email…).
+export const members = pgTable(
+  'members',
   {
     id: text('id').primaryKey(),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    accessToken: text('access_token').notNull(), // encrypted
-    workspaceId: text('workspace_id').notNull(),
-    workspaceName: text('workspace_name'),
-    workspaceSlug: text('workspace_slug'),
+    name: text('name').notNull(),
+    email: text('email'),
+    avatarUrl: text('avatar_url'),
+    role: text('role'),
+    githubUsername: text('github_username'),
     linearUserId: text('linear_user_id'),
+    slackHandle: text('slack_handle'),
+    // Free-form aliases used by coding agents / CI to identify the engineer
+    aliases: jsonb('aliases').$type<string[]>(),
+    skills: jsonb('skills').$type<string[]>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdUnique: uniqueIndex('linear_connections_user_id_idx').on(table.userId),
+    userIdx: index('members_user_idx').on(table.userId),
   }),
 )
 
-export type LinearConnection = typeof linearConnections.$inferSelect
-export type InsertLinearConnection = typeof linearConnections.$inferInsert
+export type Member = typeof members.$inferSelect
+export type InsertMember = typeof members.$inferInsert
 
-// Linear issues - workspace-wide issue cache grouped for board views
-export const linearIssues = pgTable(
-  'linear_issues',
+// ---------------------------------------------------------------------------
+// Work graph
+// ---------------------------------------------------------------------------
+
+export const WORK_ITEM_KINDS = ['epic', 'feature', 'task'] as const
+export type WorkItemKind = (typeof WORK_ITEM_KINDS)[number]
+
+export const WORK_ITEM_STATUSES = [
+  'backlog',
+  'todo',
+  'in_progress',
+  'in_review',
+  'blocked',
+  'done',
+  'cancelled',
+] as const
+export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number]
+
+// Native work hierarchy: Epics → Features → Tasks. Status is a cached
+// projection of the event stream, never the source of truth.
+export const workItems = pgTable(
+  'work_items',
   {
     id: text('id').primaryKey(),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    linearIssueId: text('linear_issue_id').notNull(),
-    identifier: text('identifier').notNull(),
+    parentId: text('parent_id'),
+    kind: text('kind', { enum: WORK_ITEM_KINDS }).notNull().default('task'),
+    // Short human handle used to correlate signals, e.g. "BCN-42" or "AIRS-421"
+    key: text('key'),
     title: text('title').notNull(),
     description: text('description'),
-    status: text('status').notNull(),
-    statusType: text('status_type'),
-    priority: integer('priority').default(0),
-    assigneeLinearId: text('assignee_linear_id'),
-    assigneeName: text('assignee_name'),
-    linearProjectId: text('linear_project_id'),
-    projectName: text('project_name'),
-    linearTeamId: text('linear_team_id'),
-    teamName: text('team_name'),
-    linearUrl: text('linear_url'),
-    dueDate: timestamp('due_date'),
-    linearCreatedAt: timestamp('linear_created_at'),
-    linearUpdatedAt: timestamp('linear_updated_at'),
-    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    userIssueUnique: uniqueIndex('linear_issues_user_issue_idx').on(table.userId, table.linearIssueId),
-    userStatusIdx: index('linear_issues_user_status_idx').on(table.userId, table.statusType),
-    userProjectIdx: index('linear_issues_user_project_idx').on(table.userId, table.linearProjectId),
-  }),
-)
-
-export type LinearIssue = typeof linearIssues.$inferSelect
-export type InsertLinearIssue = typeof linearIssues.$inferInsert
-
-// Linear issue fetch cache - shared persistent cache scoped by workspace and project
-export const linearIssueFetchCache = pgTable(
-  'linear_issue_fetch_cache',
-  {
-    id: text('id').primaryKey(),
-    workspaceId: text('workspace_id').notNull(),
-    projectScopeId: text('project_scope_id').notNull(),
-    issues: jsonb('issues').notNull(),
-    fetchedAt: timestamp('fetched_at').defaultNow().notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    workspaceProjectUnique: uniqueIndex('linear_issue_fetch_cache_workspace_project_idx').on(
-      table.workspaceId,
-      table.projectScopeId,
-    ),
-    expiresAtIdx: index('linear_issue_fetch_cache_expires_idx').on(table.expiresAt),
-  }),
-)
-
-export type LinearIssueFetchCache = typeof linearIssueFetchCache.$inferSelect
-export type InsertLinearIssueFetchCache = typeof linearIssueFetchCache.$inferInsert
-
-// Products - top-level Beacon container for the product a user is building
-export const products = pgTable('products', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description'),
-  clientVertical: text('client_vertical'),
-  trackedTopics: jsonb('tracked_topics').$type<string[]>(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
-
-export type Product = typeof products.$inferSelect
-export type InsertProduct = typeof products.$inferInsert
-
-// Product Linear connections - maps one Beacon product to one Linear workspace
-export const productLinearConnections = pgTable(
-  'product_linear_connections',
-  {
-    id: text('id').primaryKey(),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    linearWorkspaceId: text('linear_workspace_id').notNull(),
-    linearProjectId: text('linear_project_id'),
-    linearProjectName: text('linear_project_name'),
-    linearTeamId: text('linear_team_id'),
-    linearTeamName: text('linear_team_name'),
-    syncEnabled: boolean('sync_enabled').default(true).notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    productUnique: uniqueIndex('product_linear_connection_product_idx').on(table.productId),
-    productLinearProjectUnique: uniqueIndex('product_linear_project_idx').on(table.productId, table.linearProjectId),
-  }),
-)
-
-export type ProductLinearConnection = typeof productLinearConnections.$inferSelect
-export type InsertProductLinearConnection = typeof productLinearConnections.$inferInsert
-
-// Product GitHub repositories - maps one Beacon product to one or more GitHub repos
-export const productGitHubRepositories = pgTable(
-  'product_github_repositories',
-  {
-    id: text('id').primaryKey(),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    owner: text('owner').notNull(),
-    repo: text('repo').notNull(),
-    repoUrl: text('repo_url').notNull(),
-    defaultBranch: text('default_branch'),
-    syncEnabled: boolean('sync_enabled').default(true).notNull(),
-    lastSyncedAt: timestamp('last_synced_at'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    productRepoUnique: uniqueIndex('product_github_repo_idx').on(table.productId, table.owner, table.repo),
-    productIdx: index('product_github_product_idx').on(table.productId),
-  }),
-)
-
-export type ProductGitHubRepository = typeof productGitHubRepositories.$inferSelect
-export type InsertProductGitHubRepository = typeof productGitHubRepositories.$inferInsert
-
-export const githubPullRequests = pgTable(
-  'github_pull_requests',
-  {
-    id: text('id').primaryKey(),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    repositoryId: text('repository_id')
-      .notNull()
-      .references(() => productGitHubRepositories.id, { onDelete: 'cascade' }),
-    githubPrId: text('github_pr_id').notNull(),
-    number: integer('number').notNull(),
-    title: text('title').notNull(),
-    body: text('body'),
-    state: text('state').notNull(),
-    authorLogin: text('author_login'),
-    headRefName: text('head_ref_name'),
-    baseRefName: text('base_ref_name'),
-    reviewers: jsonb('reviewers').$type<string[]>(),
+    status: text('status', { enum: WORK_ITEM_STATUSES }).notNull().default('todo'),
+    statusChangedAt: timestamp('status_changed_at'),
+    priority: integer('priority').default(0), // 0 none, 1 urgent … 4 low
+    assigneeMemberId: text('assignee_member_id').references(() => members.id, { onDelete: 'set null' }),
     labels: jsonb('labels').$type<string[]>(),
-    htmlUrl: text('html_url').notNull(),
-    githubCreatedAt: timestamp('github_created_at'),
-    githubUpdatedAt: timestamp('github_updated_at'),
-    githubMergedAt: timestamp('github_merged_at'),
-    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
+    dueDate: timestamp('due_date'),
+    // Provenance when mirrored from an external tracker (linear, jira, github…)
+    externalProvider: text('external_provider'),
+    externalId: text('external_id'),
+    externalUrl: text('external_url'),
+    lastEventAt: timestamp('last_event_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    repoPrUnique: uniqueIndex('github_pull_requests_repo_pr_idx').on(table.repositoryId, table.githubPrId),
-    productIdx: index('github_pull_requests_product_idx').on(table.productId),
+    userIdx: index('work_items_user_idx').on(table.userId),
+    userStatusIdx: index('work_items_user_status_idx').on(table.userId, table.status),
+    parentIdx: index('work_items_parent_idx').on(table.parentId),
+    userKeyIdx: uniqueIndex('work_items_user_key_idx')
+      .on(table.userId, table.key)
+      .where(sql`${table.key} is not null`),
+    externalUnique: uniqueIndex('work_items_external_idx').on(table.userId, table.externalProvider, table.externalId),
   }),
 )
 
-export type GitHubPullRequest = typeof githubPullRequests.$inferSelect
-export type InsertGitHubPullRequest = typeof githubPullRequests.$inferInsert
+export type WorkItem = typeof workItems.$inferSelect
+export type InsertWorkItem = typeof workItems.$inferInsert
 
-export const githubCommits = pgTable(
-  'github_commits',
+// ---------------------------------------------------------------------------
+// Event store — the heart of Beacon. Append-only. Everything else is derived.
+// ---------------------------------------------------------------------------
+
+export const EVENT_SOURCES = [
+  'github',
+  'linear',
+  'cicd',
+  'slack',
+  'calendar',
+  'agent', // coding agents (Claude Code, Codex, custom plugins)
+  'knowledge',
+  'manual',
+  'system',
+] as const
+export type EventSource = (typeof EVENT_SOURCES)[number]
+
+export const events = pgTable(
+  'events',
   {
     id: text('id').primaryKey(),
-    productId: text('product_id')
+    userId: text('user_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    repositoryId: text('repository_id')
-      .notNull()
-      .references(() => productGitHubRepositories.id, { onDelete: 'cascade' }),
-    sha: text('sha').notNull(),
-    message: text('message').notNull(),
-    authorName: text('author_name'),
-    authorLogin: text('author_login'),
-    htmlUrl: text('html_url').notNull(),
-    committedAt: timestamp('committed_at'),
-    lastSyncedAt: timestamp('last_synced_at').defaultNow().notNull(),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+      .references(() => users.id, { onDelete: 'cascade' }),
+    source: text('source', { enum: EVENT_SOURCES }).notNull(),
+    // Dot-namespaced type, e.g. task.started, pr.merged, ci.failed, agent.blocked
+    type: text('type').notNull(),
+    // Who did it (resolved to the roster when possible, raw label always kept)
+    memberId: text('member_id').references(() => members.id, { onDelete: 'set null' }),
+    actorLabel: text('actor_label'),
+    // What it relates to
+    workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'set null' }),
+    // One-line human-readable description of the event
+    summary: text('summary').notNull(),
+    payload: jsonb('payload').$type<Record<string, unknown>>(),
+    // Idempotency key from the source system (commit sha, delivery id…)
+    externalId: text('external_id'),
+    confidence: real('confidence'),
+    occurredAt: timestamp('occurred_at').notNull(),
+    ingestedAt: timestamp('ingested_at').defaultNow().notNull(),
   },
   (table) => ({
-    repoShaUnique: uniqueIndex('github_commits_repo_sha_idx').on(table.repositoryId, table.sha),
-    productIdx: index('github_commits_product_idx').on(table.productId),
+    userOccurredIdx: index('events_user_occurred_idx').on(table.userId, table.occurredAt),
+    userTypeIdx: index('events_user_type_idx').on(table.userId, table.type),
+    workItemIdx: index('events_work_item_idx').on(table.workItemId),
+    memberIdx: index('events_member_idx').on(table.memberId),
+    dedupeUnique: uniqueIndex('events_dedupe_idx').on(table.userId, table.source, table.externalId),
   }),
 )
 
-export type GitHubCommit = typeof githubCommits.$inferSelect
-export type InsertGitHubCommit = typeof githubCommits.$inferInsert
+export type Event = typeof events.$inferSelect
+export type InsertEvent = typeof events.$inferInsert
 
-export const githubLinearLinks = pgTable(
-  'github_linear_links',
+// ---------------------------------------------------------------------------
+// Integrations — every tool is just a signal source, none of them is "the" one
+// ---------------------------------------------------------------------------
+
+export const CONNECTION_PROVIDERS = ['linear', 'slack', 'google_calendar'] as const
+export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number]
+
+// OAuth-style connections to external providers (GitHub lives on users/accounts).
+export const connections = pgTable(
+  'connections',
   {
     id: text('id').primaryKey(),
-    productId: text('product_id')
+    userId: text('user_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
-    linearIssueId: text('linear_issue_id')
-      .notNull()
-      .references(() => linearIssues.id, { onDelete: 'cascade' }),
-    githubPullRequestId: text('github_pull_request_id').references(() => githubPullRequests.id, {
-      onDelete: 'cascade',
-    }),
-    githubCommitId: text('github_commit_id').references(() => githubCommits.id, { onDelete: 'cascade' }),
-    source: text('source', { enum: ['identifier_match', 'ai_suggestion', 'manual'] }).notNull(),
-    status: text('status', { enum: ['accepted', 'suggested', 'rejected'] })
-      .notNull()
-      .default('accepted'),
-    rationale: text('rationale'),
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider', { enum: CONNECTION_PROVIDERS }).notNull(),
+    accessToken: text('access_token').notNull(), // encrypted
+    externalUserId: text('external_user_id'),
+    workspaceId: text('workspace_id'),
+    workspaceName: text('workspace_name'),
+    config: jsonb('config').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    productIdx: index('github_linear_links_product_idx').on(table.productId),
-    issueIdx: index('github_linear_links_issue_idx').on(table.linearIssueId),
+    userProviderUnique: uniqueIndex('connections_user_provider_idx').on(table.userId, table.provider),
   }),
 )
 
-export type GitHubLinearLink = typeof githubLinearLinks.$inferSelect
-export type InsertGitHubLinearLink = typeof githubLinearLinks.$inferInsert
+export type Connection = typeof connections.$inferSelect
+export type InsertConnection = typeof connections.$inferInsert
+
+export const SIGNAL_SOURCE_KINDS = ['github_repo', 'linear_project', 'linear_team', 'linear_workspace'] as const
+export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number]
+
+// A concrete stream Beacon watches: a repo, a Linear project/team, a channel…
+export const signalSources = pgTable(
+  'signal_sources',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: SIGNAL_SOURCE_KINDS }).notNull(),
+    // e.g. "vercel/next.js" for a repo, the Linear project/team id otherwise
+    identifier: text('identifier').notNull(),
+    displayName: text('display_name').notNull(),
+    url: text('url'),
+    config: jsonb('config').$type<Record<string, unknown>>(),
+    enabled: boolean('enabled').default(true).notNull(),
+    // Incremental sync position (per-connector shape)
+    cursor: jsonb('cursor').$type<Record<string, unknown>>(),
+    lastSyncedAt: timestamp('last_synced_at'),
+    lastSyncError: text('last_sync_error'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userKindIdentifierUnique: uniqueIndex('signal_sources_user_kind_identifier_idx').on(
+      table.userId,
+      table.kind,
+      table.identifier,
+    ),
+  }),
+)
+
+export type SignalSource = typeof signalSources.$inferSelect
+export type InsertSignalSource = typeof signalSources.$inferInsert
+
+// API keys let coding agents, CI pipelines, and custom plugins push events.
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    keyPrefix: text('key_prefix').notNull(), // first chars, for display
+    lastUsedAt: timestamp('last_used_at'),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    keyHashUnique: uniqueIndex('api_keys_key_hash_idx').on(table.keyHash),
+    userIdx: index('api_keys_user_idx').on(table.userId),
+  }),
+)
+
+export type ApiKey = typeof apiKeys.$inferSelect
+export type InsertApiKey = typeof apiKeys.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Knowledge
+// ---------------------------------------------------------------------------
 
 export const knowledgeDocuments = pgTable(
   'knowledge_documents',
   {
     id: text('id').primaryKey(),
-    productId: text('product_id')
-      .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -362,6 +354,7 @@ export const knowledgeDocuments = pgTable(
         'google_doc',
         'google_sheet',
         'url',
+        'meeting_notes',
         'other',
       ],
     })
@@ -376,8 +369,7 @@ export const knowledgeDocuments = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    productIdx: index('knowledge_documents_product_idx').on(table.productId),
-    userProductIdx: index('knowledge_documents_user_product_idx').on(table.userId, table.productId),
+    userIdx: index('knowledge_documents_user_idx').on(table.userId),
   }),
 )
 
@@ -388,9 +380,9 @@ export const knowledgeSignals = pgTable(
   'knowledge_signals',
   {
     id: text('id').primaryKey(),
-    productId: text('product_id')
+    userId: text('user_id')
       .notNull()
-      .references(() => products.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'cascade' }),
     documentId: text('document_id')
       .notNull()
       .references(() => knowledgeDocuments.id, { onDelete: 'cascade' }),
@@ -408,32 +400,50 @@ export const knowledgeSignals = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    productIdx: index('knowledge_signals_product_idx').on(table.productId),
+    userIdx: index('knowledge_signals_user_idx').on(table.userId),
     documentIdx: index('knowledge_signals_document_idx').on(table.documentId),
-    statusIdx: index('knowledge_signals_status_idx').on(table.status),
   }),
 )
 
 export type KnowledgeSignal = typeof knowledgeSignals.$inferSelect
 export type InsertKnowledgeSignal = typeof knowledgeSignals.$inferInsert
 
-// Members - team roster
-export const members = pgTable('members', {
-  id: text('id').primaryKey(),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  email: text('email'),
-  avatarUrl: text('avatar_url'),
-  githubUsername: text('github_username'),
-  linearUserId: text('linear_user_id'),
-  role: text('role'),
-  inferredSkills: jsonb('inferred_skills').$type<string[]>(),
-  currentWorkload: integer('current_workload').default(0),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-})
+// ---------------------------------------------------------------------------
+// Intelligence — AI-derived findings over the event stream
+// ---------------------------------------------------------------------------
 
-export type Member = typeof members.$inferSelect
-export type InsertMember = typeof members.$inferInsert
+export const INSIGHT_KINDS = ['blocker', 'risk', 'anomaly', 'digest', 'recommendation'] as const
+export type InsightKind = (typeof INSIGHT_KINDS)[number]
+
+export const insights = pgTable(
+  'insights',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: INSIGHT_KINDS }).notNull(),
+    severity: text('severity', { enum: ['info', 'warning', 'critical'] })
+      .notNull()
+      .default('info'),
+    title: text('title').notNull(),
+    detail: text('detail').notNull(),
+    memberId: text('member_id').references(() => members.id, { onDelete: 'cascade' }),
+    workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'cascade' }),
+    sourceEventIds: jsonb('source_event_ids').$type<string[]>(),
+    status: text('status', { enum: ['active', 'resolved', 'dismissed'] })
+      .notNull()
+      .default('active'),
+    periodStart: timestamp('period_start'),
+    periodEnd: timestamp('period_end'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    userStatusIdx: index('insights_user_status_idx').on(table.userId, table.status),
+    userKindIdx: index('insights_user_kind_idx').on(table.userId, table.kind),
+  }),
+)
+
+export type Insight = typeof insights.$inferSelect
+export type InsertInsight = typeof insights.$inferInsert
