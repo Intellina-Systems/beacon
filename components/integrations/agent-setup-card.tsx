@@ -59,8 +59,8 @@ export function AgentSetupCard() {
       <CardContent className="space-y-3">
         <div>
           <p className="text-xs text-muted-foreground mb-2">
-            Install the <code className="font-mono">beacon-insights</code> skill (Claude Code, Cursor, Codex…), then
-            set <code className="font-mono">BEACON_API_KEY</code> to a key from Settings:
+            Install the <code className="font-mono">beacon-insights</code> skill (Claude Code, Cursor, Codex…), then set{' '}
+            <code className="font-mono">BEACON_API_KEY</code> to a key from Settings:
           </p>
           <CopyableSnippet text={INSTALL} />
         </div>

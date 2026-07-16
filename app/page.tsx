@@ -1,16 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { SignIn } from '@/components/auth/sign-in'
-import {
-  AlertTriangle,
-  Bot,
-  CircleCheck,
-  GitCommit,
-  GitMerge,
-  GitPullRequest,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
+import { AlertTriangle, Bot, CircleCheck, GitCommit, GitMerge, GitPullRequest, Sparkles, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const FEED = [
