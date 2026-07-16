@@ -236,17 +236,16 @@ AI summarizes trends—not people.
 ## P2
 
 - Coding agent plugins
-- Slack integration
-- Calendar integration
-- Knowledge Graph
 - Weekly digest
+- Knowledge Graph
+- Performance insights
+- Capacity planning
+- Predictive risk detection
 
 ## P3
 
 - AI research feed
-- Performance insights
-- Capacity planning
-- Predictive risk detection
+- Calendar integration
 - Organization-wide intelligence
 
 ---

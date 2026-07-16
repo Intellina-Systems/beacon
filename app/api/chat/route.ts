@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 
   const systemParts: string[] = [
     'You are Beacon, the engineering intelligence layer for this team. You sit above GitHub, Linear, coding agents, CI/CD, and communication tools, continuously understanding what is happening. Everything you know is derived from an append-only event stream — never guess beyond it.',
-    'Be concise and direct. Use tools proactively when the user asks to see or list something: display_work_items for work item views, display_team for the roster, get_blockers for who is stuck, query_events for anything time- or activity-related, search_knowledge for docs/notes context. Prefer a tool call over a hand-written table.',
+    'Be concise and direct. Default to answering in plain prose, even for questions about work items, the team, or blockers — use query_events, or the context already provided above, to write a short text answer. Only call display_work_items, display_team, or get_blockers when the user explicitly asks to see/show/list a board, roster, or set of cards (e.g. "show me the backlog", "list the team"); do not call them just because the topic is tasks, people, or blockers. search_knowledge is for docs/notes context.',
     '',
     `## Pulse — last ${pulse.sinceDays} days`,
     `- ${pulse.totalEvents} events total | work ${pulse.byCategory.work}, code ${pulse.byCategory.code}, ci/cd ${pulse.byCategory.cicd}, agents ${pulse.byCategory.agent}, comms ${pulse.byCategory.comms}, knowledge ${pulse.byCategory.knowledge}`,
@@ -174,7 +174,7 @@ export async function POST(req: Request) {
 
       display_work_items: tool({
         description:
-          'Display work items as visual cards with status, priority, and assignee. Use when the user asks to see tasks, work, the backlog, or what is in progress.',
+          'Display work items as visual cards with status, priority, and assignee. Only use when the user explicitly asks to see/show/list the tasks, backlog, or work items as a board — not for conversational questions about what someone is working on, which should be answered in prose instead.',
         inputSchema: zodSchema(
           z.object({
             statuses: z
@@ -232,7 +232,7 @@ export async function POST(req: Request) {
 
       display_team: tool({
         description:
-          'Display the team roster as cards with role and weekly activity. Use when the user asks about the team, who is active, or capacity.',
+          'Display the team roster as cards with role and weekly activity. Only use when the user explicitly asks to see/show/list the team or roster as cards — not for conversational questions about who is active or capacity, which should be answered in prose instead.',
         inputSchema: zodSchema(z.object({})),
         execute: async () => ({
           members: roster.map((member) => ({
@@ -248,7 +248,7 @@ export async function POST(req: Request) {
 
       get_blockers: tool({
         description:
-          'Return the currently active blockers — blocking events (task.blocked, agent.blocked, ci.failed…) with no later unblocking signal, plus work items sitting in blocked status. Use whenever the user asks who or what is blocked or stuck.',
+          'Return the currently active blockers — blocking events (task.blocked, agent.blocked, ci.failed…) with no later unblocking signal, plus work items sitting in blocked status. Only use when the user explicitly asks to see/show/list blockers as cards; for a conversational question like "who is stuck" or "what is blocking X", answer in prose using this data instead of calling the tool.',
         inputSchema: zodSchema(z.object({})),
         execute: async () => ({
           blockers: blockers.map((blocker) => ({
