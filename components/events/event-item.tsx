@@ -73,14 +73,16 @@ export function EventItem({ event }: { event: EventItemData }) {
       {createElement(eventIcon(event.type), { className: cn('h-4 w-4 mt-0.5 shrink-0', eventTone(event.type)) })}
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug">{event.summary}</p>
-        <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
-          <span className="font-mono">{event.type}</span>
-          <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-mono text-[11px]">{event.type}</span>
+          <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px]">
             {SOURCE_LABEL[event.source] ?? event.source}
           </Badge>
-          {event.workItemKey && <span className="font-mono">{event.workItemKey}</span>}
-          {(event.memberName ?? event.actorLabel) && <span>{event.memberName ?? event.actorLabel}</span>}
-          <span>{relativeTime(event.occurredAt)}</span>
+          {event.workItemKey && <span className="font-mono text-[11px]">{event.workItemKey}</span>}
+          {(event.memberName ?? event.actorLabel) && (
+            <span className="font-medium text-foreground/70">{event.memberName ?? event.actorLabel}</span>
+          )}
+          <span className="font-mono text-[11px]">{relativeTime(event.occurredAt)}</span>
         </div>
       </div>
     </div>

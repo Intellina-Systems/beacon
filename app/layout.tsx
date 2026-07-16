@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -9,19 +9,24 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getServerGitHubConnection } from '@/lib/github/get-connection-status'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const plexSans = IBM_Plex_Sans({
+  variable: '--font-plex-sans',
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
 })
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const plexMono = IBM_Plex_Mono({
+  variable: '--font-plex-mono',
   subsets: ['latin'],
+  weight: ['400', '500', '600'],
 })
 
 export const metadata: Metadata = {
-  title: 'Beacon',
-  description: 'AI-powered internal PM tool — bridge the gap between where your team works and where work is tracked',
+  title: {
+    default: 'Beacon',
+    template: '%s · Beacon',
+  },
+  description: 'The engineering intelligence layer — every signal from code, work, agents, and CI in one stream.',
 }
 
 export default async function RootLayout({
@@ -36,11 +41,15 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <BeaconLayout session={session} githubConnection={githubConnection}>
-            {children}
-          </BeaconLayout>
+          {session?.user ? (
+            <BeaconLayout session={session} githubConnection={githubConnection}>
+              {children}
+            </BeaconLayout>
+          ) : (
+            <main className="h-dvh overflow-y-auto">{children}</main>
+          )}
           <Toaster />
         </ThemeProvider>
         <Analytics />

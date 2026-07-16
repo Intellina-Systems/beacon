@@ -1,15 +1,16 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { and, eq, inArray } from 'drizzle-orm'
-import { AlertTriangle, Activity, Bot, GitMerge, Users } from 'lucide-react'
+import { AlertTriangle, Activity, ArrowUpRight, Bot, GitMerge, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { members, workItems } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { EventItem } from '@/components/events/event-item'
 import { relativeTime } from '@/lib/utils/relative-time'
+import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,35 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Cancelled',
 }
 
+const STATUS_DOT: Record<string, string> = {
+  todo: 'bg-muted-foreground/50',
+  in_progress: 'bg-chart-2',
+  in_review: 'bg-chart-3',
+  blocked: 'bg-destructive',
+}
+
+function PanelLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      {label}
+      <ArrowUpRight className="h-3 w-3" />
+    </Link>
+  )
+}
+
+/** Zero-fill the last N days so the chart always shows a complete axis. */
+function fillDays(rows: { day: string; count: number }[], days: number) {
+  const byDay = new Map(rows.map((r) => [r.day, r.count]))
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(Date.now() - (days - 1 - i) * 24 * 60 * 60 * 1000)
+    const key = d.toISOString().slice(0, 10)
+    return { key, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), count: byDay.get(key) ?? 0 }
+  })
+}
+
 export default async function PulsePage() {
   const session = await getServerSession()
   if (!session?.user) redirect('/')
@@ -31,10 +61,10 @@ export default async function PulsePage() {
   const [pulse, blockers, recentEvents, dailyActivity, memberActivity, roster, activeItems] = await Promise.all([
     getPulse(userId, 7),
     getActiveBlockers(userId),
-    listEvents(userId, { limit: 12 }),
+    listEvents(userId, { limit: 30 }),
     getDailyActivity(userId, 14),
     getMemberActivity(userId, 7),
-    db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name),
+    db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name).limit(12),
     db
       .select({ status: workItems.status, id: workItems.id })
       .from(workItems)
@@ -48,162 +78,159 @@ export default async function PulsePage() {
     return acc
   }, {})
 
-  const maxDaily = Math.max(1, ...dailyActivity.map((d) => d.count))
+  const series = fillDays(dailyActivity, 14)
+  const maxDaily = Math.max(1, ...series.map((d) => d.count))
 
   const stats = [
-    { icon: Activity, label: 'Events this week', value: pulse.totalEvents },
+    { icon: Activity, label: 'Events · 7d', value: pulse.totalEvents },
     { icon: GitMerge, label: 'PRs merged', value: pulse.prsMerged },
     { icon: Users, label: 'Active engineers', value: pulse.activeMemberIds.length },
     { icon: Bot, label: 'Agent events', value: pulse.byCategory.agent },
   ]
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Pulse</h1>
-        <p className="text-sm text-muted-foreground mt-1">What&apos;s happening across engineering, right now.</p>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map(({ icon: Icon, label, value }) => (
-          <Card key={label}>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                <Icon className="h-3.5 w-3.5" />
-                {label}
+    <PageShell title="Pulse" description="What's happening across engineering, right now" fixed>
+      <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
+        {/* KPI row */}
+        <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
+          {stats.map(({ icon: Icon, label, value }) => (
+            <div key={label} className="rounded-lg border bg-card px-4 py-3.5">
+              <div className="flex items-center justify-between">
+                <p className="micro-label">{label}</p>
+                <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
               </div>
-              <p className="text-2xl font-bold tabular-nums">{value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight lg:text-[28px]">{value}</p>
+            </div>
+          ))}
+        </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Activity — last 14 days</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {dailyActivity.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">
-                  No events yet. Connect a source or point an agent at the events API to light this up.
-                </p>
-              ) : (
-                <div className="flex items-end gap-1 h-24">
-                  {dailyActivity.map((day) => (
+        {/* Panels — internal scroll on desktop so the page never scrolls */}
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-12">
+          <div className="flex min-h-0 flex-col gap-4 lg:col-span-8">
+            <Panel className="shrink-0">
+              <PanelHeader label="Activity · 14 days" meta={<span className="tabular-nums">peak {maxDaily}</span>} />
+              <div className="px-4 pb-3 pt-4">
+                <div className="flex h-24 items-end gap-1">
+                  {series.map((day) => (
                     <div
-                      key={day.day}
-                      className="flex-1 flex flex-col items-center gap-1"
-                      title={`${day.day}: ${day.count}`}
+                      key={day.key}
+                      className="group relative flex-1"
+                      title={`${day.label}: ${day.count} event${day.count === 1 ? '' : 's'}`}
                     >
                       <div
-                        className="w-full rounded-sm bg-primary/70 min-h-[2px]"
-                        style={{ height: `${Math.round((day.count / maxDaily) * 88)}px` }}
+                        className={cn(
+                          'w-full rounded-[3px] transition-colors',
+                          day.count > 0 ? 'bg-beacon/80 group-hover:bg-beacon' : 'bg-muted',
+                        )}
+                        style={{ height: `${Math.max(3, Math.round((day.count / maxDaily) * 96))}px` }}
                       />
                     </div>
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="mt-1.5 flex justify-between font-mono text-[10px] text-muted-foreground">
+                  <span>{series[0].label}</span>
+                  <span>{series[series.length - 1].label}</span>
+                </div>
+              </div>
+            </Panel>
 
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Latest events</CardTitle>
-              <Link href="/timeline" className="text-xs text-muted-foreground hover:text-foreground">
-                Full timeline →
-              </Link>
-            </CardHeader>
-            <CardContent className="divide-y">
-              {recentEvents.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4">Nothing yet.</p>
-              ) : (
-                recentEvents.map((event) => <EventItem key={event.id} event={event} />)
-              )}
-            </CardContent>
-          </Card>
-        </div>
+            <Panel className="flex-1">
+              <PanelHeader label="Latest events" meta={<PanelLink href="/timeline" label="Timeline" />} />
+              <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">
+                {recentEvents.length === 0 ? (
+                  <EmptyState
+                    title="No events yet"
+                    hint="Connect a source or point an agent at the events API to light this up."
+                  />
+                ) : (
+                  recentEvents.map((event) => <EventItem key={event.id} event={event} />)
+                )}
+              </div>
+            </Panel>
+          </div>
 
-        <div className="space-y-6">
-          <Card className={blockers.length > 0 ? 'border-red-500/40' : undefined}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                Blockers
-                <Badge variant={blockers.length > 0 ? 'destructive' : 'outline'} className="ml-auto">
-                  {blockers.length}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {blockers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nobody is blocked. 🎉</p>
-              ) : (
-                blockers.slice(0, 6).map((blocker) => (
-                  <div key={blocker.event.id} className="text-sm">
-                    <p className="leading-snug">{blocker.event.summary}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {[blocker.member?.name, relativeTime(blocker.event.occurredAt)].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <div className="flex min-h-0 flex-col gap-4 lg:col-span-4">
+            <Panel className={cn('max-h-[40%] shrink-0', blockers.length > 0 && 'border-destructive/40')}>
+              <PanelHeader
+                label={
+                  <span className={cn('flex items-center gap-1.5', blockers.length > 0 && 'text-destructive')}>
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Blockers
+                  </span>
+                }
+                meta={
+                  <Badge variant={blockers.length > 0 ? 'destructive' : 'outline'} className="tabular-nums">
+                    {blockers.length}
+                  </Badge>
+                }
+              />
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                {blockers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nobody is blocked.</p>
+                ) : (
+                  blockers.map((blocker) => (
+                    <div key={blocker.event.id} className="text-sm">
+                      <p className="leading-snug">{blocker.event.summary}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {[blocker.member?.name, relativeTime(blocker.event.occurredAt)].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Panel>
 
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Work in flight</CardTitle>
-              <Link href="/work" className="text-xs text-muted-foreground hover:text-foreground">
-                All work →
-              </Link>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {activeItems.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No active work items.</p>
-              ) : (
-                Object.entries(statusCounts).map(([status, statusCount]) => (
-                  <div key={status} className="flex items-center justify-between text-sm">
-                    <span>{STATUS_LABEL[status] ?? status}</span>
-                    <span className="tabular-nums text-muted-foreground">{statusCount}</span>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+            <Panel className="shrink-0">
+              <PanelHeader label="Work in flight" meta={<PanelLink href="/work" label="All work" />} />
+              <div className="space-y-2 px-4 py-3">
+                {activeItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No active work items.</p>
+                ) : (
+                  Object.entries(statusCounts).map(([status, statusCount]) => (
+                    <div key={status} className="flex items-center gap-2 text-sm">
+                      <span
+                        className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[status] ?? 'bg-muted-foreground/50')}
+                      />
+                      <span className="flex-1">{STATUS_LABEL[status] ?? status}</span>
+                      <span className="font-mono text-xs text-muted-foreground tabular-nums">{statusCount}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Panel>
 
-          <Card>
-            <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Team</CardTitle>
-              <Link href="/team" className="text-xs text-muted-foreground hover:text-foreground">
-                Roster →
-              </Link>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {roster.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No members yet.</p>
-              ) : (
-                roster.slice(0, 8).map((member) => {
-                  const activity = memberActivity.get(member.id)
-                  return (
-                    <Link
-                      key={member.id}
-                      href={`/team/${member.id}`}
-                      className="flex items-center justify-between text-sm hover:text-foreground"
-                    >
-                      <span>{member.name}</span>
-                      <span className="tabular-nums text-muted-foreground text-xs">
-                        {activity ? `${activity.total} events` : 'quiet'}
-                      </span>
-                    </Link>
-                  )
-                })
-              )}
-            </CardContent>
-          </Card>
+            <Panel className="flex-1">
+              <PanelHeader label="Team" meta={<PanelLink href="/team" label="Roster" />} />
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
+                {roster.length === 0 ? (
+                  <p className="py-2 text-sm text-muted-foreground">No members yet.</p>
+                ) : (
+                  roster.map((member) => {
+                    const activity = memberActivity.get(member.id)
+                    return (
+                      <Link
+                        key={member.id}
+                        href={`/team/${member.id}`}
+                        className="-mx-2 flex items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent"
+                      >
+                        <span className="truncate">{member.name}</span>
+                        <span
+                          className={cn(
+                            'ml-2 shrink-0 font-mono text-xs tabular-nums',
+                            activity ? 'text-foreground/70' : 'text-muted-foreground/60',
+                          )}
+                        >
+                          {activity ? `${activity.total} ev` : 'quiet'}
+                        </span>
+                      </Link>
+                    )
+                  })
+                )}
+              </div>
+            </Panel>
+          </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   )
 }

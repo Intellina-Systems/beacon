@@ -308,7 +308,7 @@ function ChatConversation() {
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+          <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
@@ -319,7 +319,7 @@ function ChatConversation() {
       </div>
 
       <div className="border-t bg-background px-4 py-4">
-        <div className="mx-auto flex max-w-2xl items-end gap-2">
+        <div className="mx-auto flex max-w-3xl items-end gap-2">
           <Textarea
             ref={inputRef}
             onKeyDown={handleKeyDown}
@@ -362,24 +362,24 @@ export default function ChatPage() {
   const [chatKey, setChatKey] = useState(0)
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b bg-background px-4 py-3">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">Ask Beacon</p>
-            <p className="text-xs text-muted-foreground">Grounded in your live engineering event stream.</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setChatKey((k) => k + 1)}
-            title="New chat"
-          >
-            <SquarePen className="h-4 w-4" />
-          </Button>
+    <div className="flex h-full flex-col">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b bg-background px-4 lg:px-6">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="truncate text-[15px] font-semibold tracking-tight">Ask Beacon</h1>
+          <p className="hidden truncate text-[13px] text-muted-foreground md:block">
+            Grounded in your live engineering event stream
+          </p>
         </div>
-      </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          onClick={() => setChatKey((k) => k + 1)}
+          title="New chat"
+        >
+          <SquarePen className="h-4 w-4" />
+        </Button>
+      </header>
 
       <ChatConversation key={chatKey} />
     </div>

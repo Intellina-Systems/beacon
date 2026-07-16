@@ -10,9 +10,10 @@ export interface EventFilters {
   workItemId?: string
   types?: string[]
   limit?: number
+  offset?: number
 }
 
-export async function listEvents(userId: string, filters: EventFilters = {}) {
+function eventConditions(userId: string, filters: EventFilters): (SQL | undefined)[] {
   const conditions: (SQL | undefined)[] = [eq(events.userId, userId)]
   if (filters.sinceDays) {
     const since = new Date(Date.now() - filters.sinceDays * 24 * 60 * 60 * 1000)
@@ -22,6 +23,19 @@ export async function listEvents(userId: string, filters: EventFilters = {}) {
   if (filters.memberId) conditions.push(eq(events.memberId, filters.memberId))
   if (filters.workItemId) conditions.push(eq(events.workItemId, filters.workItemId))
   if (filters.types?.length) conditions.push(inArray(events.type, filters.types))
+  return conditions
+}
+
+export async function countEvents(userId: string, filters: EventFilters = {}): Promise<number> {
+  const [row] = await db
+    .select({ value: count() })
+    .from(events)
+    .where(and(...eventConditions(userId, filters)))
+  return row?.value ?? 0
+}
+
+export async function listEvents(userId: string, filters: EventFilters = {}) {
+  const conditions = eventConditions(userId, filters)
 
   return db
     .select({
@@ -45,6 +59,7 @@ export async function listEvents(userId: string, filters: EventFilters = {}) {
     .where(and(...conditions))
     .orderBy(desc(events.occurredAt))
     .limit(Math.min(filters.limit ?? 100, 500))
+    .offset(filters.offset ?? 0)
 }
 
 export type EventRow = Awaited<ReturnType<typeof listEvents>>[number]

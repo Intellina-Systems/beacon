@@ -8,8 +8,10 @@ import { ConnectionsCard } from '@/components/integrations/connections-card'
 import { SourcesCard } from '@/components/integrations/sources-card'
 import { ApiKeysCard } from '@/components/integrations/api-keys-card'
 import { AgentSetupCard } from '@/components/integrations/agent-setup-card'
+import { PageShell } from '@/components/page-shell'
 
 export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Integrations' }
 
 export default async function IntegrationsPage() {
   const session = await getServerSession()
@@ -41,46 +43,44 @@ export default async function IntegrationsPage() {
   const linear = linearRows[0] ?? null
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Integrations</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Every tool is just a signal source. Connect them and Beacon does the rest.
-        </p>
+    <PageShell
+      title="Integrations"
+      description="Every tool is just a signal source — connect them and Beacon does the rest"
+    >
+      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-5 lg:px-6">
+        <ConnectionsCard
+          githubConnected={github.connected}
+          githubUsername={github.username}
+          linearWorkspace={linear?.workspaceName ?? null}
+        />
+
+        <SourcesCard
+          sources={sources.map((source) => ({
+            id: source.id,
+            kind: source.kind,
+            identifier: source.identifier,
+            displayName: source.displayName,
+            enabled: source.enabled,
+            lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
+            lastSyncError: source.lastSyncError,
+          }))}
+          githubConnected={github.connected}
+          linearConnected={!!linear}
+        />
+
+        <ApiKeysCard
+          keys={keys.map((key) => ({
+            id: key.id,
+            name: key.name,
+            keyPrefix: key.keyPrefix,
+            lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+            revokedAt: key.revokedAt?.toISOString() ?? null,
+            createdAt: key.createdAt.toISOString(),
+          }))}
+        />
+
+        <AgentSetupCard />
       </div>
-
-      <ConnectionsCard
-        githubConnected={github.connected}
-        githubUsername={github.username}
-        linearWorkspace={linear?.workspaceName ?? null}
-      />
-
-      <SourcesCard
-        sources={sources.map((source) => ({
-          id: source.id,
-          kind: source.kind,
-          identifier: source.identifier,
-          displayName: source.displayName,
-          enabled: source.enabled,
-          lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
-          lastSyncError: source.lastSyncError,
-        }))}
-        githubConnected={github.connected}
-        linearConnected={!!linear}
-      />
-
-      <ApiKeysCard
-        keys={keys.map((key) => ({
-          id: key.id,
-          name: key.name,
-          keyPrefix: key.keyPrefix,
-          lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
-          revokedAt: key.revokedAt?.toISOString() ?? null,
-          createdAt: key.createdAt.toISOString(),
-        }))}
-      />
-
-      <AgentSetupCard />
-    </div>
+    </PageShell>
   )
 }

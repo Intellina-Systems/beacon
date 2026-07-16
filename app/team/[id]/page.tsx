@@ -11,7 +11,7 @@ import { getActiveBlockers, getMemberActivity, listEvents } from '@/lib/events/q
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { EventItem } from '@/components/events/event-item'
 import { EditMemberDialog } from '@/components/members/edit-member-dialog'
 import { MemberConnections } from '@/components/members/member-connections'
@@ -39,7 +39,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
     .limit(1)
   if (!member) notFound()
 
-  const [recentEvents, assignedItems, allBlockers, activityByMember] = await Promise.all([
+  const [recentEvents, assignedItems, allBlockers, activityByMember, linearConnectionRows] = await Promise.all([
     listEvents(userId, { memberId: member.id, sinceDays: 30, limit: 40 }),
     db
       .select({
@@ -62,13 +62,13 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       .limit(30),
     getActiveBlockers(userId),
     getMemberActivity(userId, 7),
+    db
+      .select()
+      .from(connections)
+      .where(and(eq(connections.userId, userId), eq(connections.provider, 'linear')))
+      .limit(1),
   ])
 
-  const linearConnectionRows = await db
-    .select()
-    .from(connections)
-    .where(and(eq(connections.userId, userId), eq(connections.provider, 'linear')))
-    .limit(1)
   const availableLinearUsers = linearConnectionRows[0]
     ? await getLinearUsers(decrypt(linearConnectionRows[0].accessToken)).catch(() => [])
     : []
@@ -84,100 +84,108 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
     .toUpperCase()
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <div className="mb-6">
-        <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-          <Link href="/team">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Team
-          </Link>
-        </Button>
-      </div>
-
-      <div className="mb-8 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Avatar className="h-14 w-14">
-            <AvatarImage src={member.avatarUrl ?? undefined} alt={member.name} />
-            <AvatarFallback>{initials}</AvatarFallback>
+    <PageShell
+      title={member.name}
+      description={[member.role, member.email].filter(Boolean).join(' · ') || undefined}
+      actions={
+        <>
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+            <Link href="/team">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Team
+            </Link>
+          </Button>
+          <EditMemberDialog memberId={member.id} name={member.name} email={member.email} role={member.role} />
+        </>
+      }
+    >
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
+        <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-4">
+          <Avatar className="h-14 w-14 border">
+            <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
+            <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
           </Avatar>
-          <div>
-            <h1 className="text-2xl font-bold">{member.name}</h1>
-            <p className="text-sm text-muted-foreground">
+          <div className="min-w-0">
+            <p className="truncate text-lg font-semibold tracking-tight">{member.name}</p>
+            <p className="truncate text-sm text-muted-foreground">
               {[member.role, member.email].filter(Boolean).join(' · ') || 'No details yet'}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {weekActivity ? `${weekActivity.total} events this week` : 'No activity this week'}
-            </p>
+          </div>
+          <div className="ml-auto text-right">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{weekActivity?.total ?? 0}</p>
+            <p className="micro-label">events · 7d</p>
           </div>
         </div>
-        <EditMemberDialog memberId={member.id} name={member.name} email={member.email} role={member.role} />
-      </div>
 
-      {memberBlockers.length > 0 && (
-        <Card className="mb-6 border-red-500/40">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              Currently blocked
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {memberBlockers.map((blocker) => (
-              <p key={blocker.event.id} className="text-sm">
-                {blocker.event.summary}
-              </p>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+        {memberBlockers.length > 0 && (
+          <Panel className="border-destructive/40">
+            <PanelHeader
+              label={
+                <span className="flex items-center gap-1.5 text-destructive">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Currently blocked
+                </span>
+              }
+            />
+            <div className="space-y-2 px-4 py-3">
+              {memberBlockers.map((blocker) => (
+                <p key={blocker.event.id} className="text-sm leading-snug">
+                  {blocker.event.summary}
+                </p>
+              ))}
+            </div>
+          </Panel>
+        )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Assigned work</CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y">
-            {assignedItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No active assigned work.</p>
-            ) : (
-              assignedItems.map((item) => (
-                <div key={item.id} className="flex items-center gap-2 py-2 text-sm">
-                  {item.key && <span className="font-mono text-xs text-muted-foreground shrink-0">{item.key}</span>}
-                  <span className="truncate flex-1">{item.title}</span>
-                  <Badge
-                    variant={item.status === 'blocked' ? 'destructive' : 'outline'}
-                    className="px-1.5 py-0 text-[10px]"
-                  >
-                    {STATUS_LABEL[item.status] ?? item.status}
-                  </Badge>
-                  {item.externalUrl && (
-                    <a href={item.externalUrl} target="_blank" rel="noreferrer" className="text-muted-foreground">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <Panel>
+            <PanelHeader label="Assigned work" meta={<span className="tabular-nums">{assignedItems.length}</span>} />
+            <div className="divide-y px-4">
+              {assignedItems.length === 0 ? (
+                <EmptyState title="No active assigned work" />
+              ) : (
+                assignedItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 py-2.5 text-sm">
+                    {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
+                    <span className="flex-1 truncate">{item.title}</span>
+                    <Badge
+                      variant={item.status === 'blocked' ? 'destructive' : 'outline'}
+                      className="shrink-0 px-1.5 py-0 font-mono text-[10px]"
+                    >
+                      {STATUS_LABEL[item.status] ?? item.status}
+                    </Badge>
+                    {item.externalUrl && (
+                      <a
+                        href={item.externalUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label="Open in tracker"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </Panel>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Recent activity</CardTitle>
-          </CardHeader>
-          <CardContent className="divide-y">
-            {recentEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">
-                No events attributed yet. Link identities below so signals resolve to {member.name}.
-              </p>
-            ) : (
-              recentEvents.slice(0, 15).map((event) => <EventItem key={event.id} event={event} />)
-            )}
-          </CardContent>
-        </Card>
-      </div>
+          <Panel>
+            <PanelHeader label="Recent activity · 30d" />
+            <div className="divide-y px-4">
+              {recentEvents.length === 0 ? (
+                <EmptyState
+                  title="No events attributed yet"
+                  hint={`Link identities below so signals resolve to ${member.name}.`}
+                />
+              ) : (
+                recentEvents.slice(0, 15).map((event) => <EventItem key={event.id} event={event} />)
+              )}
+            </div>
+          </Panel>
+        </div>
 
-      <div className="mt-6">
         <MemberConnections
           memberId={member.id}
           githubUsername={member.githubUsername}
@@ -186,6 +194,6 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           availableLinearUsers={availableLinearUsers}
         />
       </div>
-    </div>
+    </PageShell>
   )
 }

@@ -1,129 +1,232 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq } from 'drizzle-orm'
 import { ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { members, workItems, type WorkItemStatus } from '@/lib/db/schema'
+import { members, workItems, WORK_ITEM_STATUSES, type WorkItemStatus } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { Badge } from '@/components/ui/badge'
+import { EmptyState, PageShell } from '@/components/page-shell'
+import { Pagination, parsePage } from '@/components/ui/pagination'
 import { relativeTime } from '@/lib/utils/relative-time'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
+export const metadata = { title: 'Work' }
 
-const STATUS_ORDER: WorkItemStatus[] = ['blocked', 'in_progress', 'in_review', 'todo', 'backlog', 'done', 'cancelled']
+const PAGE_SIZE = 50
 
 const STATUS_META: Record<WorkItemStatus, { label: string; tone: string }> = {
-  blocked: { label: 'Blocked', tone: 'bg-red-500' },
-  in_progress: { label: 'In progress', tone: 'bg-blue-500' },
-  in_review: { label: 'In review', tone: 'bg-purple-500' },
-  todo: { label: 'Todo', tone: 'bg-slate-400' },
-  backlog: { label: 'Backlog', tone: 'bg-slate-300' },
-  done: { label: 'Done', tone: 'bg-emerald-500' },
-  cancelled: { label: 'Cancelled', tone: 'bg-slate-300' },
+  blocked: { label: 'Blocked', tone: 'bg-destructive' },
+  in_progress: { label: 'In progress', tone: 'bg-chart-2' },
+  in_review: { label: 'In review', tone: 'bg-chart-3' },
+  todo: { label: 'Todo', tone: 'bg-muted-foreground/60' },
+  backlog: { label: 'Backlog', tone: 'bg-muted-foreground/35' },
+  done: { label: 'Done', tone: 'bg-success' },
+  cancelled: { label: 'Cancelled', tone: 'bg-muted-foreground/35' },
 }
+
+const STATUS_TAB_ORDER: WorkItemStatus[] = [
+  'blocked',
+  'in_progress',
+  'in_review',
+  'todo',
+  'backlog',
+  'done',
+  'cancelled',
+]
 
 const PRIORITY_LABEL: Record<number, string> = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low' }
 
-export default async function WorkPage() {
+function workHref(status: string | undefined, page: number) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (page > 1) params.set('page', String(page))
+  const qs = params.toString()
+  return qs ? `/work?${qs}` : '/work'
+}
+
+export default async function WorkPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; page?: string }>
+}) {
   const session = await getServerSession()
   if (!session?.user) redirect('/')
+  const userId = session.user.id
 
-  const rows = await db
-    .select({
-      id: workItems.id,
-      kind: workItems.kind,
-      key: workItems.key,
-      title: workItems.title,
-      status: workItems.status,
-      priority: workItems.priority,
-      assigneeName: members.name,
-      externalProvider: workItems.externalProvider,
-      externalUrl: workItems.externalUrl,
-      lastEventAt: workItems.lastEventAt,
-      updatedAt: workItems.updatedAt,
-    })
-    .from(workItems)
-    .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
-    .where(eq(workItems.userId, session.user.id))
-    .orderBy(desc(workItems.updatedAt))
-    .limit(500)
+  const { status: rawStatus, page: rawPage } = await searchParams
+  const status = WORK_ITEM_STATUSES.includes(rawStatus as WorkItemStatus) ? (rawStatus as WorkItemStatus) : undefined
+  const page = parsePage(rawPage)
 
-  const grouped = STATUS_ORDER.map((status) => ({
-    status,
-    items: rows.filter((row) => row.status === status),
-  })).filter((group) => group.items.length > 0)
+  const where = status ? and(eq(workItems.userId, userId), eq(workItems.status, status)) : eq(workItems.userId, userId)
+
+  const [rows, statusCounts] = await Promise.all([
+    db
+      .select({
+        id: workItems.id,
+        kind: workItems.kind,
+        key: workItems.key,
+        title: workItems.title,
+        status: workItems.status,
+        priority: workItems.priority,
+        assigneeName: members.name,
+        externalUrl: workItems.externalUrl,
+        lastEventAt: workItems.lastEventAt,
+        updatedAt: workItems.updatedAt,
+      })
+      .from(workItems)
+      .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
+      .where(where)
+      .orderBy(desc(workItems.updatedAt))
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE),
+    db
+      .select({ status: workItems.status, count: count() })
+      .from(workItems)
+      .where(eq(workItems.userId, userId))
+      .groupBy(workItems.status),
+  ])
+
+  const countByStatus = new Map(statusCounts.map((r) => [r.status, r.count]))
+  const totalAll = statusCounts.reduce((n, r) => n + r.count, 0)
+  const total = status ? (countByStatus.get(status) ?? 0) : totalAll
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Work</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {rows.length} work item{rows.length === 1 ? '' : 's'} — status is derived from the event stream.
-        </p>
-      </div>
+    <PageShell title="Work" description="Status derived from the event stream — never hand-updated">
+      <div className="mx-auto w-full max-w-6xl px-4 py-5 lg:px-6">
+        <div className="mb-5 flex flex-wrap gap-1.5">
+          <Link
+            href={workHref(undefined, 1)}
+            className={cn(
+              'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
+              !status
+                ? 'border-beacon/50 bg-beacon/10 text-foreground'
+                : 'bg-card text-muted-foreground hover:text-foreground',
+            )}
+          >
+            All <span className="tabular-nums opacity-70">{totalAll}</span>
+          </Link>
+          {STATUS_TAB_ORDER.map((s) => {
+            const c = countByStatus.get(s) ?? 0
+            if (c === 0) return null
+            return (
+              <Link
+                key={s}
+                href={workHref(s, 1)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
+                  status === s
+                    ? 'border-beacon/50 bg-beacon/10 text-foreground'
+                    : 'bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[s].tone)} />
+                {STATUS_META[s].label} <span className="tabular-nums opacity-70">{c}</span>
+              </Link>
+            )
+          })}
+        </div>
 
-      {rows.length === 0 ? (
-        <div className="text-center py-16 border rounded-md border-dashed">
-          <p className="text-muted-foreground">No work items yet.</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Add a Linear source in{' '}
-            <Link href="/integrations" className="underline">
-              Integrations
-            </Link>{' '}
-            or create items via <code className="font-mono text-xs">POST /api/work-items</code>.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-8">
-          {grouped.map(({ status, items }) => (
-            <section key={status}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={cn('h-2 w-2 rounded-full', STATUS_META[status].tone)} />
-                <h2 className="text-sm font-semibold">{STATUS_META[status].label}</h2>
-                <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span>
-              </div>
-              <div className="rounded-md border divide-y">
-                {items.map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    {item.key && <span className="font-mono text-xs text-muted-foreground shrink-0">{item.key}</span>}
-                    <span className="truncate flex-1">{item.title}</span>
-                    {item.priority != null && item.priority > 0 && (
-                      <Badge
-                        variant={item.priority <= 2 ? 'destructive' : 'outline'}
-                        className="px-1.5 py-0 text-[10px] shrink-0"
-                      >
-                        {PRIORITY_LABEL[item.priority]}
-                      </Badge>
-                    )}
-                    {item.kind !== 'task' && (
-                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px] shrink-0">
-                        {item.kind}
-                      </Badge>
-                    )}
-                    <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
-                      {item.assigneeName ?? 'Unassigned'}
-                    </span>
-                    <span className="text-xs text-muted-foreground shrink-0 hidden md:inline">
+        {rows.length === 0 ? (
+          <div className="flex rounded-lg border border-dashed">
+            <EmptyState
+              title={status ? `No ${STATUS_META[status].label.toLowerCase()} items` : 'No work items yet'}
+              hint={
+                <>
+                  Add a Linear source in{' '}
+                  <Link href="/integrations" className="underline underline-offset-2">
+                    Integrations
+                  </Link>{' '}
+                  or create items via <code className="font-mono">POST /api/work-items</code>.
+                </>
+              }
+            />
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40">
+                  <th className="micro-label px-4 py-2.5 text-left font-medium">Item</th>
+                  <th className="micro-label w-32 px-4 py-2.5 text-left font-medium">Status</th>
+                  <th className="micro-label hidden w-24 px-4 py-2.5 text-left font-medium sm:table-cell">Priority</th>
+                  <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium md:table-cell">Assignee</th>
+                  <th className="micro-label hidden w-32 px-4 py-2.5 text-right font-medium lg:table-cell">Activity</th>
+                  <th className="w-10 px-2 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((item) => (
+                  <tr key={item.id} className="transition-colors hover:bg-accent/40">
+                    <td className="max-w-0 px-4 py-2.5">
+                      <div className="flex items-center gap-2.5">
+                        {item.key && (
+                          <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>
+                        )}
+                        <span className="truncate font-medium">{item.title}</span>
+                        {item.kind !== 'task' && (
+                          <Badge variant="secondary" className="shrink-0 px-1.5 py-0 font-mono text-[10px] uppercase">
+                            {item.kind}
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                        <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[item.status].tone)} />
+                        {STATUS_META[item.status].label}
+                      </span>
+                    </td>
+                    <td className="hidden px-4 py-2.5 sm:table-cell">
+                      {item.priority != null && item.priority > 0 ? (
+                        <span
+                          className={cn(
+                            'text-xs',
+                            item.priority <= 2 ? 'font-medium text-destructive' : 'text-muted-foreground',
+                          )}
+                        >
+                          {PRIORITY_LABEL[item.priority]}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50">—</span>
+                      )}
+                    </td>
+                    <td className="hidden truncate px-4 py-2.5 text-xs text-muted-foreground md:table-cell">
+                      {item.assigneeName ?? <span className="text-muted-foreground/50">Unassigned</span>}
+                    </td>
+                    <td className="hidden whitespace-nowrap px-4 py-2.5 text-right font-mono text-xs text-muted-foreground lg:table-cell">
                       {relativeTime(item.lastEventAt ?? item.updatedAt)}
-                    </span>
-                    {item.externalUrl && (
-                      <a
-                        href={item.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-muted-foreground hover:text-foreground shrink-0"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
+                    </td>
+                    <td className="px-2 py-2.5 text-center">
+                      {item.externalUrl && (
+                        <a
+                          href={item.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label="Open in tracker"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-    </div>
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          total={total}
+          hrefFor={(p) => workHref(status, p)}
+          className="mt-2"
+        />
+      </div>
+    </PageShell>
   )
 }
