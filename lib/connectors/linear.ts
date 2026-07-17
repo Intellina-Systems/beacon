@@ -5,6 +5,7 @@ import { decrypt } from '@/lib/crypto'
 import { getLinearIssues, type LinearIssue } from '@/lib/linear/client'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
 import { generateId } from '@/lib/utils/id'
+import { getDefaultProjectId } from '@/lib/db/projects'
 import type { SyncResult } from './types'
 
 const STATE_TYPE_TO_STATUS: Record<string, WorkItemStatus> = {
@@ -22,11 +23,11 @@ function mapStatus(issue: LinearIssue): WorkItemStatus {
 
 // Mirror a Linear project/team/workspace into the work graph and emit events
 // for anything that changed since the last sync.
-export async function syncLinearSource(userId: string, source: SignalSource): Promise<SyncResult> {
+export async function syncLinearSource(workspaceId: string, source: SignalSource): Promise<SyncResult> {
   const connectionRows = await db
     .select()
     .from(connections)
-    .where(and(eq(connections.userId, userId), eq(connections.provider, 'linear')))
+    .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
     .limit(1)
   const connection = connectionRows[0]
   if (!connection) throw new Error('Linear is not connected')
@@ -46,10 +47,11 @@ export async function syncLinearSource(userId: string, source: SignalSource): Pr
   const existingRows = await db
     .select({ id: workItems.id, externalId: workItems.externalId, status: workItems.status, key: workItems.key })
     .from(workItems)
-    .where(and(eq(workItems.userId, userId), eq(workItems.externalProvider, 'linear')))
+    .where(and(eq(workItems.workspaceId, workspaceId), eq(workItems.externalProvider, 'linear')))
   const existingByExternalId = new Map(existingRows.map((row) => [row.externalId, row]))
 
-  const roster = await db.select().from(members).where(eq(members.userId, userId))
+  const roster = await db.select().from(members).where(eq(members.workspaceId, workspaceId))
+  const projectId = source.projectId ?? (await getDefaultProjectId(workspaceId))
   const memberByLinearId = new Map(roster.filter((m) => m.linearUserId).map((m) => [m.linearUserId, m]))
 
   const rawEvents: RawEvent[] = []
@@ -62,7 +64,8 @@ export async function syncLinearSource(userId: string, source: SignalSource): Pr
     const assignee = issue.assignee ? memberByLinearId.get(issue.assignee.id) : undefined
 
     const values = {
-      userId,
+      workspaceId,
+      projectId,
       kind: 'task' as const,
       key: issue.identifier,
       title: issue.title,
@@ -82,7 +85,7 @@ export async function syncLinearSource(userId: string, source: SignalSource): Pr
         .insert(workItems)
         .values({ ...values, id: generateId(), statusChangedAt: new Date(issue.updatedAt) })
         .onConflictDoUpdate({
-          target: [workItems.userId, workItems.externalProvider, workItems.externalId],
+          target: [workItems.workspaceId, workItems.externalProvider, workItems.externalId],
           set: values,
         })
       upserted++
@@ -130,7 +133,7 @@ export async function syncLinearSource(userId: string, source: SignalSource): Pr
     }
   }
 
-  const result = await ingestEvents(rawEvents, { userId, defaultSource: 'linear' })
+  const result = await ingestEvents(rawEvents, { workspaceId, defaultSource: 'linear' })
 
   const latestUpdatedAt = issues.reduce((max, issue) => (issue.updatedAt > max ? issue.updatedAt : max), '')
   await db

@@ -3,10 +3,11 @@ import { notFound, redirect } from 'next/navigation'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { AlertTriangle, ArrowLeft, ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { connections, members, workItems } from '@/lib/db/schema'
+import { connections, members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { decrypt } from '@/lib/crypto'
 import { getLinearUsers } from '@/lib/linear/client'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
 import { getActiveBlockers, getMemberActivity, listEvents } from '@/lib/events/queries'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -27,20 +28,30 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export default async function MemberProfilePage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  const workspaceId = ctx.workspaceId
 
   const { id } = await params
   const [member] = await db
     .select()
     .from(members)
-    .where(and(eq(members.id, id), eq(members.userId, userId)))
+    .where(and(eq(members.id, id), eq(members.workspaceId, workspaceId)))
     .limit(1)
   if (!member) notFound()
 
+  const detailVisible = await detailVisibleMemberIds(ctx)
+  if (detailVisible && !detailVisible.includes(member.id)) redirect('/team')
+
+  const memberTeams = await db
+    .select({ name: teams.name, isLead: teamMembers.isLead })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(eq(teamMembers.memberId, member.id))
+    .orderBy(teams.name)
+
   const [recentEvents, assignedItems, allBlockers, activityByMember, linearConnectionRows] = await Promise.all([
-    listEvents(userId, { memberId: member.id, sinceDays: 30, limit: 40 }),
+    listEvents(workspaceId, { memberId: member.id, sinceDays: 30, limit: 40 }),
     db
       .select({
         id: workItems.id,
@@ -53,19 +64,19 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       .from(workItems)
       .where(
         and(
-          eq(workItems.userId, userId),
+          eq(workItems.workspaceId, workspaceId),
           eq(workItems.assigneeMemberId, member.id),
           inArray(workItems.status, ['backlog', 'todo', 'in_progress', 'in_review', 'blocked']),
         ),
       )
       .orderBy(desc(workItems.updatedAt))
       .limit(30),
-    getActiveBlockers(userId),
-    getMemberActivity(userId, 7),
+    getActiveBlockers(workspaceId),
+    getMemberActivity(workspaceId, 7),
     db
       .select()
       .from(connections)
-      .where(and(eq(connections.userId, userId), eq(connections.provider, 'linear')))
+      .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
       .limit(1),
   ])
 
@@ -86,7 +97,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   return (
     <PageShell
       title={member.name}
-      description={[member.role, member.email].filter(Boolean).join(' · ') || undefined}
+      description={[member.title, member.email].filter(Boolean).join(' · ') || undefined}
       actions={
         <>
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
@@ -95,7 +106,16 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               Team
             </Link>
           </Button>
-          <EditMemberDialog memberId={member.id} name={member.name} email={member.email} role={member.role} />
+          {isAdmin(ctx) && (
+            <EditMemberDialog
+              memberId={member.id}
+              name={member.name}
+              email={member.email}
+              title={member.title}
+              accessRole={member.accessRole}
+              showAccessRole={member.status !== 'profile'}
+            />
+          )}
         </>
       }
     >
@@ -106,10 +126,35 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate text-lg font-semibold tracking-tight">{member.name}</p>
-            <p className="truncate text-sm text-muted-foreground">
-              {[member.role, member.email].filter(Boolean).join(' · ') || 'No details yet'}
+            <p className="flex items-center gap-2 truncate text-lg font-semibold tracking-tight">
+              {member.name}
+              {member.status !== 'profile' && (
+                <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-beacon">
+                  {member.accessRole}
+                </span>
+              )}
+              {member.status === 'invited' && (
+                <span className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  invited
+                </span>
+              )}
             </p>
+            <p className="truncate text-sm text-muted-foreground">
+              {[member.title, member.email].filter(Boolean).join(' · ') || 'No details yet'}
+            </p>
+            {memberTeams.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {memberTeams.map((team) => (
+                  <span
+                    key={team.name}
+                    className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                  >
+                    {team.name}
+                    {team.isLead ? ' · lead' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="ml-auto text-right">
             <p className="text-2xl font-semibold tabular-nums tracking-tight">{weekActivity?.total ?? 0}</p>

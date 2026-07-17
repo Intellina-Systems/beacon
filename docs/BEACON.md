@@ -233,6 +233,14 @@ AI summarizes trends—not people.
 - Individual dashboard
 - AI Chat
 
+## P1.5 — shipped
+
+- Workspace model (users = identities, workspaces own the data)
+- Access roles: Admin / Manager / Engineer + per-team Lead flag
+- Teams (cross-team membership, non-technical kind, no manager required)
+- Projects (Workspace → Projects → Epics → Features → Tasks; sources map to projects)
+- Link-based invites with admin-predefined role & team assignments
+
 ## P2
 
 - Coding agent plugins

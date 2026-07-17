@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { visibleMemberIds } from '@/lib/auth/permissions'
 import { countEvents, listEvents } from '@/lib/events/queries'
 import { EventItem } from '@/components/events/event-item'
 import { EmptyState, PageShell } from '@/components/page-shell'
@@ -36,16 +37,17 @@ export default async function TimelinePage({
 }: {
   searchParams: Promise<{ source?: string; page?: string }>
 }) {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
 
   const { source, page: rawPage } = await searchParams
   const page = parsePage(rawPage)
 
-  const filters = { source: (source as Event['source']) || undefined }
+  const visible = await visibleMemberIds(ctx)
+  const filters = { source: (source as Event['source']) || undefined, visibleMemberIds: visible }
   const [events, total] = await Promise.all([
-    listEvents(session.user.id, { ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
-    countEvents(session.user.id, filters),
+    listEvents(ctx.workspaceId, { ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
+    countEvents(ctx.workspaceId, filters),
   ])
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 

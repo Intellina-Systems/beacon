@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { and, count, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, isNull, ne, or } from 'drizzle-orm'
 import { ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { members, workItems, WORK_ITEM_STATUSES, type WorkItemStatus } from '@/lib/db/schema'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { members, projects, workItems, WORK_ITEM_STATUSES, type WorkItemStatus } from '@/lib/db/schema'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { canViewAllTeams, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
+import { ManageProjectsDialog } from '@/components/projects/manage-projects-dialog'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
@@ -38,9 +40,10 @@ const STATUS_TAB_ORDER: WorkItemStatus[] = [
 
 const PRIORITY_LABEL: Record<number, string> = { 1: 'Urgent', 2: 'High', 3: 'Medium', 4: 'Low' }
 
-function workHref(status: string | undefined, page: number) {
+function workHref(status: string | undefined, page: number, project?: string) {
   const params = new URLSearchParams()
   if (status) params.set('status', status)
+  if (project) params.set('project', project)
   if (page > 1) params.set('page', String(page))
   const qs = params.toString()
   return qs ? `/work?${qs}` : '/work'
@@ -49,17 +52,33 @@ function workHref(status: string | undefined, page: number) {
 export default async function WorkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; page?: string }>
+  searchParams: Promise<{ status?: string; page?: string; project?: string }>
 }) {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  const workspaceId = ctx.workspaceId
 
-  const { status: rawStatus, page: rawPage } = await searchParams
+  const { status: rawStatus, page: rawPage, project: rawProject } = await searchParams
   const status = WORK_ITEM_STATUSES.includes(rawStatus as WorkItemStatus) ? (rawStatus as WorkItemStatus) : undefined
   const page = parsePage(rawPage)
 
-  const where = status ? and(eq(workItems.userId, userId), eq(workItems.status, status)) : eq(workItems.userId, userId)
+  const projectList = await db
+    .select({ id: projects.id, name: projects.name })
+    .from(projects)
+    .where(and(eq(projects.workspaceId, workspaceId), ne(projects.status, 'archived')))
+    .orderBy(projects.createdAt)
+  const project = projectList.find((p) => p.id === rawProject)?.id
+
+  const visible = await visibleMemberIds(ctx)
+  const visibility = visible
+    ? or(inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']), isNull(workItems.assigneeMemberId))
+    : undefined
+  const where = and(
+    eq(workItems.workspaceId, workspaceId),
+    status ? eq(workItems.status, status) : undefined,
+    project ? eq(workItems.projectId, project) : undefined,
+    visibility,
+  )
 
   const [rows, statusCounts] = await Promise.all([
     db
@@ -71,12 +90,14 @@ export default async function WorkPage({
         status: workItems.status,
         priority: workItems.priority,
         assigneeName: members.name,
+        projectName: projects.name,
         externalUrl: workItems.externalUrl,
         lastEventAt: workItems.lastEventAt,
         updatedAt: workItems.updatedAt,
       })
       .from(workItems)
       .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
+      .leftJoin(projects, eq(projects.id, workItems.projectId))
       .where(where)
       .orderBy(desc(workItems.updatedAt))
       .limit(PAGE_SIZE)
@@ -84,7 +105,7 @@ export default async function WorkPage({
     db
       .select({ status: workItems.status, count: count() })
       .from(workItems)
-      .where(eq(workItems.userId, userId))
+      .where(and(eq(workItems.workspaceId, workspaceId), project ? eq(workItems.projectId, project) : undefined, visibility))
       .groupBy(workItems.status),
   ])
 
@@ -94,11 +115,44 @@ export default async function WorkPage({
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <PageShell title="Work" description="Status derived from the event stream — never hand-updated">
+    <PageShell
+      title="Work"
+      description="Status derived from the event stream — never hand-updated"
+      actions={canViewAllTeams(ctx) ? <ManageProjectsDialog canDelete={isAdmin(ctx)} /> : undefined}
+    >
       <div className="mx-auto w-full max-w-6xl px-4 py-5 lg:px-6">
+        {projectList.length > 1 && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <Link
+              href={workHref(status, 1)}
+              className={cn(
+                'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
+                !project
+                  ? 'border-beacon/50 bg-beacon/10 text-foreground'
+                  : 'bg-card text-muted-foreground hover:text-foreground',
+              )}
+            >
+              All projects
+            </Link>
+            {projectList.map((p) => (
+              <Link
+                key={p.id}
+                href={workHref(status, 1, p.id)}
+                className={cn(
+                  'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
+                  project === p.id
+                    ? 'border-beacon/50 bg-beacon/10 text-foreground'
+                    : 'bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {p.name}
+              </Link>
+            ))}
+          </div>
+        )}
         <div className="mb-5 flex flex-wrap gap-1.5">
           <Link
-            href={workHref(undefined, 1)}
+            href={workHref(undefined, 1, project)}
             className={cn(
               'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
               !status
@@ -114,7 +168,7 @@ export default async function WorkPage({
             return (
               <Link
                 key={s}
-                href={workHref(s, 1)}
+                href={workHref(s, 1, project)}
                 className={cn(
                   'flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
                   status === s
@@ -150,6 +204,7 @@ export default async function WorkPage({
               <thead>
                 <tr className="border-b bg-muted/40">
                   <th className="micro-label px-4 py-2.5 text-left font-medium">Item</th>
+                  <th className="micro-label hidden w-32 px-4 py-2.5 text-left font-medium lg:table-cell">Project</th>
                   <th className="micro-label w-32 px-4 py-2.5 text-left font-medium">Status</th>
                   <th className="micro-label hidden w-24 px-4 py-2.5 text-left font-medium sm:table-cell">Priority</th>
                   <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium md:table-cell">Assignee</th>
@@ -172,6 +227,11 @@ export default async function WorkPage({
                           </Badge>
                         )}
                       </div>
+                    </td>
+                    <td className="hidden px-4 py-2.5 lg:table-cell">
+                      <span className="truncate font-mono text-[11px] text-muted-foreground">
+                        {item.projectName ?? '—'}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
@@ -223,7 +283,7 @@ export default async function WorkPage({
           page={page}
           pageCount={pageCount}
           total={total}
-          hrefFor={(p) => workHref(status, p)}
+          hrefFor={(p) => workHref(status, p, project)}
           className="mt-2"
         />
       </div>

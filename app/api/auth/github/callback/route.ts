@@ -1,10 +1,11 @@
 import { type NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { db } from '@/lib/db/client'
-import { users, accounts, members, workItems, events, signalSources, knowledgeDocuments } from '@/lib/db/schema'
+import { users, accounts, members, workspaces } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { createGitHubSession, saveSession } from '@/lib/session/create-github'
+import { claimInvite } from '@/lib/invites'
 import { encrypt } from '@/lib/crypto'
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -80,7 +81,17 @@ export async function GET(req: NextRequest): Promise<Response> {
         return new Response('Failed to create session', { status: 500 })
       }
 
-      const response = new Response(null, { status: 302, headers: { Location: storedRedirectTo } })
+      // Invitee flow: claim the stashed invite before anything can bootstrap a
+      // solo workspace for this brand-new user.
+      let redirectTo = storedRedirectTo
+      const inviteToken = cookieStore.get('beacon_invite_token')?.value
+      if (inviteToken) {
+        const claim = await claimInvite(inviteToken, session.user.id)
+        if (claim.ok) redirectTo = '/'
+        cookieStore.delete('beacon_invite_token')
+      }
+
+      const response = new Response(null, { status: 302, headers: { Location: redirectTo } })
       await saveSession(response, session)
       cookieStore.delete(`github_auth_state`)
       cookieStore.delete(`github_auth_redirect_to`)
@@ -100,15 +111,13 @@ export async function GET(req: NextRequest): Promise<Response> {
         const connectedUserId = existingAccount[0].userId
 
         if (connectedUserId !== storedUserId) {
-          // Merge: transfer Beacon data from old user to new user
-          await db.update(workItems).set({ userId: storedUserId! }).where(eq(workItems.userId, connectedUserId))
-          await db.update(events).set({ userId: storedUserId! }).where(eq(events.userId, connectedUserId))
-          await db.update(signalSources).set({ userId: storedUserId! }).where(eq(signalSources.userId, connectedUserId))
+          // Merge: move the old login's workspace ownership and memberships to
+          // the new user; workspace-scoped data stays where it is.
           await db
-            .update(knowledgeDocuments)
-            .set({ userId: storedUserId! })
-            .where(eq(knowledgeDocuments.userId, connectedUserId))
-          await db.update(members).set({ userId: storedUserId! }).where(eq(members.userId, connectedUserId))
+            .update(workspaces)
+            .set({ createdByUserId: storedUserId! })
+            .where(eq(workspaces.createdByUserId, connectedUserId))
+          await db.update(members).set({ authUserId: storedUserId! }).where(eq(members.authUserId, connectedUserId))
           await db.update(accounts).set({ userId: storedUserId! }).where(eq(accounts.userId, connectedUserId))
           await db.delete(users).where(eq(users.id, connectedUserId))
         }

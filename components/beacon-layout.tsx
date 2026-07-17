@@ -7,6 +7,7 @@ import {
   Activity,
   BookOpen,
   Cable,
+  Crown,
   LayoutDashboard,
   ListTodo,
   Menu,
@@ -18,16 +19,20 @@ import {
   Zap,
 } from 'lucide-react'
 import { User } from '@/components/auth/user'
+import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import type { Session } from '@/lib/session/types'
 
+type Role = 'admin' | 'manager' | 'engineer'
+
+// roles: which access roles see the item; omitted = everyone
 const navSections = [
   {
     label: 'Monitor',
     items: [
-      { href: '/pulse', label: 'Pulse', icon: LayoutDashboard },
+      { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager'] as Role[] },
       { href: '/timeline', label: 'Timeline', icon: Activity },
       { href: '/work', label: 'Work', icon: ListTodo },
       { href: '/team', label: 'Team', icon: Users },
@@ -42,7 +47,7 @@ const navSections = [
   },
   {
     label: 'Configure',
-    items: [{ href: '/integrations', label: 'Integrations', icon: Cable }],
+    items: [{ href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin'] as Role[] }],
   },
 ]
 
@@ -91,16 +96,36 @@ interface BeaconLayoutProps {
   children: React.ReactNode
   session: Session | null | undefined
   githubConnection: { connected: boolean; username: string | null }
+  role: Role
+  workspace: {
+    name: string
+    memberName: string
+    teams: { id: string; name: string; isLead: boolean }[]
+  } | null
 }
 
-export function BeaconLayout({ children, session, githubConnection }: BeaconLayoutProps) {
+const ROLE_LABEL: Record<Role, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  engineer: 'Engineer',
+}
+
+export function BeaconLayout({ children, session, githubConnection, role, workspace }: BeaconLayoutProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  const homeHref = role === 'admin' || role === 'manager' ? '/pulse' : '/timeline'
+  const visibleSections = navSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => !('roles' in item) || item.roles?.includes(role)),
+    }))
+    .filter((section) => section.items.length > 0)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-sidebar">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
-        <Link href="/pulse" className="transition-opacity hover:opacity-80" onClick={() => setMobileOpen(false)}>
+        <Link href={homeHref} className="transition-opacity hover:opacity-80" onClick={() => setMobileOpen(false)}>
           <BeaconMark />
         </Link>
         <Button
@@ -114,8 +139,35 @@ export function BeaconLayout({ children, session, githubConnection }: BeaconLayo
         </Button>
       </div>
 
+      {workspace && (
+        <div className="shrink-0 border-b border-sidebar-border px-4 py-3">
+          <p className="micro-label mb-1">Workspace</p>
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground" title={workspace.name}>
+              {workspace.name}
+            </p>
+            {role === 'admin' && <RenameWorkspaceDialog currentName={workspace.name} />}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-beacon">
+              {ROLE_LABEL[role]}
+            </span>
+            {workspace.teams.map((team) => (
+              <span
+                key={team.id}
+                className="inline-flex items-center gap-1 rounded border border-sidebar-border bg-sidebar-accent/40 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/70"
+                title={team.isLead ? `${team.name} — you lead this team` : team.name}
+              >
+                {team.isLead && <Crown className="h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />}
+                {team.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-        {navSections.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.label}>
             <p className="micro-label mb-1.5 px-3">{section.label}</p>
             <div className="space-y-0.5">
@@ -184,7 +236,7 @@ export function BeaconLayout({ children, session, githubConnection }: BeaconLayo
           >
             <Menu className="h-4 w-4" />
           </Button>
-          <Link href="/pulse">
+          <Link href={homeHref}>
             <BeaconMark compact />
           </Link>
         </div>

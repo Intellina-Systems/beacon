@@ -15,13 +15,13 @@ function hashKey(key: string): string {
 }
 
 // Returns the plaintext key exactly once; only the hash is stored.
-export async function createApiKey(userId: string, name: string): Promise<{ key: string; record: ApiKey }> {
+export async function createApiKey(workspaceId: string, name: string): Promise<{ key: string; record: ApiKey }> {
   const key = `${KEY_PREFIX}${generateSecret()}`
   const [record] = await db
     .insert(apiKeys)
     .values({
       id: generateId(),
-      userId,
+      workspaceId,
       name,
       keyHash: hashKey(key),
       keyPrefix: key.slice(0, 10),
@@ -30,10 +30,10 @@ export async function createApiKey(userId: string, name: string): Promise<{ key:
   return { key, record }
 }
 
-export async function verifyApiKey(key: string): Promise<{ userId: string; keyId: string } | null> {
+export async function verifyApiKey(key: string): Promise<{ workspaceId: string; keyId: string } | null> {
   if (!key.startsWith(KEY_PREFIX)) return null
   const rows = await db
-    .select({ id: apiKeys.id, userId: apiKeys.userId })
+    .select({ id: apiKeys.id, workspaceId: apiKeys.workspaceId })
     .from(apiKeys)
     .where(and(eq(apiKeys.keyHash, hashKey(key)), isNull(apiKeys.revokedAt)))
     .limit(1)
@@ -46,5 +46,5 @@ export async function verifyApiKey(key: string): Promise<{ userId: string; keyId
       () => {},
       () => {},
     )
-  return { userId: row.userId, keyId: row.id }
+  return { workspaceId: row.workspaceId, keyId: row.id }
 }

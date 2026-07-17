@@ -3,29 +3,31 @@ import { db } from '@/lib/db/client'
 import { members } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { forbidden, isAdmin } from '@/lib/auth/permissions'
 
 export async function GET(): Promise<Response> {
-  const session = await getServerSession()
-  if (!session?.user) {
+  const ctx = await getWorkspaceContext()
+  if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const rows = await db.select().from(members).where(eq(members.userId, session.user.id)).orderBy(members.name)
+  const rows = await db.select().from(members).where(eq(members.workspaceId, ctx.workspaceId)).orderBy(members.name)
 
   return Response.json({ members: rows })
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const session = await getServerSession()
-  if (!session?.user) {
+  const ctx = await getWorkspaceContext()
+  if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  if (!isAdmin(ctx)) return forbidden()
 
   const body = (await req.json()) as {
     name?: string
     email?: string
-    role?: string
+    title?: string
     githubUsername?: string
   }
 
@@ -37,10 +39,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .insert(members)
     .values({
       id: nanoid(),
-      userId: session.user.id,
+      workspaceId: ctx.workspaceId,
       name: body.name.trim(),
       email: body.email?.trim() ?? null,
-      role: body.role?.trim() ?? null,
+      title: body.title?.trim() ?? null,
       githubUsername: body.githubUsername?.trim() ?? null,
     })
     .returning()

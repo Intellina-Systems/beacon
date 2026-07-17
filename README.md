@@ -47,11 +47,23 @@ Dashboards · Timeline · Chat
 | --------------- | -------------------------------------------------------------------- |
 | `/pulse`        | Executive dashboard: activity, PRs merged, blockers, work in flight  |
 | `/timeline`     | The raw event stream, filterable by source                           |
-| `/work`         | Epics → features → tasks with event-derived status                   |
-| `/team`         | Roster; per-member dashboards with attributed activity and blockers  |
+| `/work`         | Projects → epics → features → tasks with event-derived status       |
+| `/team`         | Teams & roster; per-member dashboards with activity and blockers    |
 | `/chat`         | Ask anything — tools query events, work, team, blockers, knowledge   |
 | `/knowledge`    | Ingest notes/docs/links; AI extracts signals (risks, decisions…)     |
 | `/integrations` | Connections, tracked signal sources, API keys, agent setup           |
+| `/join/<token>` | Invite landing — sign in with GitHub and join the workspace          |
+
+## Workspaces, roles & teams
+
+All data belongs to a **workspace** (the org container); users are login identities linked to a workspace **member**. Members carry an access role:
+
+- **Admin** — integrations, API keys, invites, teams/projects management, everything.
+- **Manager** — Pulse and all teams' dashboards & drill-downs; no config. Optional — a workspace can have none.
+- **Engineer** — own teams' timeline/work/chat; roster names only, no peer metrics ("assist engineers, don't monitor them").
+- **Team lead** — a per-team flag on an engineer granting manager-like visibility for that team only; leads can report straight to the admin.
+
+**Teams** group members (many-to-many, cross-team work supported; `kind` marks non-technical teams). **Projects** partition the work graph, and signal sources map to a project so ingested items attribute automatically. Admins invite people with a predefined role + team assignments via one-time `/join/<token>` links (7-day expiry).
 
 ## Stack
 

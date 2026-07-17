@@ -32,9 +32,9 @@ export function ToolLoading({ label }: { label: string }) {
 type MemberItem = {
   id: string
   name: string
-  role: string | null
+  title: string | null
   avatarUrl: string | null
-  weeklyEvents: number
+  weeklyEvents: number | null
   skills: string[] | null
 }
 
@@ -59,10 +59,10 @@ export function TeamDisplay({ output }: { output: { members: MemberItem[] } | un
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{m.name}</p>
-              {m.role && <p className="text-xs text-muted-foreground truncate">{m.role}</p>}
+              {m.title && <p className="text-xs text-muted-foreground truncate">{m.title}</p>}
             </div>
-            <Badge variant={m.weeklyEvents > 0 ? 'secondary' : 'outline'} className="text-xs shrink-0">
-              {m.weeklyEvents} events
+            <Badge variant={m.weeklyEvents ? 'secondary' : 'outline'} className="text-xs shrink-0">
+              {m.weeklyEvents ?? '—'} events
             </Badge>
           </div>
           {m.skills && m.skills.length > 0 && (

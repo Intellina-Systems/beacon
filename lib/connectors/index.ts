@@ -7,14 +7,14 @@ import type { SyncResult } from './types'
 
 export type { SyncResult } from './types'
 
-export async function syncSource(userId: string, source: SignalSource): Promise<SyncResult> {
+export async function syncSource(workspaceId: string, source: SignalSource): Promise<SyncResult> {
   switch (source.kind) {
     case 'github_repo':
-      return syncGitHubSource(userId, source)
+      return syncGitHubSource(workspaceId, source)
     case 'linear_project':
     case 'linear_team':
     case 'linear_workspace':
-      return syncLinearSource(userId, source)
+      return syncLinearSource(workspaceId, source)
     default:
       throw new Error(`No connector for source kind: ${source.kind}`)
   }
@@ -27,19 +27,19 @@ export interface SyncSummary {
   workItems: number
 }
 
-export async function syncAllSources(userId?: string): Promise<SyncSummary> {
+export async function syncAllSources(workspaceId?: string): Promise<SyncSummary> {
   const sources = await db
     .select()
     .from(signalSources)
     .where(
-      userId ? and(eq(signalSources.enabled, true), eq(signalSources.userId, userId)) : eq(signalSources.enabled, true),
+      workspaceId ? and(eq(signalSources.enabled, true), eq(signalSources.workspaceId, workspaceId)) : eq(signalSources.enabled, true),
     )
 
   const summary: SyncSummary = { sourcesSynced: 0, sourcesFailed: 0, events: 0, workItems: 0 }
 
   for (const source of sources) {
     try {
-      const result = await syncSource(source.userId, source)
+      const result = await syncSource(source.workspaceId, source)
       summary.sourcesSynced++
       summary.events += result.events
       summary.workItems += result.workItems

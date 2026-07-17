@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { events, members, workItems, type Event, type Member, type WorkItem } from '@/lib/db/schema'
 import { BLOCKING_EVENT_TYPES, UNBLOCKING_EVENT_TYPES, categorizeEventType, type EventCategory } from './taxonomy'
@@ -11,10 +11,20 @@ export interface EventFilters {
   types?: string[]
   limit?: number
   offset?: number
+  // Role-based visibility: restrict to these members' activity (unattributed
+  // events stay visible — they're workspace-wide signals like CI). `null` or
+  // undefined means unrestricted (admin/manager).
+  visibleMemberIds?: string[] | null
 }
 
-function eventConditions(userId: string, filters: EventFilters): (SQL | undefined)[] {
-  const conditions: (SQL | undefined)[] = [eq(events.userId, userId)]
+function visibilityCondition(visibleMemberIds: string[] | null | undefined): SQL | undefined {
+  if (!visibleMemberIds) return undefined
+  if (visibleMemberIds.length === 0) return isNull(events.memberId)
+  return or(inArray(events.memberId, visibleMemberIds), isNull(events.memberId))
+}
+
+function eventConditions(workspaceId: string, filters: EventFilters): (SQL | undefined)[] {
+  const conditions: (SQL | undefined)[] = [eq(events.workspaceId, workspaceId)]
   if (filters.sinceDays) {
     const since = new Date(Date.now() - filters.sinceDays * 24 * 60 * 60 * 1000)
     conditions.push(gte(events.occurredAt, since))
@@ -23,19 +33,20 @@ function eventConditions(userId: string, filters: EventFilters): (SQL | undefine
   if (filters.memberId) conditions.push(eq(events.memberId, filters.memberId))
   if (filters.workItemId) conditions.push(eq(events.workItemId, filters.workItemId))
   if (filters.types?.length) conditions.push(inArray(events.type, filters.types))
+  conditions.push(visibilityCondition(filters.visibleMemberIds))
   return conditions
 }
 
-export async function countEvents(userId: string, filters: EventFilters = {}): Promise<number> {
+export async function countEvents(workspaceId: string, filters: EventFilters = {}): Promise<number> {
   const [row] = await db
     .select({ value: count() })
     .from(events)
-    .where(and(...eventConditions(userId, filters)))
+    .where(and(...eventConditions(workspaceId, filters)))
   return row?.value ?? 0
 }
 
-export async function listEvents(userId: string, filters: EventFilters = {}) {
-  const conditions = eventConditions(userId, filters)
+export async function listEvents(workspaceId: string, filters: EventFilters = {}) {
+  const conditions = eventConditions(workspaceId, filters)
 
   return db
     .select({
@@ -75,19 +86,19 @@ export interface Pulse {
 }
 
 // Aggregate view of what happened in the last N days — the dashboard backbone.
-export async function getPulse(userId: string, sinceDays = 7): Promise<Pulse> {
+export async function getPulse(workspaceId: string, sinceDays = 7): Promise<Pulse> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
 
   const typeRows = await db
     .select({ type: events.type, count: count() })
     .from(events)
-    .where(and(eq(events.userId, userId), gte(events.occurredAt, since)))
+    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since)))
     .groupBy(events.type)
 
   const memberRows = await db
     .selectDistinct({ memberId: events.memberId })
     .from(events)
-    .where(and(eq(events.userId, userId), gte(events.occurredAt, since), isNotNull(events.memberId)))
+    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since), isNotNull(events.memberId)))
 
   const byCategory: Pulse['byCategory'] = { work: 0, code: 0, cicd: 0, agent: 0, comms: 0, knowledge: 0, other: 0 }
   let totalEvents = 0
@@ -120,11 +131,16 @@ export interface Blocker {
 // A blocker is a blocking event (task.blocked, agent.blocked, ci.failed…) with
 // no later unblocking event in the same scope (work item, or actor if unlinked),
 // plus any work item sitting in "blocked" status.
-export async function getActiveBlockers(userId: string, sinceDays = 14): Promise<Blocker[]> {
-  const rows = await listEvents(userId, {
+export async function getActiveBlockers(
+  workspaceId: string,
+  sinceDays = 14,
+  visibleMemberIds?: string[] | null,
+): Promise<Blocker[]> {
+  const rows = await listEvents(workspaceId, {
     sinceDays,
     types: [...BLOCKING_EVENT_TYPES, ...UNBLOCKING_EVENT_TYPES],
     limit: 500,
+    visibleMemberIds,
   })
 
   // rows are newest-first; walk oldest-first tracking blocked scopes
@@ -157,7 +173,15 @@ export async function getActiveBlockers(userId: string, sinceDays = 14): Promise
     })
     .from(workItems)
     .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
-    .where(and(eq(workItems.userId, userId), eq(workItems.status, 'blocked')))
+    .where(
+      and(
+        eq(workItems.workspaceId, workspaceId),
+        eq(workItems.status, 'blocked'),
+        visibleMemberIds
+          ? or(inArray(workItems.assigneeMemberId, visibleMemberIds), isNull(workItems.assigneeMemberId))
+          : undefined,
+      ),
+    )
 
   for (const item of blockedItems) {
     if (coveredWorkItemIds.has(item.id)) continue
@@ -186,12 +210,19 @@ export async function getActiveBlockers(userId: string, sinceDays = 14): Promise
 }
 
 // Per-member activity summary over a window, for team/individual dashboards.
-export async function getMemberActivity(userId: string, sinceDays = 7) {
+export async function getMemberActivity(workspaceId: string, sinceDays = 7, visibleMemberIds?: string[] | null) {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
   const rows = await db
     .select({ memberId: events.memberId, type: events.type, count: count() })
     .from(events)
-    .where(and(eq(events.userId, userId), gte(events.occurredAt, since), isNotNull(events.memberId)))
+    .where(
+      and(
+        eq(events.workspaceId, workspaceId),
+        gte(events.occurredAt, since),
+        isNotNull(events.memberId),
+        visibleMemberIds ? inArray(events.memberId, visibleMemberIds) : undefined,
+      ),
+    )
     .groupBy(events.memberId, events.type)
 
   const byMember = new Map<string, { total: number; byCategory: Record<string, number> }>()
@@ -207,7 +238,7 @@ export async function getMemberActivity(userId: string, sinceDays = 7) {
 }
 
 // Daily event counts for sparkline-style charts.
-export async function getDailyActivity(userId: string, sinceDays = 14) {
+export async function getDailyActivity(workspaceId: string, sinceDays = 14) {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
   return db
     .select({
@@ -215,7 +246,7 @@ export async function getDailyActivity(userId: string, sinceDays = 14) {
       count: count(),
     })
     .from(events)
-    .where(and(eq(events.userId, userId), gte(events.occurredAt, since)))
+    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since)))
     .groupBy(sql`to_char(${events.occurredAt}, 'YYYY-MM-DD')`)
     .orderBy(sql`to_char(${events.occurredAt}, 'YYYY-MM-DD')`)
 }

@@ -18,8 +18,9 @@ export async function GET(req: NextRequest): Promise<Response> {
 
   const storedState = cookieStore.get('linear_auth_state')?.value ?? null
   const storedUserId = cookieStore.get('linear_auth_user_id')?.value ?? null
+  const storedWorkspaceId = cookieStore.get('linear_auth_workspace_id')?.value ?? null
 
-  if (!code || !state || state !== storedState || !storedUserId) {
+  if (!code || !state || state !== storedState || !storedUserId || !storedWorkspaceId) {
     return Response.redirect(new URL('/integrations?error=linear_invalid_state', req.url))
   }
 
@@ -65,21 +66,23 @@ export async function GET(req: NextRequest): Promise<Response> {
       .insert(connections)
       .values({
         id: nanoid(),
-        userId: storedUserId,
+        workspaceId: storedWorkspaceId,
+        connectedByUserId: storedUserId,
         provider: 'linear',
         accessToken: encryptedToken,
         externalUserId: viewer.id,
-        workspaceId: viewer.organization.id,
-        workspaceName: viewer.organization.name,
+        providerWorkspaceId: viewer.organization.id,
+        providerWorkspaceName: viewer.organization.name,
         config: { workspaceSlug: viewer.organization.urlKey },
       })
       .onConflictDoUpdate({
-        target: [connections.userId, connections.provider],
+        target: [connections.workspaceId, connections.provider],
         set: {
           accessToken: encryptedToken,
+          connectedByUserId: storedUserId,
           externalUserId: viewer.id,
-          workspaceId: viewer.organization.id,
-          workspaceName: viewer.organization.name,
+          providerWorkspaceId: viewer.organization.id,
+          providerWorkspaceName: viewer.organization.name,
           config: { workspaceSlug: viewer.organization.urlKey },
           updatedAt: new Date(),
         },
@@ -87,6 +90,7 @@ export async function GET(req: NextRequest): Promise<Response> {
 
     cookieStore.delete('linear_auth_state')
     cookieStore.delete('linear_auth_user_id')
+    cookieStore.delete('linear_auth_workspace_id')
 
     return Response.redirect(new URL('/integrations?linear_connected=true', req.url))
   } catch (err) {

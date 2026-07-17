@@ -1,9 +1,10 @@
 import { streamText, tool, zodSchema, convertToModelMessages, stepCountIs } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { visibleMemberIds } from '@/lib/auth/permissions'
 import { db } from '@/lib/db/client'
 import { members, workItems, EVENT_SOURCES, WORK_ITEM_STATUSES, type Event } from '@/lib/db/schema'
 import { getActiveBlockers, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
@@ -36,18 +37,19 @@ function truncate(value: string, maxLength: number): string {
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession()
-  if (!session?.user) return new Response('Unauthorized', { status: 401 })
+  const ctx = await getWorkspaceContext()
+  if (!ctx) return new Response('Unauthorized', { status: 401 })
 
-  const userId = session.user.id
+  const workspaceId = ctx.workspaceId
+  const visible = await visibleMemberIds(ctx)
   const { messages }: { messages: UIMessage[] } = await req.json()
   const latestUserText = extractLatestUserText(messages)
 
   const [pulse, blockers, roster, memberActivity, activeItems, recentEvents, knowledge] = await Promise.all([
-    getPulse(userId, 7),
-    getActiveBlockers(userId),
-    db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name),
-    getMemberActivity(userId, 7),
+    getPulse(workspaceId, 7),
+    getActiveBlockers(workspaceId, 14, visible),
+    db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name),
+    getMemberActivity(workspaceId, 7, visible),
     db
       .select({
         key: workItems.key,
@@ -57,11 +59,17 @@ export async function POST(req: Request) {
         assigneeMemberId: workItems.assigneeMemberId,
       })
       .from(workItems)
-      .where(and(eq(workItems.userId, userId), inArray(workItems.status, ['in_progress', 'in_review', 'blocked'])))
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.status, ['in_progress', 'in_review', 'blocked']),
+          visible ? or(inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']), isNull(workItems.assigneeMemberId)) : undefined,
+        ),
+      )
       .orderBy(desc(workItems.updatedAt))
       .limit(40),
-    listEvents(userId, { limit: 25 }),
-    retrieveKnowledgeContext({ userId, query: latestUserText }),
+    listEvents(workspaceId, { limit: 25, visibleMemberIds: visible }),
+    retrieveKnowledgeContext({ workspaceId, query: latestUserText }),
   ])
 
   const memberById = new Map(roster.map((member) => [member.id, member]))
@@ -103,8 +111,11 @@ export async function POST(req: Request) {
     '## Team',
     ...(roster.length > 0
       ? roster.map((member) => {
+          if (visible && !visible.includes(member.id)) {
+            return `- ${member.name}${member.title ? ` (${member.title})` : ''}`
+          }
           const activity = memberActivity.get(member.id)
-          return `- ${member.name}${member.role ? ` (${member.role})` : ''} — ${activity ? `${activity.total} events this week` : 'quiet this week'}`
+          return `- ${member.name}${member.title ? ` (${member.title})` : ''} — ${activity ? `${activity.total} events this week` : 'quiet this week'}`
         })
       : ['- no members on the roster yet']),
   ]
@@ -152,12 +163,13 @@ export async function POST(req: Request) {
           const memberId = input.memberName
             ? roster.find((member) => member.name.toLowerCase().includes(input.memberName!.toLowerCase()))?.id
             : undefined
-          const rows = await listEvents(userId, {
+          const rows = await listEvents(workspaceId, {
             sinceDays: input.sinceDays,
             source: input.source,
             types: input.types,
             memberId,
             limit: input.limit,
+            visibleMemberIds: visible,
           })
           return {
             events: rows.map((row) => ({
@@ -205,9 +217,15 @@ export async function POST(req: Request) {
             .from(workItems)
             .where(
               and(
-                eq(workItems.userId, userId),
+                eq(workItems.workspaceId, workspaceId),
                 inArray(workItems.status, statuses as never),
                 assignee ? eq(workItems.assigneeMemberId, assignee.id) : undefined,
+                visible
+                  ? or(
+                      inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']),
+                      isNull(workItems.assigneeMemberId),
+                    )
+                  : undefined,
               ),
             )
             .orderBy(desc(workItems.updatedAt))
@@ -238,9 +256,9 @@ export async function POST(req: Request) {
           members: roster.map((member) => ({
             id: member.id,
             name: member.name,
-            role: member.role,
+            title: member.title,
             avatarUrl: member.avatarUrl,
-            weeklyEvents: memberActivity.get(member.id)?.total ?? 0,
+            weeklyEvents: visible && !visible.includes(member.id) ? null : (memberActivity.get(member.id)?.total ?? 0),
             skills: member.skills,
           })),
         }),
@@ -267,7 +285,7 @@ export async function POST(req: Request) {
           'Semantic search over the ingested knowledge base (meeting notes, docs, emails, links) and its extracted signals. Use for questions about decisions, requirements, user needs, or anything discussed outside the code/work trackers.',
         inputSchema: zodSchema(z.object({ query: z.string().min(1).max(500) })),
         execute: async (input: { query: string }) => {
-          const context = await retrieveKnowledgeContext({ userId, query: input.query, maxDocuments: 6 })
+          const context = await retrieveKnowledgeContext({ workspaceId, query: input.query, maxDocuments: 6 })
           return {
             documents: context.documents.map((document) => ({
               title: document.title,

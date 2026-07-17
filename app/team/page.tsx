@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { count, eq } from 'drizzle-orm'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
+import { TeamsSection, type TeamWithMembers } from '@/components/teams/teams-section'
 import { db } from '@/lib/db/client'
-import { members } from '@/lib/db/schema'
+import { members, teamMembers, teams } from '@/lib/db/schema'
 import { getMemberActivity } from '@/lib/events/queries'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { AddMemberButton } from '@/components/add-member-button'
@@ -26,29 +28,67 @@ function initials(name: string) {
 }
 
 export default async function TeamPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  const workspaceId = ctx.workspaceId
 
   const page = parsePage((await searchParams).page)
 
-  const [teamMembers, [{ value: total }], activity] = await Promise.all([
+  const detailVisible = await detailVisibleMemberIds(ctx)
+  const [pageMembers, [{ value: total }], activity, teamRows, fullRoster] = await Promise.all([
     db
       .select()
       .from(members)
-      .where(eq(members.userId, userId))
+      .where(eq(members.workspaceId, workspaceId))
       .orderBy(members.name)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE),
-    db.select({ value: count() }).from(members).where(eq(members.userId, userId)),
-    getMemberActivity(userId, 7),
+    db.select({ value: count() }).from(members).where(eq(members.workspaceId, workspaceId)),
+    getMemberActivity(workspaceId, 7, detailVisible),
+    db
+      .select({
+        id: teams.id,
+        name: teams.name,
+        description: teams.description,
+        kind: teams.kind,
+        memberId: teamMembers.memberId,
+        memberName: members.name,
+        memberAvatarUrl: members.avatarUrl,
+        isLead: teamMembers.isLead,
+      })
+      .from(teams)
+      .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+      .leftJoin(members, eq(members.id, teamMembers.memberId))
+      .where(eq(teams.workspaceId, workspaceId))
+      .orderBy(teams.name),
+    db
+      .select({ id: members.id, name: members.name, avatarUrl: members.avatarUrl })
+      .from(members)
+      .where(eq(members.workspaceId, workspaceId))
+      .orderBy(members.name),
   ])
+
+  const teamsById = new Map<string, TeamWithMembers>()
+  for (const row of teamRows) {
+    const team = teamsById.get(row.id) ?? {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      kind: row.kind,
+      members: [],
+    }
+    if (row.memberId && row.memberName !== null) {
+      team.members.push({ id: row.memberId, name: row.memberName, avatarUrl: row.memberAvatarUrl, isLead: !!row.isLead })
+    }
+    teamsById.set(row.id, team)
+  }
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <PageShell title="Team" description={`${total} member${total === 1 ? '' : 's'}`} actions={<AddMemberButton />}>
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 lg:px-6">
-        {teamMembers.length === 0 ? (
+    <PageShell title="Team" description={`${total} member${total === 1 ? '' : 's'}`} actions={isAdmin(ctx) ? <AddMemberButton teams={[...teamsById.values()].map((t) => ({ id: t.id, name: t.name }))} /> : undefined}>
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
+        <TeamsSection teams={[...teamsById.values()]} roster={fullRoster} canManage={isAdmin(ctx)} />
+        {pageMembers.length === 0 ? (
           <div className="flex rounded-lg border border-dashed">
             <EmptyState
               title="No team members yet"
@@ -61,31 +101,63 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
               <thead>
                 <tr className="border-b bg-muted/40">
                   <th className="micro-label px-4 py-2.5 text-left font-medium">Member</th>
-                  <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium sm:table-cell">Role</th>
+                  <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium sm:table-cell">Title</th>
+                  <th className="micro-label hidden w-28 px-4 py-2.5 text-left font-medium sm:table-cell">Access</th>
                   <th className="micro-label hidden w-52 px-4 py-2.5 text-left font-medium lg:table-cell">Email</th>
                   <th className="micro-label w-40 px-4 py-2.5 text-left font-medium">Identities</th>
                   <th className="micro-label w-28 px-4 py-2.5 text-right font-medium">7d activity</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {teamMembers.map((member) => {
-                  const memberActivity = activity.get(member.id)
+                {pageMembers.map((member) => {
+                  const canOpen = !detailVisible || detailVisible.includes(member.id)
+                  const memberActivity = canOpen ? activity.get(member.id) : undefined
                   return (
                     <tr key={member.id} className="relative transition-colors hover:bg-accent/40">
                       <td className="px-4 py-2.5">
-                        <Link
-                          href={`/team/${member.id}`}
-                          className="flex items-center gap-3 after:absolute after:inset-0"
-                        >
-                          <Avatar className="h-7 w-7 border">
-                            <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
-                            <AvatarFallback className="text-[10px] font-medium">{initials(member.name)}</AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium">{member.name}</span>
-                        </Link>
+                        {canOpen ? (
+                          <Link
+                            href={`/team/${member.id}`}
+                            className="flex items-center gap-3 after:absolute after:inset-0"
+                          >
+                            <Avatar className="h-7 w-7 border">
+                              <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
+                              <AvatarFallback className="text-[10px] font-medium">
+                                {initials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{member.name}</span>
+                          </Link>
+                        ) : (
+                          <span className="flex items-center gap-3">
+                            <Avatar className="h-7 w-7 border">
+                              <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
+                              <AvatarFallback className="text-[10px] font-medium">
+                                {initials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium">{member.name}</span>
+                          </span>
+                        )}
                       </td>
                       <td className="hidden px-4 py-2.5 text-xs text-muted-foreground sm:table-cell">
-                        {member.role ?? <span className="text-muted-foreground/50">—</span>}
+                        {member.title ?? <span className="text-muted-foreground/50">—</span>}
+                      </td>
+                      <td className="hidden px-4 py-2.5 sm:table-cell">
+                        {member.status === 'profile' ? (
+                          <span className="text-xs text-muted-foreground/50">—</span>
+                        ) : (
+                          <span className="flex flex-wrap items-center gap-1">
+                            <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                              {member.accessRole}
+                            </span>
+                            {member.status === 'invited' && (
+                              <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] text-beacon">
+                                invited
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td className="hidden truncate px-4 py-2.5 text-xs text-muted-foreground lg:table-cell">
                         {member.email ?? <span className="text-muted-foreground/50">—</span>}
@@ -113,7 +185,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                           memberActivity ? 'text-foreground/80' : 'text-muted-foreground/50',
                         )}
                       >
-                        {memberActivity ? `${memberActivity.total} ev` : 'quiet'}
+                        {canOpen ? (memberActivity ? `${memberActivity.total} ev` : 'quiet') : '—'}
                       </td>
                     </tr>
                   )

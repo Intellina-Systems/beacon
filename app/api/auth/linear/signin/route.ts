@@ -2,11 +2,17 @@ import { type NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { generateState } from 'arctic'
 import { getSessionFromReq } from '@/lib/session/server'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 
 export async function GET(req: NextRequest): Promise<Response> {
   const session = await getSessionFromReq(req)
 
   if (!session?.user) {
+    return Response.redirect(new URL('/?error=not_authenticated', req.url))
+  }
+
+  const ctx = await getWorkspaceContext()
+  if (!ctx) {
     return Response.redirect(new URL('/?error=not_authenticated', req.url))
   }
 
@@ -28,6 +34,13 @@ export async function GET(req: NextRequest): Promise<Response> {
     sameSite: 'lax',
   })
   store.set('linear_auth_user_id', session.user.id, {
+    path: '/',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 60 * 10,
+    sameSite: 'lax',
+  })
+  store.set('linear_auth_workspace_id', ctx.workspaceId, {
     path: '/',
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,

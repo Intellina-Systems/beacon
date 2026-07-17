@@ -8,6 +8,13 @@
       "when": 1784135158629,
       "tag": "0000_orange_gambit",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784221558630,
+      "tag": "0001_workspace_model",
+      "breakpoints": true
     }
   ]
 }

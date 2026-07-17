@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation'
 import { and, eq, inArray } from 'drizzle-orm'
 import { AlertTriangle, Activity, ArrowUpRight, Bot, GitMerge, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { members, workItems } from '@/lib/db/schema'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { members, projects, workItems } from '@/lib/db/schema'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { canViewAllTeams } from '@/lib/auth/permissions'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
@@ -54,22 +55,24 @@ function fillDays(rows: { day: string; count: number }[], days: number) {
 }
 
 export default async function PulsePage() {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  if (!canViewAllTeams(ctx)) redirect('/timeline')
+  const workspaceId = ctx.workspaceId
 
   const [pulse, blockers, recentEvents, dailyActivity, memberActivity, roster, activeItems] = await Promise.all([
-    getPulse(userId, 7),
-    getActiveBlockers(userId),
-    listEvents(userId, { limit: 30 }),
-    getDailyActivity(userId, 14),
-    getMemberActivity(userId, 7),
-    db.select().from(members).where(eq(members.userId, userId)).orderBy(members.name).limit(12),
+    getPulse(workspaceId, 7),
+    getActiveBlockers(workspaceId),
+    listEvents(workspaceId, { limit: 30 }),
+    getDailyActivity(workspaceId, 14),
+    getMemberActivity(workspaceId, 7),
+    db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
     db
-      .select({ status: workItems.status, id: workItems.id })
+      .select({ status: workItems.status, id: workItems.id, projectId: workItems.projectId, projectName: projects.name })
       .from(workItems)
+      .leftJoin(projects, eq(projects.id, workItems.projectId))
       .where(
-        and(eq(workItems.userId, userId), inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked'])),
+        and(eq(workItems.workspaceId, workspaceId), inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked'])),
       ),
   ])
 
@@ -77,6 +80,14 @@ export default async function PulsePage() {
     acc[item.status] = (acc[item.status] ?? 0) + 1
     return acc
   }, {})
+
+  const projectCounts = new Map<string, { name: string; count: number }>()
+  for (const item of activeItems) {
+    if (!item.projectId) continue
+    const entry = projectCounts.get(item.projectId) ?? { name: item.projectName ?? 'Untitled', count: 0 }
+    entry.count += 1
+    projectCounts.set(item.projectId, entry)
+  }
 
   const series = fillDays(dailyActivity, 14)
   const maxDaily = Math.max(1, ...series.map((d) => d.count))
@@ -89,7 +100,7 @@ export default async function PulsePage() {
   ]
 
   return (
-    <PageShell title="Pulse" description="What's happening across engineering, right now" fixed>
+    <PageShell title="Pulse" description={`What's happening across ${ctx.workspaceName}, right now`} fixed>
       <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
         {/* KPI row */}
         <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
@@ -195,6 +206,23 @@ export default async function PulsePage() {
                       <span className="font-mono text-xs text-muted-foreground tabular-nums">{statusCount}</span>
                     </div>
                   ))
+                )}
+                {projectCounts.size > 1 && (
+                  <>
+                    <p className="micro-label border-t pt-2">By project</p>
+                    {[...projectCounts.entries()]
+                      .sort((a, b) => b[1].count - a[1].count)
+                      .map(([projectId, { name, count: projectCount }]) => (
+                        <Link
+                          key={projectId}
+                          href={`/work?project=${projectId}`}
+                          className="flex items-center gap-2 text-sm transition-colors hover:text-foreground"
+                        >
+                          <span className="flex-1 truncate text-muted-foreground">{name}</span>
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">{projectCount}</span>
+                        </Link>
+                      ))}
+                  </>
                 )}
               </div>
             </Panel>

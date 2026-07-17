@@ -8,6 +8,7 @@ import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getServerGitHubConnection } from '@/lib/github/get-connection-status'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 
 const plexSans = IBM_Plex_Sans({
   variable: '--font-plex-sans',
@@ -38,13 +39,23 @@ export default async function RootLayout({
   const githubConnection = session?.user
     ? await getServerGitHubConnection(session.user.id)
     : { connected: false, username: null }
+  const ctx = session?.user ? await getWorkspaceContext() : null
 
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           {session?.user ? (
-            <BeaconLayout session={session} githubConnection={githubConnection}>
+            <BeaconLayout
+              session={session}
+              githubConnection={githubConnection}
+              role={ctx?.role ?? 'engineer'}
+              workspace={
+                ctx
+                  ? { name: ctx.workspaceName, memberName: ctx.member.name, teams: ctx.teams }
+                  : null
+              }
+            >
               {children}
             </BeaconLayout>
           ) : (

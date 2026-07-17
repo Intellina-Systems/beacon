@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { count, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { KnowledgeForm } from '@/components/knowledge/knowledge-form'
@@ -37,9 +37,9 @@ export default async function KnowledgePage({
 }: {
   searchParams: Promise<{ docPage?: string; sigPage?: string }>
 }) {
-  const session = await getServerSession()
-  if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  const workspaceId = ctx.workspaceId
 
   const params = await searchParams
   const docPage = parsePage(params.docPage)
@@ -55,19 +55,19 @@ export default async function KnowledgePage({
         createdAt: knowledgeDocuments.createdAt,
       })
       .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.userId, userId))
+      .where(eq(knowledgeDocuments.workspaceId, workspaceId))
       .orderBy(desc(knowledgeDocuments.createdAt))
       .limit(PAGE_SIZE)
       .offset((docPage - 1) * PAGE_SIZE),
-    db.select({ value: count() }).from(knowledgeDocuments).where(eq(knowledgeDocuments.userId, userId)),
+    db.select({ value: count() }).from(knowledgeDocuments).where(eq(knowledgeDocuments.workspaceId, workspaceId)),
     db
       .select()
       .from(knowledgeSignals)
-      .where(eq(knowledgeSignals.userId, userId))
+      .where(eq(knowledgeSignals.workspaceId, workspaceId))
       .orderBy(desc(knowledgeSignals.createdAt))
       .limit(PAGE_SIZE)
       .offset((sigPage - 1) * PAGE_SIZE),
-    db.select({ value: count() }).from(knowledgeSignals).where(eq(knowledgeSignals.userId, userId)),
+    db.select({ value: count() }).from(knowledgeSignals).where(eq(knowledgeSignals.workspaceId, workspaceId)),
   ])
 
   return (

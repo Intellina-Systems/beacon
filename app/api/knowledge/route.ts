@@ -14,7 +14,7 @@ import {
   fetchLinkContent,
 } from '@/lib/knowledge/ingest-sources'
 import { ingestEvents } from '@/lib/events/ingest'
-import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 
 export const runtime = 'nodejs'
 
@@ -169,8 +169,8 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
 }
 
 export async function GET(): Promise<Response> {
-  const session = await getServerSession()
-  if (!session?.user) {
+  const ctx = await getWorkspaceContext()
+  if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -178,13 +178,13 @@ export async function GET(): Promise<Response> {
     db
       .select()
       .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.userId, session.user.id))
+      .where(eq(knowledgeDocuments.workspaceId, ctx.workspaceId))
       .orderBy(desc(knowledgeDocuments.createdAt))
       .limit(50),
     db
       .select()
       .from(knowledgeSignals)
-      .where(eq(knowledgeSignals.userId, session.user.id))
+      .where(eq(knowledgeSignals.workspaceId, ctx.workspaceId))
       .orderBy(desc(knowledgeSignals.createdAt))
       .limit(100),
   ])
@@ -193,8 +193,8 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const session = await getServerSession()
-  if (!session?.user) {
+  const ctx = await getWorkspaceContext()
+  if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       .insert(knowledgeDocuments)
       .values({
         id: documentId,
-        userId: session.user.id,
+        workspaceId: ctx.workspaceId,
         title: knowledgeInput.title,
         sourceType: knowledgeInput.sourceType,
         sourceUrl,
@@ -244,7 +244,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const result = await runKnowledgeExtraction({
     documentId,
-    userId: session.user.id,
+    workspaceId: ctx.workspaceId,
     title: knowledgeInput.title,
     content: knowledgeInput.content,
     initialDocument: document,
@@ -260,7 +260,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         payload: { documentId, sourceType: knowledgeInput.sourceType },
       },
     ],
-    { userId: session.user.id },
+    { workspaceId: ctx.workspaceId },
   )
 
   return Response.json(result, { status: 201 })

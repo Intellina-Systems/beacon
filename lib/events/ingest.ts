@@ -29,7 +29,7 @@ export const rawEventSchema = z.object({
 export type RawEvent = z.infer<typeof rawEventSchema>
 
 export interface IngestOptions {
-  userId: string
+  workspaceId: string
   defaultSource?: InsertEvent['source']
 }
 
@@ -66,10 +66,10 @@ export function resolveMember(roster: Member[], label: string | undefined | null
 // Ingest a batch of events: resolve identities, dedupe, append, and fold the
 // status effects into the referenced work items.
 export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions): Promise<IngestResult> {
-  const { userId, defaultSource = 'manual' } = options
+  const { workspaceId, defaultSource = 'manual' } = options
   if (rawEvents.length === 0) return { inserted: 0, deduplicated: 0, eventIds: [] }
 
-  const roster = await db.select().from(members).where(eq(members.userId, userId))
+  const roster = await db.select().from(members).where(eq(members.workspaceId, workspaceId))
 
   // Resolve work item handles (key, external id, or internal id) in one query
   const taskHandles = Array.from(new Set(rawEvents.map((raw) => raw.task).filter((t): t is string => Boolean(t))))
@@ -79,7 +79,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
         .from(workItems)
         .where(
           and(
-            eq(workItems.userId, userId),
+            eq(workItems.workspaceId, workspaceId),
             sql`(${inArray(workItems.id, taskHandles)} or ${inArray(workItems.key, taskHandles)} or ${inArray(workItems.externalId, taskHandles)})`,
           ),
         )
@@ -98,7 +98,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
     const workItemId = raw.task ? (workItemByHandle.get(raw.task) ?? null) : null
     return {
       id: generateId(16),
-      userId,
+      workspaceId,
       source: raw.source ?? defaultSource,
       type: raw.type,
       memberId: member?.id ?? null,
@@ -119,7 +119,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
   const insertedRows = await db
     .insert(events)
     .values(inserts)
-    .onConflictDoNothing({ target: [events.userId, events.source, events.externalId] })
+    .onConflictDoNothing({ target: [events.workspaceId, events.source, events.externalId] })
     .returning({ id: events.id, workItemId: events.workItemId, type: events.type, occurredAt: events.occurredAt })
 
   // Fold status effects into referenced work items, latest event wins
@@ -142,7 +142,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
       db
         .update(workItems)
         .set({ status: status as never, statusChangedAt: at, lastEventAt: at, updatedAt: now })
-        .where(and(eq(workItems.id, workItemId), eq(workItems.userId, userId))),
+        .where(and(eq(workItems.id, workItemId), eq(workItems.workspaceId, workspaceId))),
     ),
     ...Array.from(touchedWorkItemIds)
       .filter((id) => !statusUpdates.has(id))
@@ -150,7 +150,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
         db
           .update(workItems)
           .set({ lastEventAt: now, updatedAt: now })
-          .where(and(eq(workItems.id, workItemId), eq(workItems.userId, userId))),
+          .where(and(eq(workItems.id, workItemId), eq(workItems.workspaceId, workspaceId))),
       ),
   ])
 

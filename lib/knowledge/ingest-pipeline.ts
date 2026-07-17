@@ -11,7 +11,7 @@ export type ExtractionStatus = 'complete' | 'stored_without_signals' | 'stored_w
 
 export async function runKnowledgeExtraction(params: {
   documentId: string
-  userId: string
+  workspaceId: string
   context?: string | null
   title: string
   content: string
@@ -23,7 +23,7 @@ export async function runKnowledgeExtraction(params: {
   signals: (typeof knowledgeSignals.$inferSelect)[]
   extractionStatus: ExtractionStatus
 }> {
-  const { documentId, userId, context, title, content, replaceSignals } = params
+  const { documentId, workspaceId, context, title, content, replaceSignals } = params
   let document = params.initialDocument
   const now = new Date()
 
@@ -75,7 +75,7 @@ export async function runKnowledgeExtraction(params: {
             .values(
               extraction.signals.map((signal) => ({
                 id: nanoid(),
-                userId,
+                workspaceId,
                 documentId,
                 kind: signal.kind,
                 title: signal.title,

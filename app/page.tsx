@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { SignIn } from '@/components/auth/sign-in'
 import { AlertTriangle, Bot, CircleCheck, GitCommit, GitMerge, GitPullRequest, Sparkles, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,7 +39,8 @@ export default async function Home() {
   const session = await getServerSession()
 
   if (session?.user) {
-    redirect('/pulse')
+    const ctx = await getWorkspaceContext()
+    redirect(ctx && (ctx.role === 'admin' || ctx.role === 'manager') ? '/pulse' : '/timeline')
   }
 
   return (

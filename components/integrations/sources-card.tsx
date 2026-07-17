@@ -19,6 +19,12 @@ interface SourceRow {
   enabled: boolean
   lastSyncedAt: string | null
   lastSyncError: string | null
+  projectId: string | null
+}
+
+interface ProjectOption {
+  id: string
+  name: string
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -30,10 +36,12 @@ const KIND_LABEL: Record<string, string> = {
 
 export function SourcesCard({
   sources,
+  projects,
   githubConnected,
   linearConnected,
 }: {
   sources: SourceRow[]
+  projects: ProjectOption[]
   githubConnected: boolean
   linearConnected: boolean
 }) {
@@ -52,6 +60,21 @@ export function SourcesCard({
       } else {
         toast.error(data.error ?? 'Sync failed')
       }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function setProject(id: string, projectId: string) {
+    setBusyId(id)
+    try {
+      const res = await fetch(`/api/sources/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: projectId === 'none' ? null : projectId }),
+      })
+      if (res.ok) router.refresh()
+      else toast.error('Failed to update project')
     } finally {
       setBusyId(null)
     }
@@ -106,6 +129,27 @@ export function SourcesCard({
                   </p>
                   {source.lastSyncError && <p className="text-xs text-red-500 truncate">{source.lastSyncError}</p>}
                 </div>
+                {projects.length > 1 && (
+                  <Select
+                    value={source.projectId ?? 'none'}
+                    onValueChange={(value) => setProject(source.id, value)}
+                    disabled={busyId === source.id}
+                  >
+                    <SelectTrigger size="sm" className="h-7 w-32 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General</SelectItem>
+                      {projects
+                        .filter((project) => project.name !== 'General')
+                        .map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {!source.enabled && <Badge variant="outline">Paused</Badge>}
                 <Button
                   size="sm"

@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { apiKeys, connections, signalSources } from '@/lib/db/schema'
+import { apiKeys, connections, projects, signalSources } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
+import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { isAdmin } from '@/lib/auth/permissions'
 import { getServerGitHubConnection } from '@/lib/github/get-connection-status'
 import { ConnectionsCard } from '@/components/integrations/connections-card'
 import { SourcesCard } from '@/components/integrations/sources-card'
@@ -16,16 +18,24 @@ export const metadata = { title: 'Integrations' }
 export default async function IntegrationsPage() {
   const session = await getServerSession()
   if (!session?.user) redirect('/')
-  const userId = session.user.id
+  const ctx = await getWorkspaceContext()
+  if (!ctx) redirect('/')
+  if (!isAdmin(ctx)) redirect('/timeline')
+  const workspaceId = ctx.workspaceId
 
-  const [github, linearRows, sources, keys] = await Promise.all([
-    getServerGitHubConnection(userId),
+  const [github, linearRows, sources, projectList, keys] = await Promise.all([
+    getServerGitHubConnection(session.user.id),
     db
-      .select({ workspaceName: connections.workspaceName })
+      .select({ workspaceName: connections.providerWorkspaceName })
       .from(connections)
-      .where(and(eq(connections.userId, userId), eq(connections.provider, 'linear')))
+      .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
       .limit(1),
-    db.select().from(signalSources).where(eq(signalSources.userId, userId)).orderBy(desc(signalSources.createdAt)),
+    db.select().from(signalSources).where(eq(signalSources.workspaceId, workspaceId)).orderBy(desc(signalSources.createdAt)),
+    db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(eq(projects.workspaceId, workspaceId))
+      .orderBy(projects.createdAt),
     db
       .select({
         id: apiKeys.id,
@@ -36,7 +46,7 @@ export default async function IntegrationsPage() {
         createdAt: apiKeys.createdAt,
       })
       .from(apiKeys)
-      .where(eq(apiKeys.userId, userId))
+      .where(eq(apiKeys.workspaceId, workspaceId))
       .orderBy(desc(apiKeys.createdAt)),
   ])
 
@@ -63,7 +73,9 @@ export default async function IntegrationsPage() {
             enabled: source.enabled,
             lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
             lastSyncError: source.lastSyncError,
+            projectId: source.projectId,
           }))}
+          projects={projectList}
           githubConnected={github.connected}
           linearConnected={!!linear}
         />

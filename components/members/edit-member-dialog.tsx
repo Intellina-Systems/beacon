@@ -7,24 +7,30 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export function EditMemberDialog({
   memberId,
   name,
   email,
-  role,
+  title,
+  accessRole,
+  showAccessRole = false,
 }: {
   memberId: string
   name: string
   email: string | null
-  role: string | null
+  title: string | null
+  accessRole?: 'admin' | 'manager' | 'engineer'
+  showAccessRole?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [nameVal, setNameVal] = useState(name)
   const [emailVal, setEmailVal] = useState(email ?? '')
-  const [roleVal, setRoleVal] = useState(role ?? '')
+  const [titleVal, setTitleVal] = useState(title ?? '')
+  const [roleVal, setRoleVal] = useState(accessRole ?? 'engineer')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -34,7 +40,12 @@ export function EditMemberDialog({
       const res = await fetch(`/api/members/${memberId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nameVal, email: emailVal || null, role: roleVal || null }),
+        body: JSON.stringify({
+          name: nameVal,
+          email: emailVal || null,
+          title: titleVal || null,
+          ...(showAccessRole ? { accessRole: roleVal } : {}),
+        }),
       })
       if (res.ok) {
         setOpen(false)
@@ -73,14 +84,29 @@ export function EditMemberDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
+              <Label htmlFor="title">Title</Label>
               <Input
-                id="role"
-                value={roleVal}
-                onChange={(e) => setRoleVal(e.target.value)}
+                id="title"
+                value={titleVal}
+                onChange={(e) => setTitleVal(e.target.value)}
                 placeholder="Engineer, Designer, PM…"
               />
             </div>
+            {showAccessRole && (
+              <div className="space-y-2">
+                <Label>Access role</Label>
+                <Select value={roleVal} onValueChange={(value) => setRoleVal(value as typeof roleVal)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="engineer">Engineer</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancel

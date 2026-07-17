@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { db } from '@/lib/db/client'
-import { users, accounts } from '@/lib/db/schema'
+import { users, accounts, workspaces } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getSessionFromReq } from '@/lib/session/server'
@@ -54,6 +54,18 @@ export async function getUserGitHubToken(req?: NextRequest): Promise<string | nu
     console.error('Error fetching user GitHub token:', error)
     return null
   }
+}
+
+// Background syncs run per workspace; the GitHub token belongs to the user who
+// created the workspace (the admin who connected the integration).
+export async function getGitHubTokenForWorkspace(workspaceId: string): Promise<string | null> {
+  const [workspace] = await db
+    .select({ createdByUserId: workspaces.createdByUserId })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId))
+    .limit(1)
+  if (!workspace?.createdByUserId) return null
+  return getGitHubTokenForUserId(workspace.createdByUserId)
 }
 
 export async function getGitHubTokenForUserId(userId: string): Promise<string | null> {

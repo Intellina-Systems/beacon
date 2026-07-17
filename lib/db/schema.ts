@@ -89,22 +89,50 @@ export type Setting = typeof settings.$inferSelect
 export type InsertSetting = typeof settings.$inferInsert
 
 // ---------------------------------------------------------------------------
+// Workspace — the org-level container every signal, work item, and member
+// belongs to. Users are login identities; workspaces own the data.
+// ---------------------------------------------------------------------------
+
+export const workspaces = pgTable('workspaces', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdByUserId: text('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+})
+
+export type Workspace = typeof workspaces.$inferSelect
+export type InsertWorkspace = typeof workspaces.$inferInsert
+
+// ---------------------------------------------------------------------------
 // Team
 // ---------------------------------------------------------------------------
 
-// Engineers on the team. Signals from every source are attributed to a member
+export const ACCESS_ROLES = ['admin', 'manager', 'engineer'] as const
+export type AccessRole = (typeof ACCESS_ROLES)[number]
+
+export const MEMBER_STATUSES = ['profile', 'invited', 'active'] as const
+export type MemberStatus = (typeof MEMBER_STATUSES)[number]
+
+// People in the workspace. Signals from every source are attributed to a member
 // through identity aliases (GitHub login, Linear user id, agent name, email…).
+// A member may be a pure attribution profile (no login), an invitee, or an
+// active user (authUserId set). accessRole controls what they see when they
+// log in; title is just the human job title.
 export const members = pgTable(
   'members',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    authUserId: text('auth_user_id').references(() => users.id, { onDelete: 'set null' }),
+    accessRole: text('access_role', { enum: ACCESS_ROLES }).notNull().default('engineer'),
+    status: text('status', { enum: MEMBER_STATUSES }).notNull().default('profile'),
     name: text('name').notNull(),
     email: text('email'),
     avatarUrl: text('avatar_url'),
-    role: text('role'),
+    title: text('title'),
     githubUsername: text('github_username'),
     linearUserId: text('linear_user_id'),
     slackHandle: text('slack_handle'),
@@ -115,12 +143,148 @@ export const members = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: index('members_user_idx').on(table.userId),
+    workspaceIdx: index('members_workspace_idx').on(table.workspaceId),
+    workspaceAuthUserUnique: uniqueIndex('members_workspace_auth_user_idx')
+      .on(table.workspaceId, table.authUserId)
+      .where(sql`${table.authUserId} is not null`),
   }),
 )
 
 export type Member = typeof members.$inferSelect
 export type InsertMember = typeof members.$inferInsert
+
+export const TEAM_KINDS = ['engineering', 'non_technical'] as const
+export type TeamKind = (typeof TEAM_KINDS)[number]
+
+// Teams group members inside a workspace. Orthogonal to projects: a team can
+// work across projects, and members can belong to several teams.
+export const teams = pgTable(
+  'teams',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    kind: text('kind', { enum: TEAM_KINDS }).notNull().default('engineering'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('teams_workspace_name_idx').on(table.workspaceId, table.name),
+  }),
+)
+
+export type Team = typeof teams.$inferSelect
+export type InsertTeam = typeof teams.$inferInsert
+
+// Membership is many-to-many; isLead gives an engineer manager-like visibility
+// scoped to that team only (leads may report straight to the admin — no
+// workspace-level manager required anywhere).
+export const teamMembers = pgTable(
+  'team_members',
+  {
+    id: text('id').primaryKey(),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    isLead: boolean('is_lead').notNull().default(false),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    teamMemberUnique: uniqueIndex('team_members_team_member_idx').on(table.teamId, table.memberId),
+    memberIdx: index('team_members_member_idx').on(table.memberId),
+  }),
+)
+
+export type TeamMember = typeof teamMembers.$inferSelect
+export type InsertTeamMember = typeof teamMembers.$inferInsert
+
+// Link-based invites. The member row (with role + team assignments) is created
+// up front by an admin; claiming the token binds the signing-in user to it.
+export const invites = pgTable(
+  'invites',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    email: text('email'),
+    tokenHash: text('token_hash').notNull(),
+    invitedByMemberId: text('invited_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    expiresAt: timestamp('expires_at').notNull(),
+    acceptedAt: timestamp('accepted_at'),
+    revokedAt: timestamp('revoked_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    tokenHashUnique: uniqueIndex('invites_token_hash_idx').on(table.tokenHash),
+    workspaceIdx: index('invites_workspace_idx').on(table.workspaceId),
+    memberIdx: index('invites_member_idx').on(table.memberId),
+  }),
+)
+
+export type Invite = typeof invites.$inferSelect
+export type InsertInvite = typeof invites.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Projects — initiatives inside a workspace. Hierarchy:
+// Workspace → Projects → Epics → Features → Tasks.
+// ---------------------------------------------------------------------------
+
+export const PROJECT_STATUSES = ['active', 'paused', 'archived'] as const
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
+
+export const projects = pgTable(
+  'projects',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    status: text('status', { enum: PROJECT_STATUSES }).notNull().default('active'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('projects_workspace_name_idx').on(table.workspaceId, table.name),
+  }),
+)
+
+export type Project = typeof projects.$inferSelect
+export type InsertProject = typeof projects.$inferInsert
+
+// Which teams are assigned to a project — capacity/planning signal, not an
+// access wall (visibility stays member/team-based).
+export const projectTeams = pgTable(
+  'project_teams',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectTeamUnique: uniqueIndex('project_teams_project_team_idx').on(table.projectId, table.teamId),
+    teamIdx: index('project_teams_team_idx').on(table.teamId),
+  }),
+)
+
+export type ProjectTeam = typeof projectTeams.$inferSelect
+export type InsertProjectTeam = typeof projectTeams.$inferInsert
 
 // ---------------------------------------------------------------------------
 // Work graph
@@ -146,9 +310,12 @@ export const workItems = pgTable(
   'work_items',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
     parentId: text('parent_id'),
     kind: text('kind', { enum: WORK_ITEM_KINDS }).notNull().default('task'),
     // Short human handle used to correlate signals, e.g. "BCN-42" or "AIRS-421"
@@ -170,13 +337,18 @@ export const workItems = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: index('work_items_user_idx').on(table.userId),
-    userStatusIdx: index('work_items_user_status_idx').on(table.userId, table.status),
+    workspaceIdx: index('work_items_workspace_idx').on(table.workspaceId),
+    workspaceStatusIdx: index('work_items_workspace_status_idx').on(table.workspaceId, table.status),
+    projectIdx: index('work_items_project_idx').on(table.projectId),
     parentIdx: index('work_items_parent_idx').on(table.parentId),
-    userKeyIdx: uniqueIndex('work_items_user_key_idx')
-      .on(table.userId, table.key)
+    workspaceKeyIdx: uniqueIndex('work_items_workspace_key_idx')
+      .on(table.workspaceId, table.key)
       .where(sql`${table.key} is not null`),
-    externalUnique: uniqueIndex('work_items_external_idx').on(table.userId, table.externalProvider, table.externalId),
+    externalUnique: uniqueIndex('work_items_external_idx').on(
+      table.workspaceId,
+      table.externalProvider,
+      table.externalId,
+    ),
   }),
 )
 
@@ -204,9 +376,9 @@ export const events = pgTable(
   'events',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     source: text('source', { enum: EVENT_SOURCES }).notNull(),
     // Dot-namespaced type, e.g. task.started, pr.merged, ci.failed, agent.blocked
     type: text('type').notNull(),
@@ -225,11 +397,11 @@ export const events = pgTable(
     ingestedAt: timestamp('ingested_at').defaultNow().notNull(),
   },
   (table) => ({
-    userOccurredIdx: index('events_user_occurred_idx').on(table.userId, table.occurredAt),
-    userTypeIdx: index('events_user_type_idx').on(table.userId, table.type),
+    workspaceOccurredIdx: index('events_workspace_occurred_idx').on(table.workspaceId, table.occurredAt),
+    workspaceTypeIdx: index('events_workspace_type_idx').on(table.workspaceId, table.type),
     workItemIdx: index('events_work_item_idx').on(table.workItemId),
     memberIdx: index('events_member_idx').on(table.memberId),
-    dedupeUnique: uniqueIndex('events_dedupe_idx').on(table.userId, table.source, table.externalId),
+    dedupeUnique: uniqueIndex('events_dedupe_idx').on(table.workspaceId, table.source, table.externalId),
   }),
 )
 
@@ -244,24 +416,28 @@ export const CONNECTION_PROVIDERS = ['linear', 'slack', 'google_calendar'] as co
 export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number]
 
 // OAuth-style connections to external providers (GitHub lives on users/accounts).
+// The connection belongs to the workspace; the OAuth token belongs to whoever
+// connected it (connectedByUserId).
 export const connections = pgTable(
   'connections',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    connectedByUserId: text('connected_by_user_id').references(() => users.id, { onDelete: 'set null' }),
     provider: text('provider', { enum: CONNECTION_PROVIDERS }).notNull(),
     accessToken: text('access_token').notNull(), // encrypted
     externalUserId: text('external_user_id'),
-    workspaceId: text('workspace_id'),
-    workspaceName: text('workspace_name'),
+    // The provider's own workspace/org (e.g. the Linear workspace), not ours
+    providerWorkspaceId: text('provider_workspace_id'),
+    providerWorkspaceName: text('provider_workspace_name'),
     config: jsonb('config').$type<Record<string, unknown>>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userProviderUnique: uniqueIndex('connections_user_provider_idx').on(table.userId, table.provider),
+    workspaceProviderUnique: uniqueIndex('connections_workspace_provider_idx').on(table.workspaceId, table.provider),
   }),
 )
 
@@ -272,13 +448,16 @@ export const SIGNAL_SOURCE_KINDS = ['github_repo', 'linear_project', 'linear_tea
 export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number]
 
 // A concrete stream Beacon watches: a repo, a Linear project/team, a channel…
+// projectId maps the stream to a Beacon project so ingested signals attribute
+// automatically; null means "General".
 export const signalSources = pgTable(
   'signal_sources',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: SIGNAL_SOURCE_KINDS }).notNull(),
     // e.g. "vercel/next.js" for a repo, the Linear project/team id otherwise
     identifier: text('identifier').notNull(),
@@ -294,8 +473,8 @@ export const signalSources = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userKindIdentifierUnique: uniqueIndex('signal_sources_user_kind_identifier_idx').on(
-      table.userId,
+    workspaceKindIdentifierUnique: uniqueIndex('signal_sources_workspace_kind_identifier_idx').on(
+      table.workspaceId,
       table.kind,
       table.identifier,
     ),
@@ -310,9 +489,9 @@ export const apiKeys = pgTable(
   'api_keys',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     keyHash: text('key_hash').notNull(),
     keyPrefix: text('key_prefix').notNull(), // first chars, for display
@@ -322,7 +501,7 @@ export const apiKeys = pgTable(
   },
   (table) => ({
     keyHashUnique: uniqueIndex('api_keys_key_hash_idx').on(table.keyHash),
-    userIdx: index('api_keys_user_idx').on(table.userId),
+    workspaceIdx: index('api_keys_workspace_idx').on(table.workspaceId),
   }),
 )
 
@@ -337,9 +516,9 @@ export const knowledgeDocuments = pgTable(
   'knowledge_documents',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     title: text('title').notNull(),
     sourceType: text('source_type', {
       enum: [
@@ -369,7 +548,7 @@ export const knowledgeDocuments = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: index('knowledge_documents_user_idx').on(table.userId),
+    workspaceIdx: index('knowledge_documents_workspace_idx').on(table.workspaceId),
   }),
 )
 
@@ -380,9 +559,9 @@ export const knowledgeSignals = pgTable(
   'knowledge_signals',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     documentId: text('document_id')
       .notNull()
       .references(() => knowledgeDocuments.id, { onDelete: 'cascade' }),
@@ -400,7 +579,7 @@ export const knowledgeSignals = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userIdx: index('knowledge_signals_user_idx').on(table.userId),
+    workspaceIdx: index('knowledge_signals_workspace_idx').on(table.workspaceId),
     documentIdx: index('knowledge_signals_document_idx').on(table.documentId),
   }),
 )
@@ -419,9 +598,9 @@ export const insights = pgTable(
   'insights',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id')
+    workspaceId: text('workspace_id')
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: INSIGHT_KINDS }).notNull(),
     severity: text('severity', { enum: ['info', 'warning', 'critical'] })
       .notNull()
@@ -440,8 +619,8 @@ export const insights = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
-    userStatusIdx: index('insights_user_status_idx').on(table.userId, table.status),
-    userKindIdx: index('insights_user_kind_idx').on(table.userId, table.kind),
+    workspaceStatusIdx: index('insights_workspace_status_idx').on(table.workspaceId, table.status),
+    workspaceKindIdx: index('insights_workspace_kind_idx').on(table.workspaceId, table.kind),
   }),
 )
 

@@ -2,7 +2,7 @@ import { Octokit } from '@octokit/rest'
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { signalSources, type SignalSource } from '@/lib/db/schema'
-import { getGitHubTokenForUserId } from '@/lib/github/user-token'
+import { getGitHubTokenForWorkspace } from '@/lib/github/user-token'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
 import { extractWorkItemKey, type SyncResult } from './types'
 
@@ -10,8 +10,8 @@ const INITIAL_LOOKBACK_DAYS = 30
 
 // Turn a repo's recent commits and pull requests into normalized events.
 // Dedupe is handled downstream via each event's externalId.
-export async function syncGitHubSource(userId: string, source: SignalSource): Promise<SyncResult> {
-  const token = await getGitHubTokenForUserId(userId)
+export async function syncGitHubSource(workspaceId: string, source: SignalSource): Promise<SyncResult> {
+  const token = await getGitHubTokenForWorkspace(workspaceId)
   if (!token) throw new Error('GitHub is not connected')
 
   const [owner, repo] = source.identifier.split('/')
@@ -107,7 +107,7 @@ export async function syncGitHubSource(userId: string, source: SignalSource): Pr
     }
   }
 
-  const result = await ingestEvents(rawEvents, { userId, defaultSource: 'github' })
+  const result = await ingestEvents(rawEvents, { workspaceId, defaultSource: 'github' })
 
   const now = new Date()
   await db
