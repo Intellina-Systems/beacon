@@ -306,7 +306,14 @@ function MessageBubble({ message }: { message: UIMessage }) {
 // Page
 // ---------------------------------------------------------------------------
 
-const SUGGESTIONS = ['What is everyone working on?', 'Who is blocked?', 'What happened this week?']
+const SUGGESTIONS = [
+  {
+    label: 'Give me recent changes on the platform and list teams and names worked on it.',
+    message: 'Give me recent changes on the platform and list teams and names worked on it.',
+  },
+  { label: 'What happened this week?', message: 'What happened this week?' },
+  { label: 'What is everyone working on?', message: 'What is everyone working on?' },
+]
 
 function ChatConversation() {
   const { messages, status, sendMessage, stop } = useBeaconChat()
@@ -363,11 +370,11 @@ function ChatConversation() {
             <div className="flex max-w-sm flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((suggestion) => (
                 <button
-                  key={suggestion}
-                  onClick={() => sendMessage(suggestion, responseLevel)}
+                  key={suggestion.label}
+                  onClick={() => sendMessage(suggestion.message, responseLevel)}
                   className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
                 >
-                  {suggestion}
+                  {suggestion.label}
                 </button>
               ))}
             </div>
