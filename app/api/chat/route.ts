@@ -9,6 +9,7 @@ import { db } from '@/lib/db/client'
 import { members, workItems, EVENT_SOURCES, WORK_ITEM_STATUSES, type Event } from '@/lib/db/schema'
 import { getActiveBlockers, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import { retrieveKnowledgeContext } from '@/lib/knowledge/retrieve'
+import { DEFAULT_RESPONSE_LEVEL, RESPONSE_LEVEL_INSTRUCTIONS, isResponseLevel } from '@/lib/chat/response-level'
 
 const PRIORITY_LABEL: Record<number, string> = { 0: 'none', 1: 'urgent', 2: 'high', 3: 'medium', 4: 'low' }
 
@@ -42,7 +43,9 @@ export async function POST(req: Request) {
 
   const workspaceId = ctx.workspaceId
   const visible = await visibleMemberIds(ctx)
-  const { messages }: { messages: UIMessage[] } = await req.json()
+  const body: { messages: UIMessage[]; responseLevel?: unknown } = await req.json()
+  const { messages } = body
+  const responseLevel = isResponseLevel(body.responseLevel) ? body.responseLevel : DEFAULT_RESPONSE_LEVEL
   const latestUserText = extractLatestUserText(messages)
 
   const [pulse, blockers, roster, memberActivity, activeItems, recentEvents, knowledge] = await Promise.all([
@@ -82,6 +85,7 @@ export async function POST(req: Request) {
   const systemParts: string[] = [
     'You are Beacon, the engineering intelligence layer for this team. You sit above GitHub, Linear, coding agents, CI/CD, and communication tools, continuously understanding what is happening. Everything you know is derived from an append-only event stream — never guess beyond it.',
     'Be concise and direct. Default to answering in plain prose, even for questions about work items, the team, or blockers — use query_events, or the context already provided above, to write a short text answer. Only call display_work_items, display_team, or get_blockers when the user explicitly asks to see/show/list a board, roster, or set of cards (e.g. "show me the backlog", "list the team"); do not call them just because the topic is tasks, people, or blockers. search_knowledge is for docs/notes context.',
+    RESPONSE_LEVEL_INSTRUCTIONS[responseLevel],
     '',
     `## Pulse — last ${pulse.sinceDays} days`,
     `- ${pulse.totalEvents} events total | work ${pulse.byCategory.work}, code ${pulse.byCategory.code}, ci/cd ${pulse.byCategory.cicd}, agents ${pulse.byCategory.agent}, comms ${pulse.byCategory.comms}, knowledge ${pulse.byCategory.knowledge}`,

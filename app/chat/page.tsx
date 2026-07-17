@@ -1,11 +1,20 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { Sparkles, Send, StopCircle, SquarePen, Bug, X, ChevronDown } from 'lucide-react'
+import { Sparkles, Send, StopCircle, SquarePen, Bug, X, ChevronDown, Gauge } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { useBeaconChat } from '@/hooks/use-beacon-chat'
 import {
@@ -15,7 +24,62 @@ import {
   UnknownToolDisplay,
   ToolLoading,
 } from '@/components/chat/tool-renderers'
+import {
+  RESPONSE_LEVELS,
+  RESPONSE_LEVEL_LABELS,
+  RESPONSE_LEVEL_DESCRIPTIONS,
+  DEFAULT_RESPONSE_LEVEL,
+  isResponseLevel,
+  type ResponseLevel,
+} from '@/lib/chat/response-level'
 import type { UIMessage } from 'ai'
+
+const RESPONSE_LEVEL_STORAGE_KEY = 'beacon:response-level'
+
+function readStoredResponseLevel(): ResponseLevel {
+  if (typeof window === 'undefined') return DEFAULT_RESPONSE_LEVEL
+  const stored = window.localStorage.getItem(RESPONSE_LEVEL_STORAGE_KEY)
+  return isResponseLevel(stored) ? stored : DEFAULT_RESPONSE_LEVEL
+}
+
+function useResponseLevel() {
+  const [level, setLevel] = useState<ResponseLevel>(readStoredResponseLevel)
+
+  function update(next: ResponseLevel) {
+    setLevel(next)
+    window.localStorage.setItem(RESPONSE_LEVEL_STORAGE_KEY, next)
+  }
+
+  return [level, update] as const
+}
+
+// ---------------------------------------------------------------------------
+// Response-detail control — how much technical depth replies carry
+// ---------------------------------------------------------------------------
+
+function ResponseLevelMenu({ level, onChange }: { level: ResponseLevel; onChange: (level: ResponseLevel) => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0" title="Response detail">
+          <Gauge className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Response detail</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup value={level} onValueChange={(v) => onChange(v as ResponseLevel)}>
+          {RESPONSE_LEVELS.map((option) => (
+            <DropdownMenuRadioItem key={option} value={option} className="cursor-pointer flex-col items-start gap-0">
+              <span>{RESPONSE_LEVEL_LABELS[option]}</span>
+              <span className="text-xs text-muted-foreground">{RESPONSE_LEVEL_DESCRIPTIONS[option]}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Debug panel — shows every tool call with its input + output
@@ -249,6 +313,7 @@ function ChatConversation() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showDebug, setShowDebug] = useState(false)
+  const [responseLevel, setResponseLevel] = useResponseLevel()
 
   const isStreaming = status === 'streaming' || status === 'submitted'
 
@@ -266,7 +331,7 @@ function ChatConversation() {
       e.preventDefault()
       const text = (e.currentTarget.value ?? '').trim()
       if (text && !isStreaming) {
-        sendMessage(text)
+        sendMessage(text, responseLevel)
         e.currentTarget.value = ''
       }
     }
@@ -275,7 +340,7 @@ function ChatConversation() {
   function handleSend() {
     const text = inputRef.current?.value.trim() ?? ''
     if (text && !isStreaming) {
-      sendMessage(text)
+      sendMessage(text, responseLevel)
       if (inputRef.current) inputRef.current.value = ''
     }
   }
@@ -299,7 +364,7 @@ function ChatConversation() {
               {SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
-                  onClick={() => sendMessage(suggestion)}
+                  onClick={() => sendMessage(suggestion, responseLevel)}
                   className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
                 >
                   {suggestion}
@@ -328,6 +393,7 @@ function ChatConversation() {
             className="max-h-40 min-h-[40px] resize-none overflow-y-auto py-2.5 text-sm"
             disabled={isStreaming}
           />
+          <ResponseLevelMenu level={responseLevel} onChange={setResponseLevel} />
           <Button
             variant={showDebug ? 'secondary' : 'ghost'}
             size="icon"

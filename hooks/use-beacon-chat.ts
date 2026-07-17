@@ -3,6 +3,7 @@
 import { useState, useSyncExternalStore, useCallback } from 'react'
 import { AbstractChat, DefaultChatTransport } from 'ai'
 import type { UIMessage, ChatState, ChatStatus } from 'ai'
+import type { ResponseLevel } from '@/lib/chat/response-level'
 
 // ---------------------------------------------------------------------------
 // Reactive ChatState implementation
@@ -121,8 +122,8 @@ export function useBeaconChat() {
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   const sendMessage = useCallback(
-    (text: string) => {
-      void chat.sendMessage({ text })
+    (text: string, responseLevel?: ResponseLevel) => {
+      void chat.sendMessage({ text }, responseLevel ? { body: { responseLevel } } : undefined)
     },
     [chat],
   )
