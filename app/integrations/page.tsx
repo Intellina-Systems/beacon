@@ -30,7 +30,11 @@ export default async function IntegrationsPage() {
       .from(connections)
       .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
       .limit(1),
-    db.select().from(signalSources).where(eq(signalSources.workspaceId, workspaceId)).orderBy(desc(signalSources.createdAt)),
+    db
+      .select()
+      .from(signalSources)
+      .where(eq(signalSources.workspaceId, workspaceId))
+      .orderBy(desc(signalSources.createdAt)),
     db
       .select({ id: projects.id, name: projects.name })
       .from(projects)

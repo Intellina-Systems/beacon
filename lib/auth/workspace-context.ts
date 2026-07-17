@@ -4,15 +4,7 @@ import { cache } from 'react'
 import { asc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
-import {
-  members,
-  projects,
-  teamMembers,
-  teams,
-  workspaces,
-  type AccessRole,
-  type Member,
-} from '@/lib/db/schema'
+import { members, projects, teamMembers, teams, workspaces, type AccessRole, type Member } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 
 export interface ContextTeam {

@@ -50,11 +50,7 @@ export default async function RootLayout({
               session={session}
               githubConnection={githubConnection}
               role={ctx?.role ?? 'engineer'}
-              workspace={
-                ctx
-                  ? { name: ctx.workspaceName, memberName: ctx.member.name, teams: ctx.teams }
-                  : null
-              }
+              workspace={ctx ? { name: ctx.workspaceName, memberName: ctx.member.name, teams: ctx.teams } : null}
             >
               {children}
             </BeaconLayout>

@@ -47,7 +47,12 @@ export async function retrieveKnowledgeContext(input: {
               similarity: sql<number>`1 - (${cosineDistance(knowledgeDocuments.embedding, embedding)})`,
             })
             .from(knowledgeDocuments)
-            .where(and(eq(knowledgeDocuments.workspaceId, input.workspaceId), sql`${knowledgeDocuments.embedding} is not null`))
+            .where(
+              and(
+                eq(knowledgeDocuments.workspaceId, input.workspaceId),
+                sql`${knowledgeDocuments.embedding} is not null`,
+              ),
+            )
             .orderBy(cosineDistance(knowledgeDocuments.embedding, embedding))
             .limit(maxDocuments),
         )

@@ -63,7 +63,12 @@ export async function POST(req: Request) {
         and(
           eq(workItems.workspaceId, workspaceId),
           inArray(workItems.status, ['in_progress', 'in_review', 'blocked']),
-          visible ? or(inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']), isNull(workItems.assigneeMemberId)) : undefined,
+          visible
+            ? or(
+                inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']),
+                isNull(workItems.assigneeMemberId),
+              )
+            : undefined,
         ),
       )
       .orderBy(desc(workItems.updatedAt))

@@ -17,7 +17,5 @@ export async function GET(req: NextRequest): Promise<Response> {
     sameSite: 'lax',
   })
 
-  return Response.redirect(
-    new URL(`/api/auth/signin/github?next=${encodeURIComponent(`/join/${token}`)}`, req.url),
-  )
+  return Response.redirect(new URL(`/api/auth/signin/github?next=${encodeURIComponent(`/join/${token}`)}`, req.url))
 }

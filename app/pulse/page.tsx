@@ -68,11 +68,19 @@ export default async function PulsePage() {
     getMemberActivity(workspaceId, 7),
     db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
     db
-      .select({ status: workItems.status, id: workItems.id, projectId: workItems.projectId, projectName: projects.name })
+      .select({
+        status: workItems.status,
+        id: workItems.id,
+        projectId: workItems.projectId,
+        projectName: projects.name,
+      })
       .from(workItems)
       .leftJoin(projects, eq(projects.id, workItems.projectId))
       .where(
-        and(eq(workItems.workspaceId, workspaceId), inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked'])),
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked']),
+        ),
       ),
   ])
 

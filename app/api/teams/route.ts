@@ -46,7 +46,12 @@ export async function GET(): Promise<Response> {
       members: [],
     }
     if (row.memberId && row.memberName !== null) {
-      team.members.push({ id: row.memberId, name: row.memberName, avatarUrl: row.memberAvatarUrl, isLead: !!row.isLead })
+      team.members.push({
+        id: row.memberId,
+        name: row.memberName,
+        avatarUrl: row.memberAvatarUrl,
+        isLead: !!row.isLead,
+      })
     }
     byTeam.set(row.id, team)
   }

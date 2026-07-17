@@ -148,8 +148,8 @@ export function AddMemberButton({ teams }: { teams: TeamOption[] }) {
           {inviteUrl ? (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Share this one-time link with <span className="font-medium text-foreground">{name}</span>. It expires
-                in 7 days; they sign in with GitHub and land in your workspace as{' '}
+                Share this one-time link with <span className="font-medium text-foreground">{name}</span>. It expires in
+                7 days; they sign in with GitHub and land in your workspace as{' '}
                 <span className="font-medium text-foreground">{accessRole}</span>.
               </p>
               <div className="flex items-center gap-2">

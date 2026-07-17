@@ -71,7 +71,10 @@ export default async function WorkPage({
 
   const visible = await visibleMemberIds(ctx)
   const visibility = visible
-    ? or(inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']), isNull(workItems.assigneeMemberId))
+    ? or(
+        inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']),
+        isNull(workItems.assigneeMemberId),
+      )
     : undefined
   const where = and(
     eq(workItems.workspaceId, workspaceId),
@@ -105,7 +108,9 @@ export default async function WorkPage({
     db
       .select({ status: workItems.status, count: count() })
       .from(workItems)
-      .where(and(eq(workItems.workspaceId, workspaceId), project ? eq(workItems.projectId, project) : undefined, visibility))
+      .where(
+        and(eq(workItems.workspaceId, workspaceId), project ? eq(workItems.projectId, project) : undefined, visibility),
+      )
       .groupBy(workItems.status),
   ])
 

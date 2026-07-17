@@ -19,7 +19,15 @@ interface ProjectRow {
   itemCount: number
 }
 
-function ProjectItem({ project, canDelete, onChanged }: { project: ProjectRow; canDelete: boolean; onChanged: () => void }) {
+function ProjectItem({
+  project,
+  canDelete,
+  onChanged,
+}: {
+  project: ProjectRow
+  canDelete: boolean
+  onChanged: () => void
+}) {
   const [name, setName] = useState(project.name)
   const [status, setStatus] = useState<ProjectStatus>(project.status)
   const [busy, setBusy] = useState(false)

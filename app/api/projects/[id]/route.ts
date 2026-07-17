@@ -38,10 +38,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!isAdmin(ctx)) return forbidden()
 
   const { id } = await params
-  const [{ value: itemCount }] = await db
-    .select({ value: count() })
-    .from(workItems)
-    .where(eq(workItems.projectId, id))
+  const [{ value: itemCount }] = await db.select({ value: count() }).from(workItems).where(eq(workItems.projectId, id))
   if (itemCount > 0) {
     return Response.json({ error: 'Project still has work items — move them first' }, { status: 409 })
   }

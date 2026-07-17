@@ -22,7 +22,10 @@ export async function GET(req: NextRequest): Promise<Response> {
   const visible = await visibleMemberIds(ctx)
   if (visible) {
     conditions.push(
-      or(inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']), isNull(workItems.assigneeMemberId)),
+      or(
+        inArray(workItems.assigneeMemberId, visible.length ? visible : ['__none__']),
+        isNull(workItems.assigneeMemberId),
+      ),
     )
   }
   if (statuses?.length) conditions.push(inArray(workItems.status, statuses as never))

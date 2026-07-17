@@ -74,7 +74,13 @@ function NewTeamDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="team-name">Name *</Label>
-            <Input id="team-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Platform" required />
+            <Input
+              id="team-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Platform"
+              required
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="team-description">Description</Label>
@@ -200,11 +206,7 @@ function ManageTeamDialog({
             const isLead = selection.get(member.id) ?? false
             return (
               <div key={member.id} className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/40">
-                <Checkbox
-                  id={`tm-${member.id}`}
-                  checked={onTeam}
-                  onCheckedChange={() => toggleMember(member.id)}
-                />
+                <Checkbox id={`tm-${member.id}`} checked={onTeam} onCheckedChange={() => toggleMember(member.id)} />
                 <label htmlFor={`tm-${member.id}`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                   <Avatar className="h-6 w-6 border">
                     <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
@@ -316,7 +318,11 @@ export function TeamsSection({
                   <>
                     <div className="flex -space-x-1.5">
                       {team.members.slice(0, 6).map((member) => (
-                        <span key={member.id} className="relative inline-flex" title={member.name + (member.isLead ? ' (lead)' : '')}>
+                        <span
+                          key={member.id}
+                          className="relative inline-flex"
+                          title={member.name + (member.isLead ? ' (lead)' : '')}
+                        >
                           <Avatar className="h-6 w-6 border bg-background">
                             <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
                             <AvatarFallback className="text-[9px] font-medium">{initials(member.name)}</AvatarFallback>

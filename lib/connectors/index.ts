@@ -32,7 +32,9 @@ export async function syncAllSources(workspaceId?: string): Promise<SyncSummary>
     .select()
     .from(signalSources)
     .where(
-      workspaceId ? and(eq(signalSources.enabled, true), eq(signalSources.workspaceId, workspaceId)) : eq(signalSources.enabled, true),
+      workspaceId
+        ? and(eq(signalSources.enabled, true), eq(signalSources.workspaceId, workspaceId))
+        : eq(signalSources.enabled, true),
     )
 
   const summary: SyncSummary = { sourcesSynced: 0, sourcesFailed: 0, events: 0, workItems: 0 }

@@ -78,14 +78,27 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
       members: [],
     }
     if (row.memberId && row.memberName !== null) {
-      team.members.push({ id: row.memberId, name: row.memberName, avatarUrl: row.memberAvatarUrl, isLead: !!row.isLead })
+      team.members.push({
+        id: row.memberId,
+        name: row.memberName,
+        avatarUrl: row.memberAvatarUrl,
+        isLead: !!row.isLead,
+      })
     }
     teamsById.set(row.id, team)
   }
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <PageShell title="Team" description={`${total} member${total === 1 ? '' : 's'}`} actions={isAdmin(ctx) ? <AddMemberButton teams={[...teamsById.values()].map((t) => ({ id: t.id, name: t.name }))} /> : undefined}>
+    <PageShell
+      title="Team"
+      description={`${total} member${total === 1 ? '' : 's'}`}
+      actions={
+        isAdmin(ctx) ? (
+          <AddMemberButton teams={[...teamsById.values()].map((t) => ({ id: t.id, name: t.name }))} />
+        ) : undefined
+      }
+    >
       <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
         <TeamsSection teams={[...teamsById.values()]} roster={fullRoster} canManage={isAdmin(ctx)} />
         {pageMembers.length === 0 ? (
