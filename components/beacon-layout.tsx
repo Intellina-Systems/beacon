@@ -8,18 +8,23 @@ import {
   BookOpen,
   Cable,
   Crown,
+  FileText,
+  Inbox,
   LayoutDashboard,
   ListTodo,
   Menu,
   Moon,
+  RefreshCw,
   Sparkles,
   Sun,
   Users,
+  Workflow,
   X,
   Zap,
 } from 'lucide-react'
 import { User } from '@/components/auth/user'
 import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-dialog'
+import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -35,6 +40,9 @@ const navSections = [
       { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager'] as Role[] },
       { href: '/timeline', label: 'Timeline', icon: Activity },
       { href: '/work', label: 'Work', icon: ListTodo },
+      { href: '/cycles', label: 'Cycles', icon: RefreshCw },
+      { href: '/inbox', label: 'Inbox', icon: Inbox },
+      { href: '/docs', label: 'Docs', icon: FileText },
       { href: '/team', label: 'Team', icon: Users },
     ],
   },
@@ -47,7 +55,10 @@ const navSections = [
   },
   {
     label: 'Configure',
-    items: [{ href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin'] as Role[] }],
+    items: [
+      { href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin'] as Role[] },
+      { href: '/automation', label: 'Automation', icon: Workflow, roles: ['admin', 'manager'] as Role[] },
+    ],
   },
 ]
 
@@ -98,10 +109,13 @@ interface BeaconLayoutProps {
   githubConnection: { connected: boolean; username: string | null }
   role: Role
   workspace: {
+    id: string
     name: string
     memberName: string
     teams: { id: string; name: string; isLead: boolean }[]
+    memberships: { workspaceId: string; workspaceName: string }[]
   } | null
+  unreadNotifications?: number
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -110,7 +124,14 @@ const ROLE_LABEL: Record<Role, string> = {
   engineer: 'Engineer',
 }
 
-export function BeaconLayout({ children, session, githubConnection, role, workspace }: BeaconLayoutProps) {
+export function BeaconLayout({
+  children,
+  session,
+  githubConnection,
+  role,
+  workspace,
+  unreadNotifications = 0,
+}: BeaconLayoutProps) {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -143,9 +164,11 @@ export function BeaconLayout({ children, session, githubConnection, role, worksp
         <div className="shrink-0 border-b border-sidebar-border px-4 py-3">
           <p className="micro-label mb-1">Workspace</p>
           <div className="flex items-center gap-1.5">
-            <p className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground" title={workspace.name}>
-              {workspace.name}
-            </p>
+            <WorkspaceSwitcher
+              currentWorkspaceId={workspace.id}
+              currentWorkspaceName={workspace.name}
+              memberships={workspace.memberships}
+            />
             {role === 'admin' && <RenameWorkspaceDialog currentName={workspace.name} />}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -180,15 +203,25 @@ export function BeaconLayout({ children, session, githubConnection, role, worksp
                     onClick={() => setMobileOpen(false)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200',
                       active
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                         : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
                     )}
                   >
-                    {active && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-beacon" />}
-                    <Icon className={cn('h-4 w-4 shrink-0', active && 'text-beacon')} />
-                    {label}
+                    <span
+                      className={cn(
+                        'absolute inset-y-1.5 left-0 w-0.5 origin-center rounded-full bg-beacon transition-all duration-300 ease-out-soft',
+                        active ? 'scale-y-100 opacity-100' : 'scale-y-0 opacity-0',
+                      )}
+                    />
+                    <Icon className={cn('h-4 w-4 shrink-0 transition-colors duration-200', active && 'text-beacon')} />
+                    <span className="flex-1">{label}</span>
+                    {href === '/inbox' && unreadNotifications > 0 && (
+                      <span className="rounded-full bg-beacon px-1.5 py-0.5 font-mono text-[10px] font-semibold text-beacon-foreground">
+                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      </span>
+                    )}
                   </Link>
                 )
               })}
@@ -216,9 +249,11 @@ export function BeaconLayout({ children, session, githubConnection, role, worksp
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
-          <div className="w-64 border-r shadow-xl">{sidebar}</div>
+          <div className="animate-in slide-in-from-left w-64 border-r shadow-xl duration-300 ease-out-soft">
+            {sidebar}
+          </div>
           <button
-            className="flex-1 cursor-default bg-black/50 backdrop-blur-[2px]"
+            className="animate-in fade-in flex-1 cursor-default bg-black/50 backdrop-blur-[2px] duration-300"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           />

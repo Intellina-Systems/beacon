@@ -9,6 +9,9 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getServerGitHubConnection } from '@/lib/github/get-connection-status'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { db } from '@/lib/db/client'
+import { notifications } from '@/lib/db/schema'
+import { and, count, eq, isNull } from 'drizzle-orm'
 
 const plexSans = IBM_Plex_Sans({
   variable: '--font-plex-sans',
@@ -40,6 +43,20 @@ export default async function RootLayout({
     ? await getServerGitHubConnection(session.user.id)
     : { connected: false, username: null }
   const ctx = session?.user ? await getWorkspaceContext() : null
+  const unreadNotifications = ctx
+    ? ((
+        await db
+          .select({ value: count() })
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.workspaceId, ctx.workspaceId),
+              eq(notifications.memberId, ctx.member.id),
+              isNull(notifications.readAt),
+            ),
+          )
+      )[0]?.value ?? 0)
+    : 0
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -50,7 +67,18 @@ export default async function RootLayout({
               session={session}
               githubConnection={githubConnection}
               role={ctx?.role ?? 'engineer'}
-              workspace={ctx ? { name: ctx.workspaceName, memberName: ctx.member.name, teams: ctx.teams } : null}
+              workspace={
+                ctx
+                  ? {
+                      id: ctx.workspaceId,
+                      name: ctx.workspaceName,
+                      memberName: ctx.member.name,
+                      teams: ctx.teams,
+                      memberships: ctx.memberships,
+                    }
+                  : null
+              }
+              unreadNotifications={unreadNotifications}
             >
               {children}
             </BeaconLayout>

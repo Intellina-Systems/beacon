@@ -3,6 +3,12 @@
     "app/api/cron/sync/route.ts": {
       "maxDuration": 300
     },
+    "app/api/cron/cycles/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/cron/intelligence/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/sources/[id]/sync/route.ts": {
       "maxDuration": 300
     }
@@ -10,6 +16,14 @@
   "crons": [
     {
       "path": "/api/cron/sync",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/cycles",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/intelligence",
       "schedule": "0 * * * *"
     }
   ]

@@ -71,7 +71,7 @@ export default async function TimelinePage({
                 'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
                 (source ?? '') === filter.value
                   ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                  : 'bg-card text-muted-foreground hover:text-foreground',
+                  : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
               )}
             >
               {filter.label}

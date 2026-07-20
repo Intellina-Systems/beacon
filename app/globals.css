@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 
 @source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@blocknote/shadcn";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -46,84 +47,91 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --animate-shimmer: shimmer 1.8s linear infinite;
+  --animate-rise: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Beacon — "signal desk". Monochrome ink/graphite; color is reserved for
-   semantic state (blocked, done, failing) — never for chrome. The --beacon
-   token is the "active" ink: near-black in light, near-white in dark. */
+/* Beacon — "signal desk". Cool graphite ink (every neutral carries a whisper
+   of blue, chroma ≤ 0.015) with a single indigo accent: --beacon is the lit
+   signal — active nav, selected filters, focus rings, the unread badge.
+   Color otherwise stays semantic: --destructive (blocked/failing),
+   --success (done), --chart-5 amber (warning/at-risk). Chart slots:
+   1 neutral ink · 2 blue (started/in-progress/info) · 3 violet (in-review)
+   · 4 green (completed) · 5 amber (scope/warning) — CVD-validated per mode. */
 :root {
   --radius: 0.5rem;
-  --background: oklch(0.984 0 0);
-  --foreground: oklch(0.21 0 0);
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.21 0.012 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0 0);
+  --card-foreground: oklch(0.21 0.012 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0 0);
-  --primary: oklch(0.235 0 0);
-  --primary-foreground: oklch(0.984 0 0);
-  --secondary: oklch(0.955 0 0);
-  --secondary-foreground: oklch(0.29 0 0);
-  --muted: oklch(0.955 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.945 0 0);
-  --accent-foreground: oklch(0.235 0 0);
+  --popover-foreground: oklch(0.21 0.012 260);
+  --primary: oklch(0.235 0.015 262);
+  --primary-foreground: oklch(0.985 0.002 250);
+  --secondary: oklch(0.955 0.004 250);
+  --secondary-foreground: oklch(0.29 0.012 260);
+  --muted: oklch(0.955 0.004 250);
+  --muted-foreground: oklch(0.5 0.014 258);
+  --accent: oklch(0.945 0.006 255);
+  --accent-foreground: oklch(0.235 0.015 262);
   --destructive: oklch(0.577 0.215 27);
   --success: oklch(0.578 0.132 155);
-  --beacon: oklch(0.235 0 0);
-  --beacon-foreground: oklch(0.984 0 0);
-  --border: oklch(0.908 0 0);
-  --input: oklch(0.908 0 0);
-  --ring: oklch(0.6 0 0);
-  --chart-1: oklch(0.4 0 0);
-  --chart-2: oklch(0.62 0.1 200);
-  --chart-3: oklch(0.55 0.11 280);
-  --chart-4: oklch(0.65 0.13 155);
-  --chart-5: oklch(0.6 0.18 20);
-  --sidebar: oklch(0.966 0 0);
-  --sidebar-foreground: oklch(0.29 0 0);
-  --sidebar-primary: oklch(0.235 0 0);
-  --sidebar-primary-foreground: oklch(0.984 0 0);
-  --sidebar-accent: oklch(0.922 0 0);
-  --sidebar-accent-foreground: oklch(0.21 0 0);
-  --sidebar-border: oklch(0.908 0 0);
-  --sidebar-ring: oklch(0.6 0 0);
+  --beacon: oklch(0.51 0.19 275);
+  --beacon-foreground: oklch(0.985 0.005 275);
+  --border: oklch(0.906 0.006 255);
+  --input: oklch(0.906 0.006 255);
+  --ring: oklch(0.62 0.12 275);
+  --chart-1: oklch(0.45 0.02 260);
+  --chart-2: oklch(0.55 0.13 245);
+  --chart-3: oklch(0.54 0.17 285);
+  --chart-4: oklch(0.58 0.13 155);
+  --chart-5: oklch(0.6 0.13 60);
+  --sidebar: oklch(0.968 0.004 250);
+  --sidebar-foreground: oklch(0.29 0.012 260);
+  --sidebar-primary: oklch(0.51 0.19 275);
+  --sidebar-primary-foreground: oklch(0.985 0.005 275);
+  --sidebar-accent: oklch(0.92 0.008 255);
+  --sidebar-accent-foreground: oklch(0.21 0.012 260);
+  --sidebar-border: oklch(0.906 0.006 255);
+  --sidebar-ring: oklch(0.62 0.12 275);
 }
 
 .dark {
-  --background: oklch(0.165 0 0);
-  --foreground: oklch(0.93 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.93 0 0);
-  --primary: oklch(0.93 0 0);
-  --primary-foreground: oklch(0.2 0 0);
-  --secondary: oklch(0.26 0 0);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.245 0 0);
-  --muted-foreground: oklch(0.68 0 0);
-  --accent: oklch(0.265 0 0);
-  --accent-foreground: oklch(0.93 0 0);
+  --background: oklch(0.165 0.008 260);
+  --foreground: oklch(0.93 0.005 255);
+  --card: oklch(0.205 0.008 260);
+  --card-foreground: oklch(0.93 0.005 255);
+  --popover: oklch(0.205 0.008 260);
+  --popover-foreground: oklch(0.93 0.005 255);
+  --primary: oklch(0.93 0.005 255);
+  --primary-foreground: oklch(0.2 0.01 260);
+  --secondary: oklch(0.26 0.01 260);
+  --secondary-foreground: oklch(0.93 0.005 255);
+  --muted: oklch(0.245 0.01 260);
+  --muted-foreground: oklch(0.68 0.012 255);
+  --accent: oklch(0.265 0.012 260);
+  --accent-foreground: oklch(0.93 0.005 255);
   --destructive: oklch(0.66 0.19 25);
   --success: oklch(0.7 0.14 155);
-  --beacon: oklch(0.93 0 0);
-  --beacon-foreground: oklch(0.2 0 0);
+  --beacon: oklch(0.74 0.13 278);
+  --beacon-foreground: oklch(0.18 0.04 278);
   --border: oklch(1 0 0 / 9%);
   --input: oklch(1 0 0 / 13%);
-  --ring: oklch(0.55 0 0);
-  --chart-1: oklch(0.78 0 0);
-  --chart-2: oklch(0.72 0.11 200);
-  --chart-3: oklch(0.68 0.12 280);
-  --chart-4: oklch(0.74 0.13 155);
-  --chart-5: oklch(0.68 0.18 20);
-  --sidebar: oklch(0.145 0 0);
-  --sidebar-foreground: oklch(0.83 0 0);
-  --sidebar-primary: oklch(0.93 0 0);
-  --sidebar-primary-foreground: oklch(0.2 0 0);
-  --sidebar-accent: oklch(0.235 0 0);
-  --sidebar-accent-foreground: oklch(0.96 0 0);
+  --ring: oklch(0.65 0.12 278);
+  --chart-1: oklch(0.76 0.015 260);
+  --chart-2: oklch(0.64 0.12 240);
+  --chart-3: oklch(0.66 0.15 288);
+  --chart-4: oklch(0.64 0.14 155);
+  --chart-5: oklch(0.67 0.14 70);
+  --sidebar: oklch(0.145 0.008 260);
+  --sidebar-foreground: oklch(0.83 0.008 255);
+  --sidebar-primary: oklch(0.74 0.13 278);
+  --sidebar-primary-foreground: oklch(0.18 0.04 278);
+  --sidebar-accent: oklch(0.235 0.01 260);
+  --sidebar-accent-foreground: oklch(0.96 0.005 255);
   --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.55 0 0);
+  --sidebar-ring: oklch(0.65 0.12 278);
 }
 
 @layer base {
@@ -165,6 +173,36 @@ button {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Skeletons sweep a soft highlight instead of pulsing (wired in
+   components/ui/skeleton.tsx via animate-shimmer). */
+[data-slot='skeleton'] {
+  background-image: linear-gradient(
+    105deg,
+    var(--muted) 40%,
+    color-mix(in oklch, var(--muted) 90%, var(--foreground) 10%) 50%,
+    var(--muted) 60%
+  );
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-shimmer,
+  .animate-rise {
+    animation: none;
   }
 }
 

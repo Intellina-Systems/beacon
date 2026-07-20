@@ -1,16 +1,22 @@
 import 'server-only'
 
 import { cache } from 'react'
-import { asc, eq } from 'drizzle-orm'
+import { asc, desc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { members, projects, teamMembers, teams, workspaces, type AccessRole, type Member } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
+import { getActiveWorkspaceCookie } from '@/lib/workspace/active-workspace-cookie'
 
 export interface ContextTeam {
   id: string
   name: string
   isLead: boolean
+}
+
+export interface ContextMembership {
+  workspaceId: string
+  workspaceName: string
 }
 
 export interface WorkspaceContext {
@@ -19,6 +25,9 @@ export interface WorkspaceContext {
   member: Member
   role: AccessRole
   teams: ContextTeam[]
+  // Every workspace this login account belongs to, for the workspace switcher.
+  // Includes the active one.
+  memberships: ContextMembership[]
 }
 
 async function loadTeams(memberId: string): Promise<ContextTeam[]> {
@@ -71,6 +80,13 @@ async function bootstrapWorkspace(user: {
 
 // The request-scoped tenant + role resolution. Every page and API route that
 // touches workspace data goes through this instead of session.user.id.
+//
+// One login account can hold membership in several workspaces (invites create
+// a new member row for the same authUserId in a different workspace). Which
+// one is "active" is a per-browser preference: a cookie set by
+// POST /api/workspace/switch. Absent a valid cookie, the most recently joined
+// membership wins — newest first, so accepting a fresh invite feels immediate
+// even before the switcher cookie is written.
 export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | null> => {
   const session = await getServerSession()
   if (!session?.user) return null
@@ -80,18 +96,25 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | nu
     .from(members)
     .innerJoin(workspaces, eq(members.workspaceId, workspaces.id))
     .where(eq(members.authUserId, session.user.id))
-    .orderBy(asc(members.createdAt))
-    .limit(1)
+    .orderBy(desc(members.createdAt))
 
   let member: Member
   let workspaceName: string
+  let memberships: ContextMembership[]
+
   if (rows.length > 0) {
-    member = rows[0].member
-    workspaceName = rows[0].workspaceName
+    const activeWorkspaceId = await getActiveWorkspaceCookie()
+    const active = (activeWorkspaceId && rows.find((row) => row.member.workspaceId === activeWorkspaceId)) || rows[0]
+    member = active.member
+    workspaceName = active.workspaceName
+    memberships = rows
+      .map((row) => ({ workspaceId: row.member.workspaceId, workspaceName: row.workspaceName }))
+      .sort((a, b) => a.workspaceName.localeCompare(b.workspaceName))
   } else {
     const bootstrapped = await bootstrapWorkspace(session.user)
     member = bootstrapped.member
     workspaceName = bootstrapped.workspaceName
+    memberships = [{ workspaceId: member.workspaceId, workspaceName }]
   }
 
   return {
@@ -100,5 +123,6 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | nu
     member,
     role: member.accessRole,
     teams: await loadTeams(member.id),
+    memberships,
   }
 })

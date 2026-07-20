@@ -9,6 +9,9 @@ const patchSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).nullable().optional(),
   status: z.enum(PROJECT_STATUSES).optional(),
+  // Hygiene thresholds — null disables that job for this project.
+  autoCloseDays: z.number().int().min(1).max(365).nullable().optional(),
+  autoArchiveDays: z.number().int().min(1).max(365).nullable().optional(),
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
