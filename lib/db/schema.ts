@@ -97,6 +97,10 @@ export const workspaces = pgTable('workspaces', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   createdByUserId: text('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  // Native issue keys: one shared counter per workspace → "BEA-1", "BEA-2", …
+  // Allocation increments issueCounter atomically; the incremented value is the number.
+  issuePrefix: text('issue_prefix').notNull().default('BEA'),
+  issueCounter: integer('issue_counter').notNull().default(0),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -252,6 +256,10 @@ export const projects = pgTable(
     name: text('name').notNull(),
     description: text('description'),
     status: text('status', { enum: PROJECT_STATUSES }).notNull().default('active'),
+    // Hygiene thresholds (days of inactivity). Null disables that job for this
+    // project — auto-close/archive is opt-in, not a workspace-wide default.
+    autoCloseDays: integer('auto_close_days'),
+    autoArchiveDays: integer('auto_archive_days'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -294,6 +302,7 @@ export const WORK_ITEM_KINDS = ['epic', 'feature', 'task'] as const
 export type WorkItemKind = (typeof WORK_ITEM_KINDS)[number]
 
 export const WORK_ITEM_STATUSES = [
+  'triage',
   'backlog',
   'todo',
   'in_progress',
@@ -328,6 +337,21 @@ export const workItems = pgTable(
     assigneeMemberId: text('assignee_member_id').references(() => members.id, { onDelete: 'set null' }),
     labels: jsonb('labels').$type<string[]>(),
     dueDate: timestamp('due_date'),
+    // Canonical manual ordering: base-62 fractional-index string (lib/work-items/rank.ts).
+    // Null sorts after ranked items; a rank is assigned on create and on any drag.
+    rank: text('rank'),
+    // Effort in points; null = unestimated (counts as 1 point in progress math)
+    estimate: real('estimate'),
+    // Triage snooze: hidden from the triage queue until this time passes
+    snoozedUntil: timestamp('snoozed_until'),
+    // Which cycle (sprint) this item is planned in, if any. Auto-set when an
+    // item reaches a started/completed status while its project has an
+    // active cycle; auto-carried to the next cycle on rollover.
+    cycleId: text('cycle_id'),
+    // Hygiene: set by the auto-archive job when a resolved item has been
+    // inactive past its project's threshold. Hidden from default list views;
+    // never deleted, never affects status.
+    archivedAt: timestamp('archived_at'),
     // Provenance when mirrored from an external tracker (linear, jira, github…)
     externalProvider: text('external_provider'),
     externalId: text('external_id'),
@@ -341,6 +365,8 @@ export const workItems = pgTable(
     workspaceStatusIdx: index('work_items_workspace_status_idx').on(table.workspaceId, table.status),
     projectIdx: index('work_items_project_idx').on(table.projectId),
     parentIdx: index('work_items_parent_idx').on(table.parentId),
+    cycleIdx: index('work_items_cycle_idx').on(table.cycleId),
+    archivedIdx: index('work_items_archived_idx').on(table.archivedAt),
     workspaceKeyIdx: uniqueIndex('work_items_workspace_key_idx')
       .on(table.workspaceId, table.key)
       .where(sql`${table.key} is not null`),
@@ -354,6 +380,113 @@ export const workItems = pgTable(
 
 export type WorkItem = typeof workItems.$inferSelect
 export type InsertWorkItem = typeof workItems.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Cycles — project-scoped time-boxes (Beacon has no team-scoped work routing,
+// so cycles hang off the project, the container every work item already
+// requires). Auto-repeating: a cron rolls unfinished, non-terminal items into
+// an auto-created next cycle when the current one's endsAt passes.
+// ---------------------------------------------------------------------------
+
+export const cycles = pgTable(
+  'cycles',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    number: integer('number').notNull(), // sequential per project, starting at 1
+    name: text('name'), // optional custom name; UI falls back to "Cycle {number}"
+    startsAt: timestamp('starts_at').notNull(),
+    endsAt: timestamp('ends_at').notNull(),
+    cooldownEndsAt: timestamp('cooldown_ends_at'), // optional gap before the next cycle starts
+    // Set by the rollover job (or an early manual close). Null = still
+    // upcoming or active. Once set, the cycle and its snapshots are frozen —
+    // history is never rewritten.
+    closedAt: timestamp('closed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectNumberUnique: uniqueIndex('cycles_project_number_idx').on(table.projectId, table.number),
+    projectIdx: index('cycles_project_idx').on(table.projectId),
+    workspaceIdx: index('cycles_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type Cycle = typeof cycles.$inferSelect
+export type InsertCycle = typeof cycles.$inferInsert
+
+// Daily point-in-time rollup per cycle for burnup/velocity charts. Unestimated
+// items count as 1 point (same convention Linear uses) so charts work without
+// mandatory estimation. One row per (cycle, day); the cron upserts today's row.
+export const cycleSnapshots = pgTable(
+  'cycle_snapshots',
+  {
+    id: text('id').primaryKey(),
+    cycleId: text('cycle_id')
+      .notNull()
+      .references(() => cycles.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    snapshotDate: text('snapshot_date').notNull(), // 'YYYY-MM-DD', cycle-local computation day
+    scopePoints: real('scope_points').notNull(), // sum of estimates of every item ever in the cycle
+    startedPoints: real('started_points').notNull(), // scope currently in_progress/in_review/blocked/done
+    completedPoints: real('completed_points').notNull(), // scope currently done
+    itemCount: integer('item_count').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    cycleDateUnique: uniqueIndex('cycle_snapshots_cycle_date_idx').on(table.cycleId, table.snapshotDate),
+    cycleIdx: index('cycle_snapshots_cycle_idx').on(table.cycleId),
+  }),
+)
+
+export type CycleSnapshot = typeof cycleSnapshots.$inferSelect
+export type InsertCycleSnapshot = typeof cycleSnapshots.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Saved views — a named filter + layout over work_items. Boards are just a
+// view with layout 'board'; nothing about a view mutates data, matching
+// every tracker studied (Jira boards, GitHub Projects views, Height lists).
+// ---------------------------------------------------------------------------
+
+export const VIEW_LAYOUTS = ['list', 'board'] as const
+export type ViewLayout = (typeof VIEW_LAYOUTS)[number]
+
+export interface ViewFilters {
+  statuses?: WorkItemStatus[]
+  projectId?: string
+  assignee?: string // 'unassigned' | a member id
+  cycleId?: string
+}
+
+export const views = pgTable(
+  'views',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    layout: text('layout', { enum: VIEW_LAYOUTS }).notNull().default('list'),
+    filters: jsonb('filters').$type<ViewFilters>(),
+    createdByMemberId: text('created_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('views_workspace_name_idx').on(table.workspaceId, table.name),
+    workspaceIdx: index('views_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type View = typeof views.$inferSelect
+export type InsertView = typeof views.$inferInsert
 
 // ---------------------------------------------------------------------------
 // Event store — the heart of Beacon. Append-only. Everything else is derived.
@@ -407,6 +540,235 @@ export const events = pgTable(
 
 export type Event = typeof events.$inferSelect
 export type InsertEvent = typeof events.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Native issue tracking — relations, watchers, templates, notifications
+// ---------------------------------------------------------------------------
+
+export const WORK_ITEM_RELATION_TYPES = ['blocks', 'duplicate', 'related'] as const
+export type WorkItemRelationType = (typeof WORK_ITEM_RELATION_TYPES)[number]
+
+// Directional edges between work items. Semantics by type:
+//   blocks:    itemId blocks relatedItemId
+//   duplicate: itemId is a duplicate of relatedItemId (the canonical item)
+//   related:   symmetric; stored once, either direction
+export const workItemRelations = pgTable(
+  'work_item_relations',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    itemId: text('item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    relatedItemId: text('related_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: WORK_ITEM_RELATION_TYPES }).notNull(),
+    createdByMemberId: text('created_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    pairTypeUnique: uniqueIndex('work_item_relations_pair_type_idx').on(table.itemId, table.relatedItemId, table.type),
+    itemIdx: index('work_item_relations_item_idx').on(table.itemId),
+    relatedIdx: index('work_item_relations_related_idx').on(table.relatedItemId),
+  }),
+)
+
+export type WorkItemRelation = typeof workItemRelations.$inferSelect
+export type InsertWorkItemRelation = typeof workItemRelations.$inferInsert
+
+export const WATCHER_REASONS = ['manual', 'creator', 'assigned', 'mentioned'] as const
+export type WatcherReason = (typeof WATCHER_REASONS)[number]
+
+// Subscriptions: who gets notified about a work item's events. Auto-created on
+// create/assign; removable (and re-addable) manually.
+export const workItemWatchers = pgTable(
+  'work_item_watchers',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    workItemId: text('work_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    reason: text('reason', { enum: WATCHER_REASONS }).notNull().default('manual'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    itemMemberUnique: uniqueIndex('work_item_watchers_item_member_idx').on(table.workItemId, table.memberId),
+    memberIdx: index('work_item_watchers_member_idx').on(table.memberId),
+  }),
+)
+
+export type WorkItemWatcher = typeof workItemWatchers.$inferSelect
+export type InsertWorkItemWatcher = typeof workItemWatchers.$inferInsert
+
+// Reusable pre-filled issue defaults ("Bug report", "Chore"…). `defaults` holds
+// any subset of work-item fields; nulls/absent fields fall back to form input.
+export interface WorkItemTemplateDefaults {
+  title?: string
+  description?: string
+  kind?: WorkItemKind
+  status?: WorkItemStatus
+  priority?: number
+  labels?: string[]
+  estimate?: number
+  assigneeMemberId?: string
+  projectId?: string
+}
+
+export const workItemTemplates = pgTable(
+  'work_item_templates',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    defaults: jsonb('defaults').$type<WorkItemTemplateDefaults>().notNull(),
+    createdByMemberId: text('created_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('work_item_templates_workspace_name_idx').on(table.workspaceId, table.name),
+  }),
+)
+
+export type WorkItemTemplate = typeof workItemTemplates.$inferSelect
+export type InsertWorkItemTemplate = typeof workItemTemplates.$inferInsert
+
+// Inbox: one row per (recipient, event), fanned out at ingest time to watchers
+// of the event's work item (excluding the actor). Read/snooze state lives here.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => events.id, { onDelete: 'cascade' }),
+    workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'cascade' }),
+    readAt: timestamp('read_at'),
+    snoozedUntil: timestamp('snoozed_until'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    memberEventUnique: uniqueIndex('notifications_member_event_idx').on(table.memberId, table.eventId),
+    memberReadIdx: index('notifications_member_read_idx').on(table.memberId, table.readAt),
+    workspaceIdx: index('notifications_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type Notification = typeof notifications.$inferSelect
+export type InsertNotification = typeof notifications.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Automation — trigger/condition/action rules evaluated on the event bus.
+// The event stream Beacon already has is the trigger source; this table is
+// just "what to do when X happens", not a separate signal pipeline.
+// ---------------------------------------------------------------------------
+
+export const AUTOMATION_CONDITION_FIELDS = [
+  'event.source',
+  'workItem.status',
+  'workItem.priority',
+  'workItem.kind',
+  'workItem.assigneeMemberId',
+  'workItem.projectId',
+  'workItem.labels',
+] as const
+export type AutomationConditionField = (typeof AUTOMATION_CONDITION_FIELDS)[number]
+
+export const AUTOMATION_CONDITION_OPS = ['eq', 'neq', 'in', 'contains'] as const
+export type AutomationConditionOp = (typeof AUTOMATION_CONDITION_OPS)[number]
+
+export interface AutomationCondition {
+  field: AutomationConditionField
+  op: AutomationConditionOp
+  value: string | number | string[]
+}
+
+export const AUTOMATION_ACTION_TYPES = ['set_status', 'set_assignee', 'set_priority', 'add_label', 'notify'] as const
+export type AutomationActionType = (typeof AUTOMATION_ACTION_TYPES)[number]
+
+export interface AutomationAction {
+  type: AutomationActionType
+  // set_status: WorkItemStatus. set_assignee: memberId | null | "trigger_actor".
+  // set_priority: 0-4. add_label: string. notify: memberId | "assignee".
+  value: string | number | null
+}
+
+// One rule = one trigger event type. Admins create several rules for several
+// triggers rather than one rule matching a list — keeps conditions legible.
+export const automationRules = pgTable(
+  'automation_rules',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    triggerEventType: text('trigger_event_type').notNull(),
+    // ANDed together; empty/null = always match once the trigger fires.
+    conditions: jsonb('conditions').$type<AutomationCondition[]>(),
+    actions: jsonb('actions').$type<AutomationAction[]>().notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    createdByMemberId: text('created_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceIdx: index('automation_rules_workspace_idx').on(table.workspaceId),
+    triggerIdx: index('automation_rules_trigger_idx').on(table.workspaceId, table.triggerEventType, table.enabled),
+  }),
+)
+
+export type AutomationRule = typeof automationRules.$inferSelect
+export type InsertAutomationRule = typeof automationRules.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Project health updates — narrated status distinct from derived progress.
+// ---------------------------------------------------------------------------
+
+export const PROJECT_HEALTH = ['on_track', 'at_risk', 'off_track'] as const
+export type ProjectHealth = (typeof PROJECT_HEALTH)[number]
+
+export const projectUpdates = pgTable(
+  'project_updates',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    health: text('health', { enum: PROJECT_HEALTH }).notNull(),
+    body: text('body').notNull(),
+    authorMemberId: text('author_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    projectIdx: index('project_updates_project_idx').on(table.projectId, table.createdAt),
+    workspaceIdx: index('project_updates_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type ProjectUpdate = typeof projectUpdates.$inferSelect
+export type InsertProjectUpdate = typeof projectUpdates.$inferInsert
 
 // ---------------------------------------------------------------------------
 // Integrations — every tool is just a signal source, none of them is "the" one
@@ -609,6 +971,9 @@ export const insights = pgTable(
     detail: text('detail').notNull(),
     memberId: text('member_id').references(() => members.id, { onDelete: 'cascade' }),
     workItemId: text('work_item_id').references(() => workItems.id, { onDelete: 'cascade' }),
+    // Set on project-scoped insights (e.g. "no activity") that aren't about
+    // one work item — lets the generator dedupe per project, not just per kind.
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
     sourceEventIds: jsonb('source_event_ids').$type<string[]>(),
     status: text('status', { enum: ['active', 'resolved', 'dismissed'] })
       .notNull()
@@ -621,8 +986,78 @@ export const insights = pgTable(
   (table) => ({
     workspaceStatusIdx: index('insights_workspace_status_idx').on(table.workspaceId, table.status),
     workspaceKindIdx: index('insights_workspace_kind_idx').on(table.workspaceId, table.kind),
+    projectIdx: index('insights_project_idx').on(table.projectId),
   }),
 )
 
 export type Insight = typeof insights.$inferSelect
 export type InsertInsight = typeof insights.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Docs — personal, block-based documents (BlockNote). Each doc has exactly one
+// owner; it lives in that member's own space until shared. Sharing has two
+// independent layers, same shape as Notion/Google Docs: a workspace-wide
+// default (private, or "anyone in the workspace can view/edit") plus
+// per-person overrides in docCollaborators. The owner always has full access
+// and is the only one who can manage sharing or delete the doc.
+// ---------------------------------------------------------------------------
+
+export const DOC_SHARE_MODES = ['private', 'workspace'] as const
+export type DocShareMode = (typeof DOC_SHARE_MODES)[number]
+
+export const DOC_PERMISSIONS = ['view', 'edit'] as const
+export type DocPermission = (typeof DOC_PERMISSIONS)[number]
+
+export const docs = pgTable(
+  'docs',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerMemberId: text('owner_member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('Untitled'),
+    // BlockNote's Block[] — an ordered tree of block objects (id, type, props,
+    // content, children). Opaque to the server; only the editor interprets it.
+    content: jsonb('content').$type<unknown[]>().notNull().default([]),
+    shareMode: text('share_mode', { enum: DOC_SHARE_MODES }).notNull().default('private'),
+    // Only meaningful when shareMode = 'workspace'.
+    workspacePermission: text('workspace_permission', { enum: DOC_PERMISSIONS }).notNull().default('view'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceIdx: index('docs_workspace_idx').on(table.workspaceId),
+    ownerIdx: index('docs_owner_idx').on(table.ownerMemberId),
+  }),
+)
+
+export type Doc = typeof docs.$inferSelect
+export type InsertDoc = typeof docs.$inferInsert
+
+// Per-person share overrides. Only consulted for docs the viewer doesn't
+// already own; a row here grants access regardless of shareMode.
+export const docCollaborators = pgTable(
+  'doc_collaborators',
+  {
+    id: text('id').primaryKey(),
+    docId: text('doc_id')
+      .notNull()
+      .references(() => docs.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    permission: text('permission', { enum: DOC_PERMISSIONS }).notNull().default('view'),
+    addedByMemberId: text('added_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    docMemberUnique: uniqueIndex('doc_collaborators_doc_member_idx').on(table.docId, table.memberId),
+    memberIdx: index('doc_collaborators_member_idx').on(table.memberId),
+  }),
+)
+
+export type DocCollaborator = typeof docCollaborators.$inferSelect
+export type InsertDocCollaborator = typeof docCollaborators.$inferInsert

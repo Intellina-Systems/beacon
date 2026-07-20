@@ -15,6 +15,41 @@
       "when": 1784221558630,
       "tag": "0001_workspace_model",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784311946128,
+      "tag": "0002_phase1_native_issues",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784317964917,
+      "tag": "0003_phase2_cycles_views",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784355726118,
+      "tag": "0004_phase3_automation_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784356201502,
+      "tag": "0005_phase3_insights_project_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784513485347,
+      "tag": "0006_phase4_docs",
+      "breakpoints": true
     }
   ]
 }

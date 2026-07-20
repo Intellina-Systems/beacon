@@ -8,10 +8,26 @@ export const EVENT_TYPES = [
   'task.updated',
   'task.started',
   'task.status_changed',
+  'task.assigned',
+  'task.relation_added',
+  'task.relation_removed',
   'task.blocked',
   'task.unblocked',
   'task.completed',
   'task.cancelled',
+  'task.due_soon',
+  'task.overdue',
+  'task.auto_closed',
+  'task.archived',
+  // Cycles (sprints)
+  'sprint.started',
+  'sprint.closed',
+  'sprint.item_added',
+  'sprint.item_removed',
+  // Automation & project health
+  'automation.executed',
+  'project.update_posted',
+  'project.stale',
   // Code
   'code.commit',
   'pr.opened',
@@ -45,7 +61,7 @@ export const EVENT_TYPES = [
 export type EventType = (typeof EVENT_TYPES)[number]
 
 export const EVENT_CATEGORIES = {
-  work: /^task\./,
+  work: /^(task|sprint|automation|project)\./,
   code: /^(code|pr)\./,
   cicd: /^(ci|deploy)\./,
   agent: /^agent\./,
@@ -76,7 +92,12 @@ const STATUS_EFFECTS: Record<string, WorkItemStatus> = {
   'pr.opened': 'in_review',
   'pr.review_requested': 'in_review',
   'pr.changes_requested': 'in_progress',
-  'pr.merged': 'done',
+  // pr.merged deliberately has no unconditional effect here: completing an
+  // item on merge requires a *closing* magic word ("fixes/closes/resolves")
+  // and, when several PRs are linked, the *last* one to merge — logic that
+  // needs to inspect prior events, not a static type→status table. The
+  // GitHub connector (lib/connectors/github.ts) makes that call and, when it
+  // applies, emits an explicit task.status_changed → done itself.
 }
 
 export function statusEffectOf(type: string, payload?: Record<string, unknown>): WorkItemStatus | null {
@@ -88,7 +109,16 @@ export function statusEffectOf(type: string, payload?: Record<string, unknown>):
   return STATUS_EFFECTS[type] ?? null
 }
 
-const WORK_ITEM_STATUS_SET = new Set(['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done', 'cancelled'])
+const WORK_ITEM_STATUS_SET = new Set([
+  'triage',
+  'backlog',
+  'todo',
+  'in_progress',
+  'in_review',
+  'blocked',
+  'done',
+  'cancelled',
+])
 
 export function isWorkItemStatus(value: string): value is WorkItemStatus {
   return WORK_ITEM_STATUS_SET.has(value)

@@ -1,17 +1,24 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { and, eq, inArray } from 'drizzle-orm'
-import { AlertTriangle, Activity, ArrowUpRight, Bot, GitMerge, Users } from 'lucide-react'
+import { and, desc, eq, inArray } from 'drizzle-orm'
+import { AlertTriangle, Activity, ArrowUpRight, Bot, GitMerge, Lightbulb, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { members, projects, workItems } from '@/lib/db/schema'
+import { insights, members, projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { canViewAllTeams } from '@/lib/auth/permissions'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { EventItem } from '@/components/events/event-item'
+import { InsightActions } from '@/components/insights/insight-actions'
 import { relativeTime } from '@/lib/utils/relative-time'
 import { cn } from '@/lib/utils'
+
+const SEVERITY_DOT: Record<string, string> = {
+  info: 'bg-chart-2',
+  warning: 'bg-chart-5',
+  critical: 'bg-destructive',
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -60,29 +67,43 @@ export default async function PulsePage() {
   if (!canViewAllTeams(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
 
-  const [pulse, blockers, recentEvents, dailyActivity, memberActivity, roster, activeItems] = await Promise.all([
-    getPulse(workspaceId, 7),
-    getActiveBlockers(workspaceId),
-    listEvents(workspaceId, { limit: 30 }),
-    getDailyActivity(workspaceId, 14),
-    getMemberActivity(workspaceId, 7),
-    db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
-    db
-      .select({
-        status: workItems.status,
-        id: workItems.id,
-        projectId: workItems.projectId,
-        projectName: projects.name,
-      })
-      .from(workItems)
-      .leftJoin(projects, eq(projects.id, workItems.projectId))
-      .where(
-        and(
-          eq(workItems.workspaceId, workspaceId),
-          inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked']),
+  const [pulse, blockers, recentEvents, dailyActivity, memberActivity, roster, activeInsights, activeItems] =
+    await Promise.all([
+      getPulse(workspaceId, 7),
+      getActiveBlockers(workspaceId),
+      listEvents(workspaceId, { limit: 30 }),
+      getDailyActivity(workspaceId, 14),
+      getMemberActivity(workspaceId, 7),
+      db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
+      db
+        .select({
+          id: insights.id,
+          kind: insights.kind,
+          severity: insights.severity,
+          title: insights.title,
+          detail: insights.detail,
+          createdAt: insights.createdAt,
+        })
+        .from(insights)
+        .where(and(eq(insights.workspaceId, workspaceId), eq(insights.status, 'active')))
+        .orderBy(desc(insights.createdAt))
+        .limit(20),
+      db
+        .select({
+          status: workItems.status,
+          id: workItems.id,
+          projectId: workItems.projectId,
+          projectName: projects.name,
+        })
+        .from(workItems)
+        .leftJoin(projects, eq(projects.id, workItems.projectId))
+        .where(
+          and(
+            eq(workItems.workspaceId, workspaceId),
+            inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked']),
+          ),
         ),
-      ),
-  ])
+    ])
 
   const statusCounts = activeItems.reduce<Record<string, number>>((acc, item) => {
     acc[item.status] = (acc[item.status] ?? 0) + 1
@@ -112,8 +133,12 @@ export default async function PulsePage() {
       <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
         {/* KPI row */}
         <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          {stats.map(({ icon: Icon, label, value }) => (
-            <div key={label} className="rounded-lg border bg-card px-4 py-3.5">
+          {stats.map(({ icon: Icon, label, value }, i) => (
+            <div
+              key={label}
+              className="animate-rise rounded-lg border bg-card px-4 py-3.5 shadow-xs transition-colors duration-200 hover:border-beacon/30"
+              style={{ animationDelay: `${i * 60}ms` }}
+            >
               <div className="flex items-center justify-between">
                 <p className="micro-label">{label}</p>
                 <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
@@ -235,7 +260,7 @@ export default async function PulsePage() {
               </div>
             </Panel>
 
-            <Panel className="flex-1">
+            <Panel className="max-h-56 shrink-0">
               <PanelHeader label="Team" meta={<PanelLink href="/team" label="Roster" />} />
               <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
                 {roster.length === 0 ? (
@@ -261,6 +286,43 @@ export default async function PulsePage() {
                       </Link>
                     )
                   })
+                )}
+              </div>
+            </Panel>
+
+            <Panel className="flex-1">
+              <PanelHeader
+                label={
+                  <span className="flex items-center gap-1.5">
+                    <Lightbulb className="h-3.5 w-3.5" />
+                    Insights
+                  </span>
+                }
+                meta={
+                  <Badge variant={activeInsights.length > 0 ? 'default' : 'outline'} className="tabular-nums">
+                    {activeInsights.length}
+                  </Badge>
+                }
+              />
+              <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">
+                {activeInsights.length === 0 ? (
+                  <p className="py-3 text-sm text-muted-foreground">Nothing flagged right now.</p>
+                ) : (
+                  activeInsights.map((insight) => (
+                    <div key={insight.id} className="flex items-start gap-2 py-2.5">
+                      <span
+                        className={cn('mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full', SEVERITY_DOT[insight.severity])}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm leading-snug">{insight.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{insight.detail}</p>
+                        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground/70">
+                          {relativeTime(insight.createdAt)}
+                        </p>
+                      </div>
+                      <InsightActions insightId={insight.id} />
+                    </div>
+                  ))
                 )}
               </div>
             </Panel>

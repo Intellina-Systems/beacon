@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { claimInvite } from '@/lib/invites'
+import { setActiveWorkspaceCookie } from '@/lib/workspace/active-workspace-cookie'
 
 const claimSchema = z.object({ token: z.string().min(1) })
 
@@ -13,5 +14,11 @@ export async function POST(req: Request): Promise<Response> {
 
   const result = await claimInvite(parsed.data.token, session.user.id)
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 })
+
+  // Land the user in the org they just joined, not whichever workspace their
+  // cookie happened to point at (relevant the moment an account joins a
+  // second org).
+  await setActiveWorkspaceCookie(result.workspaceId)
+
   return Response.json({ success: true, workspaceId: result.workspaceId })
 }

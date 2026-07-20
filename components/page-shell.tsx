@@ -38,7 +38,9 @@ export function PanelLabel({ children, className }: { children: React.ReactNode;
 
 /** Bordered surface used for dashboard panels and data tables. */
 export function Panel({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <section className={cn('flex min-h-0 flex-col rounded-lg border bg-card', className)}>{children}</section>
+  return (
+    <section className={cn('flex min-h-0 flex-col rounded-lg border bg-card shadow-xs', className)}>{children}</section>
+  )
 }
 
 export function PanelHeader({
