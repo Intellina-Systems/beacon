@@ -22,6 +22,8 @@ const patchSchema = z
     dueDate: z.coerce.date().nullable().optional(),
     estimate: z.number().min(0).max(1000).nullable().optional(),
     cycleId: z.string().nullable().optional(),
+    engineId: z.string().nullable().optional(),
+    functionId: z.string().nullable().optional(),
     // Manual reorder: place this item after/before these items (either or both)
     moveAfterId: z.string().nullable().optional(),
     moveBeforeId: z.string().nullable().optional(),
@@ -53,6 +55,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       externalProvider: workItems.externalProvider,
       externalUrl: workItems.externalUrl,
       projectId: workItems.projectId,
+      engineId: workItems.engineId,
+      functionId: workItems.functionId,
       lastEventAt: workItems.lastEventAt,
       createdAt: workItems.createdAt,
       updatedAt: workItems.updatedAt,

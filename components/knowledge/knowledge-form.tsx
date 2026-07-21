@@ -1,14 +1,21 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileUp, Link2, StickyNote } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
+interface Option {
+  id: string
+  name: string
+}
 
 export function KnowledgeForm() {
   const router = useRouter()
@@ -16,7 +23,20 @@ export function KnowledgeForm() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [url, setUrl] = useState('')
+  const [engineId, setEngineId] = useState('')
+  const [functionId, setFunctionId] = useState('')
+  const [engineOptions, setEngineOptions] = useState<Option[]>([])
+  const [functionOptions, setFunctionOptions] = useState<Option[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    Promise.all([fetch('/api/engines').then((res) => res.json()), fetch('/api/functions').then((res) => res.json())])
+      .then(([engineData, functionData]) => {
+        setEngineOptions((engineData.engines ?? []).map((e: Option) => ({ id: e.id, name: e.name })))
+        setFunctionOptions((functionData.functions ?? []).map((f: Option) => ({ id: f.id, name: f.name })))
+      })
+      .catch(() => {})
+  }, [])
 
   async function handle(res: Response) {
     if (res.ok) {
@@ -24,6 +44,8 @@ export function KnowledgeForm() {
       setTitle('')
       setContent('')
       setUrl('')
+      setEngineId('')
+      setFunctionId('')
       router.refresh()
     } else {
       const data = await res.json().catch(() => null)
@@ -38,7 +60,13 @@ export function KnowledgeForm() {
         await fetch('/api/knowledge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), content: content.trim(), sourceType: 'note' }),
+          body: JSON.stringify({
+            title: title.trim(),
+            content: content.trim(),
+            sourceType: 'note',
+            engineId: engineId || undefined,
+            functionId: functionId || undefined,
+          }),
         }),
       )
     } finally {
@@ -53,7 +81,12 @@ export function KnowledgeForm() {
         await fetch('/api/knowledge', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sourceUrl: url.trim(), title: title.trim() || undefined }),
+          body: JSON.stringify({
+            sourceUrl: url.trim(),
+            title: title.trim() || undefined,
+            engineId: engineId || undefined,
+            functionId: functionId || undefined,
+          }),
         }),
       )
     } finally {
@@ -66,6 +99,8 @@ export function KnowledgeForm() {
     try {
       const formData = new FormData()
       formData.set('file', file)
+      if (engineId) formData.set('engineId', engineId)
+      if (functionId) formData.set('functionId', functionId)
       await handle(await fetch('/api/knowledge', { method: 'POST', body: formData }))
     } finally {
       setBusy(false)
@@ -76,6 +111,46 @@ export function KnowledgeForm() {
   return (
     <Card>
       <CardContent className="pt-6">
+        {(engineOptions.length > 0 || functionOptions.length > 0) && (
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            {engineOptions.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Engine</Label>
+                <Select value={engineId || 'none'} onValueChange={(v) => setEngineId(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No engine</SelectItem>
+                    {engineOptions.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {functionOptions.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Team</Label>
+                <Select value={functionId || 'none'} onValueChange={(v) => setFunctionId(v === 'none' ? '' : v)}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No team</SelectItem>
+                    {functionOptions.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+        )}
         <Tabs defaultValue="note">
           <TabsList>
             <TabsTrigger value="note">

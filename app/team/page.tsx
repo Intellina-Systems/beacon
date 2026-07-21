@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { count, eq } from 'drizzle-orm'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
+import { canViewAllTeams, detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
 import { TeamsSection, type TeamWithMembers } from '@/components/teams/teams-section'
 import { db } from '@/lib/db/client'
 import { members, teamMembers, teams } from '@/lib/db/schema'
@@ -89,18 +89,28 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   }
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
+  // Admins/managers see the whole company's teams; everyone else only sees
+  // the team(s) they're actually on — same "don't overwhelm the employee"
+  // rule as the Org page, reusing the visibility split already used
+  // elsewhere in the app (lib/auth/permissions.ts).
+  const allTeams = [...teamsById.values()]
+  const visibleTeams = canViewAllTeams(ctx)
+    ? allTeams
+    : allTeams.filter((t) => t.members.some((m) => m.id === ctx.member.id))
+
   return (
     <PageShell
       title="Team"
       description={`${total} member${total === 1 ? '' : 's'}`}
-      actions={
-        isAdmin(ctx) ? (
-          <AddMemberButton teams={[...teamsById.values()].map((t) => ({ id: t.id, name: t.name }))} />
-        ) : undefined
-      }
+      actions={isAdmin(ctx) ? <AddMemberButton teams={allTeams.map((t) => ({ id: t.id, name: t.name }))} /> : undefined}
     >
       <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
-        <TeamsSection teams={[...teamsById.values()]} roster={fullRoster} canManage={isAdmin(ctx)} />
+        <TeamsSection
+          teams={visibleTeams}
+          roster={fullRoster}
+          canManage={isAdmin(ctx)}
+          scopedToSelf={!canViewAllTeams(ctx)}
+        />
         {pageMembers.length === 0 ? (
           <div className="flex rounded-lg border border-dashed">
             <EmptyState

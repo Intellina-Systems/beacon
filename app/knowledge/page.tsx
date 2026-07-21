@@ -1,11 +1,13 @@
 import { redirect } from 'next/navigation'
-import { count, desc, eq } from 'drizzle-orm'
+import { and, count, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
+import { engines, functions, knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { listEngineOptions, listFunctionOptions } from '@/lib/org/list'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { KnowledgeForm } from '@/components/knowledge/knowledge-form'
+import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
 import { Pagination, parsePage } from '@/components/ui/pagination'
 import { relativeTime } from '@/lib/utils/relative-time'
 
@@ -24,10 +26,12 @@ const SIGNAL_TONE: Record<string, 'destructive' | 'secondary' | 'outline'> = {
   question: 'outline',
 }
 
-function knowledgeHref(docPage: number, sigPage: number) {
+function knowledgeHref(docPage: number, sigPage: number, engine?: string, orgFunction?: string) {
   const params = new URLSearchParams()
   if (docPage > 1) params.set('docPage', String(docPage))
   if (sigPage > 1) params.set('sigPage', String(sigPage))
+  if (engine) params.set('engine', engine)
+  if (orgFunction) params.set('function', orgFunction)
   const qs = params.toString()
   return qs ? `/knowledge?${qs}` : '/knowledge'
 }
@@ -35,7 +39,7 @@ function knowledgeHref(docPage: number, sigPage: number) {
 export default async function KnowledgePage({
   searchParams,
 }: {
-  searchParams: Promise<{ docPage?: string; sigPage?: string }>
+  searchParams: Promise<{ docPage?: string; sigPage?: string; engine?: string; function?: string }>
 }) {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
@@ -44,6 +48,18 @@ export default async function KnowledgePage({
   const params = await searchParams
   const docPage = parsePage(params.docPage)
   const sigPage = parsePage(params.sigPage)
+  const [engineOptions, functionOptions] = await Promise.all([
+    listEngineOptions(workspaceId),
+    listFunctionOptions(workspaceId),
+  ])
+  const engine = engineOptions.find((e) => e.id === params.engine)?.id
+  const orgFunction = functionOptions.find((f) => f.id === params.function)?.id
+
+  const docsWhere = and(
+    eq(knowledgeDocuments.workspaceId, workspaceId),
+    engine ? eq(knowledgeDocuments.engineId, engine) : undefined,
+    orgFunction ? eq(knowledgeDocuments.functionId, orgFunction) : undefined,
+  )
 
   const [documents, [{ value: docTotal }], signals, [{ value: sigTotal }]] = await Promise.all([
     db
@@ -53,13 +69,17 @@ export default async function KnowledgePage({
         sourceType: knowledgeDocuments.sourceType,
         summary: knowledgeDocuments.summary,
         createdAt: knowledgeDocuments.createdAt,
+        engineName: engines.name,
+        functionName: functions.name,
       })
       .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.workspaceId, workspaceId))
+      .leftJoin(engines, eq(engines.id, knowledgeDocuments.engineId))
+      .leftJoin(functions, eq(functions.id, knowledgeDocuments.functionId))
+      .where(docsWhere)
       .orderBy(desc(knowledgeDocuments.createdAt))
       .limit(PAGE_SIZE)
       .offset((docPage - 1) * PAGE_SIZE),
-    db.select({ value: count() }).from(knowledgeDocuments).where(eq(knowledgeDocuments.workspaceId, workspaceId)),
+    db.select({ value: count() }).from(knowledgeDocuments).where(docsWhere),
     db
       .select()
       .from(knowledgeSignals)
@@ -80,7 +100,32 @@ export default async function KnowledgePage({
 
         <div className="grid items-start gap-5 lg:grid-cols-2">
           <Panel>
-            <PanelHeader label="Sources" meta={<span className="tabular-nums">{docTotal}</span>} />
+            <PanelHeader
+              label="Sources"
+              meta={
+                <div className="flex items-center gap-1.5">
+                  {engineOptions.length > 0 && (
+                    <OrgTagFilter
+                      options={engineOptions}
+                      current={engine}
+                      paramName="engine"
+                      allLabel="Any engine"
+                      basePath="/knowledge"
+                    />
+                  )}
+                  {functionOptions.length > 0 && (
+                    <OrgTagFilter
+                      options={functionOptions}
+                      current={orgFunction}
+                      paramName="function"
+                      allLabel="Any team"
+                      basePath="/knowledge"
+                    />
+                  )}
+                  <span className="tabular-nums">{docTotal}</span>
+                </div>
+              }
+            />
             <div className="divide-y px-4">
               {documents.length === 0 ? (
                 <EmptyState title="Nothing ingested yet" hint="Paste a note, upload a doc, or add a URL above." />
@@ -89,6 +134,16 @@ export default async function KnowledgePage({
                   <div key={document.id} className="py-2.5">
                     <div className="flex items-center gap-2">
                       <p className="flex-1 truncate text-sm font-medium">{document.title}</p>
+                      {document.engineName && (
+                        <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
+                          {document.engineName}
+                        </Badge>
+                      )}
+                      {document.functionName && (
+                        <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
+                          {document.functionName}
+                        </Badge>
+                      )}
                       <Badge variant="outline" className="shrink-0 px-1.5 py-0 font-mono text-[10px]">
                         {document.sourceType}
                       </Badge>
@@ -109,7 +164,7 @@ export default async function KnowledgePage({
               page={docPage}
               pageCount={Math.max(1, Math.ceil(docTotal / PAGE_SIZE))}
               total={docTotal}
-              hrefFor={(p) => knowledgeHref(p, sigPage)}
+              hrefFor={(p) => knowledgeHref(p, sigPage, engine, orgFunction)}
               className="px-4"
             />
           </Panel>
@@ -143,7 +198,7 @@ export default async function KnowledgePage({
               page={sigPage}
               pageCount={Math.max(1, Math.ceil(sigTotal / PAGE_SIZE))}
               total={sigTotal}
-              hrefFor={(p) => knowledgeHref(docPage, p)}
+              hrefFor={(p) => knowledgeHref(docPage, p, engine, orgFunction)}
               className="px-4"
             />
           </Panel>

@@ -35,6 +35,8 @@ interface ItemDetail {
   estimate: number | null
   snoozedUntil: string | null
   externalUrl: string | null
+  engineId: string | null
+  functionId: string | null
 }
 
 interface RelationEntry {
@@ -78,6 +80,8 @@ export function WorkItemDetailSheet({
   const [item, setItem] = useState<ItemDetail | null>(null)
   const [relations, setRelations] = useState<RelationsView | null>(null)
   const [watchers, setWatchers] = useState<WatcherEntry[]>([])
+  const [engineOptions, setEngineOptions] = useState<RosterOption[]>([])
+  const [functionOptions, setFunctionOptions] = useState<RosterOption[]>([])
   const [loading, setLoading] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [labelsDraft, setLabelsDraft] = useState('')
@@ -88,10 +92,12 @@ export function WorkItemDetailSheet({
     if (!itemId) return
     setLoading(true)
     try {
-      const [itemRes, relationsRes, watchersRes] = await Promise.all([
+      const [itemRes, relationsRes, watchersRes, engineRes, functionRes] = await Promise.all([
         fetch(`/api/work-items/${itemId}`),
         fetch(`/api/work-items/${itemId}/relations`),
         fetch(`/api/work-items/${itemId}/watchers`),
+        fetch('/api/engines'),
+        fetch('/api/functions'),
       ])
       if (!itemRes.ok) {
         toast.error('Failed to load work item')
@@ -101,11 +107,19 @@ export function WorkItemDetailSheet({
       const itemData = await itemRes.json()
       const relationsData = await relationsRes.json()
       const watchersData = await watchersRes.json()
+      const engineData = await engineRes.json().catch(() => ({}))
+      const functionData = await functionRes.json().catch(() => ({}))
       setItem(itemData.item)
       setDescriptionDraft(itemData.item.description ?? '')
       setLabelsDraft((itemData.item.labels ?? []).join(', '))
       setRelations(relationsData.relations)
       setWatchers(watchersData.watchers ?? [])
+      setEngineOptions(
+        (engineData.engines ?? []).map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
+      )
+      setFunctionOptions(
+        (functionData.functions ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })),
+      )
     } finally {
       setLoading(false)
     }
@@ -359,6 +373,53 @@ export function WorkItemDetailSheet({
                   </Select>
                 </div>
               </div>
+
+              {(engineOptions.length > 0 || functionOptions.length > 0) && (
+                <div className="grid grid-cols-2 gap-3">
+                  {engineOptions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="micro-label">Engine</Label>
+                      <Select
+                        value={item.engineId ?? 'none'}
+                        onValueChange={(v) => patch({ engineId: v === 'none' ? null : v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No engine</SelectItem>
+                          {engineOptions.map((e) => (
+                            <SelectItem key={e.id} value={e.id}>
+                              {e.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {functionOptions.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="micro-label">Team</Label>
+                      <Select
+                        value={item.functionId ?? 'none'}
+                        onValueChange={(v) => patch({ functionId: v === 'none' ? null : v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No team</SelectItem>
+                          {functionOptions.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
