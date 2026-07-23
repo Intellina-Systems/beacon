@@ -21,6 +21,8 @@ If they're missing, tell the user to run the setup script for their OS **once**,
 
 This sets them as persistent user environment variables (Windows: `HKCU\Environment` via `[Environment]::SetEnvironmentVariable`; macOS/Linux: exported from the shell profile). Because they live at the OS level, not inside any single tool's config, they're automatically inherited by every coding agent and IDE on that machine — Claude Code, Codex, Gemini CLI, OpenCode, VS Code, Antigravity, whatever's used next — with no per-tool setup and nothing to re-source or repeat at the start of a session.
 
+The same setup script also links this skill folder into `.claude/skills/beacon-insights` (this repo) and `~/.claude/skills/beacon-insights` (every repo) — Claude Code only auto-discovers skills from those two locations, not from an arbitrary path, so this step is required for Claude Code to ever see the skill at all, independent of the env vars. It's a link, not a copy, so it never goes stale. Takes effect on the **next** Claude Code session — it won't retroactively appear in a conversation already in progress.
+
 Do **not** rely on a project's `.env`/`.env.local` file for these — a coding agent's shell commands typically run in fresh, disposable processes that never source it, so the key silently never gets picked up.
 
 If `BEACON_API_KEY` is still not set after that (setup skipped, wrong shell, etc.), do nothing — never block or degrade the coding session over telemetry.
