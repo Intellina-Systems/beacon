@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Share2, X } from 'lucide-react'
+import { Check, Copy, Share2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import type { DocPermission, DocShareMode } from '@/lib/db/schema'
 
 interface RosterMember {
@@ -41,10 +43,13 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
   const [roster, setRoster] = useState<RosterMember[]>([])
   const [addMemberId, setAddMemberId] = useState<string>('')
   const [addPermission, setAddPermission] = useState<DocPermission>('view')
+  const [publicShareEnabled, setPublicShareEnabled] = useState(false)
+  const [publicShareToken, setPublicShareToken] = useState<string | null>(null)
+  const [publicBusy, setPublicBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-open pattern, same precedent as components/integrations/sources-card.tsx
     setLoading(true)
     Promise.all([
       fetch(`/api/docs/${docId}/share`).then((res) => res.json()),
@@ -55,10 +60,42 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
         setWorkspacePermission(shareData.workspacePermission)
         setCollaborators(shareData.collaborators ?? [])
         setRoster((memberData.members ?? []).map((m: { id: string; name: string }) => ({ id: m.id, name: m.name })))
+        setPublicShareEnabled(shareData.publicShareEnabled ?? false)
+        setPublicShareToken(shareData.publicShareToken ?? null)
       })
       .catch(() => toast.error('Failed to load sharing settings'))
       .finally(() => setLoading(false))
   }, [open, docId])
+
+  async function togglePublicShare(next: boolean) {
+    setPublicBusy(true)
+    const prev = publicShareEnabled
+    setPublicShareEnabled(next)
+    try {
+      const res = await fetch(`/api/docs/${docId}/share`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicShareEnabled: next }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPublicShareToken(data.doc?.publicShareToken ?? null)
+      } else {
+        setPublicShareEnabled(prev)
+        toast.error('Failed to update the public link')
+      }
+    } finally {
+      setPublicBusy(false)
+    }
+  }
+
+  async function copyPublicLink() {
+    if (!publicShareToken) return
+    const url = `${window.location.origin}/public/docs/${publicShareToken}`
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   async function updateGeneralAccess(next: Partial<{ shareMode: DocShareMode; workspacePermission: DocPermission }>) {
     const prevShareMode = shareMode
@@ -244,6 +281,31 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
                     ? `Everyone in this workspace can ${PERMISSION_LABEL[workspacePermission].toLowerCase()} this document.`
                     : 'Only you and the people listed above can open this document.'}
                 </p>
+              </div>
+
+              <div className="space-y-2 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Anyone with the link</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Opens outside Beacon — no sign-in, view only, and nothing else in the app is visible to them.
+                    </p>
+                  </div>
+                  <Switch checked={publicShareEnabled} disabled={publicBusy} onCheckedChange={togglePublicShare} />
+                </div>
+                {publicShareEnabled && publicShareToken && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/public/docs/${publicShareToken}`}
+                      className="h-8 font-mono text-xs"
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={copyPublicLink} className="h-8 shrink-0">
+                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

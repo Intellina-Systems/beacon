@@ -44,7 +44,16 @@ const ingestSchema = z.object({
 })
 
 type KnowledgeIngestInput = z.infer<typeof ingestSchema>
-type ParsedKnowledgeRequest = { input: KnowledgeIngestInput; sourceUrl: string | null }
+type ParsedKnowledgeRequest = {
+  input: KnowledgeIngestInput
+  sourceUrl: string | null
+  engineId: string | null
+  functionId: string | null
+}
+
+function readTag(value: FormDataEntryValue | string | null | undefined): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
 
 type FileKind = 'pdf' | 'word' | 'excel'
 
@@ -139,7 +148,14 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
       content: content.slice(0, MAX_KNOWLEDGE_CHARS),
     })
 
-    return parsed.success ? { input: parsed.data, sourceUrl: null } : null
+    return parsed.success
+      ? {
+          input: parsed.data,
+          sourceUrl: null,
+          engineId: readTag(formData.get('engineId')),
+          functionId: readTag(formData.get('functionId')),
+        }
+      : null
   }
 
   const body = (await req.json()) as unknown
@@ -154,6 +170,8 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
     const trimmedUrl = body.sourceUrl.trim()
     const fetched = await fetchLinkContent(trimmedUrl)
     const providedTitle = 'title' in body && typeof body.title === 'string' ? body.title.trim() : ''
+    const engineId = 'engineId' in body ? readTag(body.engineId as string | null) : null
+    const functionId = 'functionId' in body ? readTag(body.functionId as string | null) : null
 
     const parsed = ingestSchema.safeParse({
       title: providedTitle || fetched.title || defaultLinkTitle(fetched.sourceType),
@@ -161,11 +179,15 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
       content: fetched.text.slice(0, MAX_KNOWLEDGE_CHARS),
     })
 
-    return parsed.success ? { input: parsed.data, sourceUrl: trimmedUrl } : null
+    return parsed.success ? { input: parsed.data, sourceUrl: trimmedUrl, engineId, functionId } : null
   }
 
   const parsed = ingestSchema.safeParse(body)
-  return parsed.success ? { input: parsed.data, sourceUrl: null } : null
+  const engineId =
+    body && typeof body === 'object' && 'engineId' in body ? readTag(body.engineId as string | null) : null
+  const functionId =
+    body && typeof body === 'object' && 'functionId' in body ? readTag(body.functionId as string | null) : null
+  return parsed.success ? { input: parsed.data, sourceUrl: null, engineId, functionId } : null
 }
 
 export async function GET(): Promise<Response> {
@@ -216,7 +238,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: 'Invalid knowledge input' }, { status: 400 })
   }
 
-  const { input: knowledgeInput, sourceUrl } = parsedRequest
+  const { input: knowledgeInput, sourceUrl, engineId, functionId } = parsedRequest
   const documentId = nanoid()
   const now = new Date()
 
@@ -231,6 +253,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         sourceType: knowledgeInput.sourceType,
         sourceUrl,
         content: knowledgeInput.content,
+        engineId,
+        functionId,
         lastSyncedAt: sourceUrl ? now : null,
         createdAt: now,
         updatedAt: now,

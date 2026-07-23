@@ -10,6 +10,7 @@ import { generateId } from '@/lib/utils/id'
 const generalAccessSchema = z.object({
   shareMode: z.enum(DOC_SHARE_MODES).optional(),
   workspacePermission: z.enum(DOC_PERMISSIONS).optional(),
+  publicShareEnabled: z.boolean().optional(),
 })
 
 const addCollaboratorSchema = z.object({
@@ -52,11 +53,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return Response.json({
     shareMode: result.access.doc.shareMode,
     workspacePermission: result.access.doc.workspacePermission,
+    publicShareEnabled: result.access.doc.publicShareEnabled,
+    publicShareToken: result.access.doc.publicShareToken,
     collaborators,
   })
 }
 
-// Updates general access (private vs. workspace-wide + its permission).
+// Updates general access (private vs. workspace-wide + its permission) and/or
+// the public "anyone with the link" toggle.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const { id } = await params
   const result = await requireOwner(id)
@@ -67,7 +71,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return Response.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const [updated] = await db.update(docs).set(parsed.data).where(eq(docs.id, id)).returning()
+  // First time the public link is turned on, mint a token — it then stays
+  // stable across future on/off toggles so a copied link keeps working.
+  const needsToken = parsed.data.publicShareEnabled === true && !result.access.doc.publicShareToken
+  const [updated] = await db
+    .update(docs)
+    .set({ ...parsed.data, ...(needsToken ? { publicShareToken: generateId(24) } : {}) })
+    .where(eq(docs.id, id))
+    .returning()
   return Response.json({ doc: updated })
 }
 

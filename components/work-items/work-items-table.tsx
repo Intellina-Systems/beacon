@@ -22,6 +22,8 @@ export interface WorkItemRow {
   priority: number | null
   assigneeName: string | null
   projectName: string | null
+  engineName?: string | null
+  functionName?: string | null
   externalUrl: string | null
   lastEventAt: string | Date | null
   updatedAt: string | Date | null
@@ -162,6 +164,16 @@ export function WorkItemsTable({
                     {item.kind !== 'task' && (
                       <Badge variant="secondary" className="shrink-0 px-1.5 py-0 font-mono text-[10px] uppercase">
                         {KIND_LABEL[item.kind]}
+                      </Badge>
+                    )}
+                    {item.engineName && (
+                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
+                        {item.engineName}
+                      </Badge>
+                    )}
+                    {item.functionName && (
+                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
+                        {item.functionName}
                       </Badge>
                     )}
                   </div>

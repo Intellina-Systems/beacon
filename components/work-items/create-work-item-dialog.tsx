@@ -32,6 +32,8 @@ const EMPTY_FORM = {
   priority: 0,
   assigneeMemberId: '',
   projectId: '',
+  engineId: '',
+  functionId: '',
   estimate: '',
   dueDate: '',
   labels: '',
@@ -43,6 +45,8 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
   const [saving, setSaving] = useState(false)
   const [roster, setRoster] = useState<Option[]>([])
   const [projects, setProjects] = useState<Option[]>([])
+  const [engineOptions, setEngineOptions] = useState<Option[]>([])
+  const [functionOptions, setFunctionOptions] = useState<Option[]>([])
   const [templates, setTemplates] = useState<TemplateOption[]>([])
   const [templateId, setTemplateId] = useState('none')
   const [form, setForm] = useState(EMPTY_FORM)
@@ -55,13 +59,21 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
       fetch('/api/members').then((res) => res.json()),
       fetch('/api/projects').then((res) => res.json()),
       fetch('/api/work-item-templates').then((res) => res.json()),
+      fetch('/api/engines').then((res) => res.json()),
+      fetch('/api/functions').then((res) => res.json()),
     ])
-      .then(([membersData, projectsData, templatesData]) => {
+      .then(([membersData, projectsData, templatesData, engineData, functionData]) => {
         setRoster((membersData.members ?? []).map((m: { id: string; name: string }) => ({ id: m.id, name: m.name })))
         setProjects(
           (projectsData.projects ?? []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
         )
         setTemplates(templatesData.templates ?? [])
+        setEngineOptions(
+          (engineData.engines ?? []).map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
+        )
+        setFunctionOptions(
+          (functionData.functions ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })),
+        )
       })
       .catch(() => toast.error('Failed to load create-issue options'))
   }, [open, defaultProjectId])
@@ -102,6 +114,8 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
           priority: form.priority,
           assigneeMemberId: form.assigneeMemberId || undefined,
           projectId: form.projectId || undefined,
+          engineId: form.engineId || undefined,
+          functionId: form.functionId || undefined,
           estimate: form.estimate ? Number(form.estimate) : undefined,
           dueDate: form.dueDate || undefined,
           labels: form.labels
@@ -273,6 +287,53 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
                       ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {(engineOptions.length > 0 || functionOptions.length > 0) && (
+              <div className="grid grid-cols-2 gap-3">
+                {engineOptions.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Engine</Label>
+                    <Select
+                      value={form.engineId || 'none'}
+                      onValueChange={(v) => setForm((f) => ({ ...f, engineId: v === 'none' ? '' : v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No engine</SelectItem>
+                        {engineOptions.map((e) => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {functionOptions.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Team</Label>
+                    <Select
+                      value={form.functionId || 'none'}
+                      onValueChange={(v) => setForm((f) => ({ ...f, functionId: v === 'none' ? '' : v }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No team</SelectItem>
+                        {functionOptions.map((fn) => (
+                          <SelectItem key={fn.id} value={fn.id}>
+                            {fn.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             )}
 
