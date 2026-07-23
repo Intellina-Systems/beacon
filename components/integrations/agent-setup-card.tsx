@@ -52,8 +52,8 @@ export function AgentSetupCard() {
           Coding agent plugin
         </CardTitle>
         <CardDescription>
-          Agents emit structured events as they work — session start, planning, tests, blockers, completion. Beacon
-          correlates them to work items and engineers automatically.
+          Agents emit structured events as they work — session start, planning, tests, blockers, completion, and
+          periodic heartbeats for long tasks. Beacon correlates them to work items and engineers automatically.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -71,8 +71,9 @@ export function AgentSetupCard() {
         <p className="text-xs text-muted-foreground">
           Batch with <code className="font-mono">{'{ "events": [...] }'}</code>. Known types:{' '}
           <code className="font-mono">
-            agent.session_started, agent.planning, agent.implementation_started, agent.tests_passed, agent.tests_failed,
-            agent.blocked, agent.completed, task.started, task.completed, ci.passed, ci.failed, deploy.completed
+            agent.session_started, agent.planning, agent.implementation_started, agent.heartbeat, agent.tests_passed,
+            agent.tests_failed, agent.blocked, agent.completed, task.started, task.completed, ci.passed, ci.failed,
+            deploy.completed
           </code>
           — anything dot-namespaced is accepted.
         </p>

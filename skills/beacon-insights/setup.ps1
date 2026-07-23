@@ -10,7 +10,7 @@ no reminding the agent at the start of every session.
 
 That's necessary but not sufficient for Claude Code specifically: it only
 auto-loads skills from ".claude/skills/<name>/" in the current repo or from
-"~/.claude/skills/<name>/" for every repo — never from an arbitrary folder
+"~/.claude/skills/<name>/" for every repo - never from an arbitrary folder
 like this one. So this script also links this skill folder into both of
 those locations (a directory junction, not a copy, so it can't drift out of
 sync with this source). The user-level link is what makes Claude Code use
@@ -48,7 +48,7 @@ function Install-SkillLink {
             Write-Host "$Label already linked: $LinkPath"
             return
         }
-        Write-Warning "$LinkPath already exists and isn't the expected link — leaving it alone. Remove it and re-run this script to relink."
+        Write-Warning "$LinkPath already exists and isn't the expected link - leaving it alone. Remove it and re-run this script to relink."
         return
     }
 
@@ -65,4 +65,4 @@ Install-SkillLink -LinkPath (Join-Path $HOME ".claude\skills\beacon-insights") -
 
 Write-Host ""
 Write-Host "Restart any open terminals, IDEs, or coding agents once so they pick everything up." -ForegroundColor Yellow
-Write-Host "After that it's automatic — every tool, every repo, every session, no setup ever again."
+Write-Host "After that it's automatic - every tool, every repo, every session, no setup ever again."

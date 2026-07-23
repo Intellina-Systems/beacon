@@ -10,7 +10,7 @@
 #
 # That's necessary but not sufficient for Claude Code specifically: it only
 # auto-loads skills from ".claude/skills/<name>/" in the current repo or
-# from "~/.claude/skills/<name>/" for every repo — never from an arbitrary
+# from "~/.claude/skills/<name>/" for every repo - never from an arbitrary
 # folder like this one. So this script also symlinks this skill folder into
 # both of those locations (a symlink, not a copy, so it can't drift out of
 # sync with this source). The user-level link is what makes Claude Code use
@@ -63,7 +63,7 @@ install_skill_link() {
     if [ -L "$link_path" ] && [ "$(readlink "$link_path")" = "$skill_source_dir" ]; then
       echo "$label already linked: $link_path"
     else
-      echo "Warning: $link_path already exists and isn't the expected link — leaving it alone. Remove it and re-run this script to relink." >&2
+      echo "Warning: $link_path already exists and isn't the expected link - leaving it alone. Remove it and re-run this script to relink." >&2
     fi
     return
   fi
@@ -84,5 +84,5 @@ if [[ "${OSTYPE:-}" == darwin* ]]; then
   echo "profiles. If your coding tool is launched that way too, also run:"
   echo "  launchctl setenv BEACON_API_KEY \"$API_KEY\""
   echo "  launchctl setenv BEACON_URL \"$BEACON_URL\""
-  echo "(resets on reboot — wrap it in a LaunchAgent if you need it to survive one)."
+  echo "(resets on reboot - wrap it in a LaunchAgent if you need it to survive one)."
 fi
