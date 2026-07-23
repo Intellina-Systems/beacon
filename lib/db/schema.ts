@@ -208,6 +208,146 @@ export const teamMembers = pgTable(
 export type TeamMember = typeof teamMembers.$inferSelect
 export type InsertTeamMember = typeof teamMembers.$inferInsert
 
+// ---------------------------------------------------------------------------
+// Org units — Engines (technical/product subsystems, e.g. "Assessment
+// Engine") and Functions (cross-cutting practice areas, e.g. "QA"). Both are
+// independent of the Project hierarchy: a work item or knowledge doc can be
+// tagged with an Engine and/or a Function as its own dimension, not nested
+// under either. Each unit has exactly one Owner, a roster of Members
+// (separate from the owner), and links to one or more Teams — mirrors how
+// the company's real org chart is structured, distinct from Beacon's
+// existing Team/Project grouping.
+// ---------------------------------------------------------------------------
+
+export const engines = pgTable(
+  'engines',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    ownerMemberId: text('owner_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('engines_workspace_name_idx').on(table.workspaceId, table.name),
+    workspaceIdx: index('engines_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type Engine = typeof engines.$inferSelect
+export type InsertEngine = typeof engines.$inferInsert
+
+export const engineMembers = pgTable(
+  'engine_members',
+  {
+    id: text('id').primaryKey(),
+    engineId: text('engine_id')
+      .notNull()
+      .references(() => engines.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    engineMemberUnique: uniqueIndex('engine_members_engine_member_idx').on(table.engineId, table.memberId),
+    memberIdx: index('engine_members_member_idx').on(table.memberId),
+  }),
+)
+
+export type EngineMember = typeof engineMembers.$inferSelect
+export type InsertEngineMember = typeof engineMembers.$inferInsert
+
+export const engineTeams = pgTable(
+  'engine_teams',
+  {
+    id: text('id').primaryKey(),
+    engineId: text('engine_id')
+      .notNull()
+      .references(() => engines.id, { onDelete: 'cascade' }),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    engineTeamUnique: uniqueIndex('engine_teams_engine_team_idx').on(table.engineId, table.teamId),
+    teamIdx: index('engine_teams_team_idx').on(table.teamId),
+  }),
+)
+
+export type EngineTeam = typeof engineTeams.$inferSelect
+export type InsertEngineTeam = typeof engineTeams.$inferInsert
+
+// "OrgFunction" (not "Function") to avoid colliding with the built-in TS type.
+export const functions = pgTable(
+  'functions',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    ownerMemberId: text('owner_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceNameUnique: uniqueIndex('functions_workspace_name_idx').on(table.workspaceId, table.name),
+    workspaceIdx: index('functions_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type OrgFunction = typeof functions.$inferSelect
+export type InsertOrgFunction = typeof functions.$inferInsert
+
+export const functionMembers = pgTable(
+  'function_members',
+  {
+    id: text('id').primaryKey(),
+    functionId: text('function_id')
+      .notNull()
+      .references(() => functions.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    functionMemberUnique: uniqueIndex('function_members_function_member_idx').on(table.functionId, table.memberId),
+    memberIdx: index('function_members_member_idx').on(table.memberId),
+  }),
+)
+
+export type FunctionMember = typeof functionMembers.$inferSelect
+export type InsertFunctionMember = typeof functionMembers.$inferInsert
+
+export const functionTeams = pgTable(
+  'function_teams',
+  {
+    id: text('id').primaryKey(),
+    functionId: text('function_id')
+      .notNull()
+      .references(() => functions.id, { onDelete: 'cascade' }),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    functionTeamUnique: uniqueIndex('function_teams_function_team_idx').on(table.functionId, table.teamId),
+    teamIdx: index('function_teams_team_idx').on(table.teamId),
+  }),
+)
+
+export type FunctionTeam = typeof functionTeams.$inferSelect
+export type InsertFunctionTeam = typeof functionTeams.$inferInsert
+
 // Link-based invites. The member row (with role + team assignments) is created
 // up front by an admin; claiming the token binds the signing-in user to it.
 export const invites = pgTable(
@@ -325,6 +465,9 @@ export const workItems = pgTable(
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
+    // Independent org-chart tags, orthogonal to projectId — see "Org units" above.
+    engineId: text('engine_id').references(() => engines.id, { onDelete: 'set null' }),
+    functionId: text('function_id').references(() => functions.id, { onDelete: 'set null' }),
     parentId: text('parent_id'),
     kind: text('kind', { enum: WORK_ITEM_KINDS }).notNull().default('task'),
     // Short human handle used to correlate signals, e.g. "BCN-42" or "AIRS-421"
@@ -364,6 +507,8 @@ export const workItems = pgTable(
     workspaceIdx: index('work_items_workspace_idx').on(table.workspaceId),
     workspaceStatusIdx: index('work_items_workspace_status_idx').on(table.workspaceId, table.status),
     projectIdx: index('work_items_project_idx').on(table.projectId),
+    engineIdx: index('work_items_engine_idx').on(table.engineId),
+    functionIdx: index('work_items_function_idx').on(table.functionId),
     parentIdx: index('work_items_parent_idx').on(table.parentId),
     cycleIdx: index('work_items_cycle_idx').on(table.cycleId),
     archivedIdx: index('work_items_archived_idx').on(table.archivedAt),
@@ -463,6 +608,8 @@ export interface ViewFilters {
   projectId?: string
   assignee?: string // 'unassigned' | a member id
   cycleId?: string
+  engineId?: string
+  functionId?: string
 }
 
 export const views = pgTable(
@@ -905,12 +1052,17 @@ export const knowledgeDocuments = pgTable(
     content: text('content').notNull(),
     summary: text('summary'),
     embedding: vector('embedding', { dimensions: 1536 }),
+    // Independent org-chart tags, same as work_items — see "Org units" above.
+    engineId: text('engine_id').references(() => engines.id, { onDelete: 'set null' }),
+    functionId: text('function_id').references(() => functions.id, { onDelete: 'set null' }),
     lastSyncedAt: timestamp('last_synced_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
     workspaceIdx: index('knowledge_documents_workspace_idx').on(table.workspaceId),
+    engineIdx: index('knowledge_documents_engine_idx').on(table.engineId),
+    functionIdx: index('knowledge_documents_function_idx').on(table.functionId),
   }),
 )
 
@@ -1025,12 +1177,21 @@ export const docs = pgTable(
     shareMode: text('share_mode', { enum: DOC_SHARE_MODES }).notNull().default('private'),
     // Only meaningful when shareMode = 'workspace'.
     workspacePermission: text('workspace_permission', { enum: DOC_PERMISSIONS }).notNull().default('view'),
+    // A third, separate tier: a public, unauthenticated, read-only link — like
+    // Notion's "Share to web." Independent of shareMode/workspacePermission,
+    // which both require being signed into this workspace. The token is only
+    // ever looked up directly (never listed), so it doubles as the secret.
+    publicShareEnabled: boolean('public_share_enabled').notNull().default(false),
+    publicShareToken: text('public_share_token'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
     workspaceIdx: index('docs_workspace_idx').on(table.workspaceId),
     ownerIdx: index('docs_owner_idx').on(table.ownerMemberId),
+    publicTokenUnique: uniqueIndex('docs_public_share_token_idx')
+      .on(table.publicShareToken)
+      .where(sql`${table.publicShareToken} is not null`),
   }),
 )
 

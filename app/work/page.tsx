@@ -4,6 +4,8 @@ import { LayoutGrid, List } from 'lucide-react'
 import { and, asc, count, eq, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
+  engines,
+  functions,
   members,
   projects,
   views as viewsTable,
@@ -14,10 +16,12 @@ import {
 } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { canViewAllTeams, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
+import { listEngineOptions, listFunctionOptions } from '@/lib/org/list'
 import { ManageProjectsDialog } from '@/components/projects/manage-projects-dialog'
 import { CreateWorkItemDialog } from '@/components/work-items/create-work-item-dialog'
 import { ManageTemplatesDialog } from '@/components/work-items/manage-templates-dialog'
 import { AssigneeFilter } from '@/components/work-items/assignee-filter'
+import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
 import { WorkItemsTable } from '@/components/work-items/work-items-table'
 import { BoardView } from '@/components/work-items/board-view'
 import { SavedViewsBar } from '@/components/work-items/saved-views-bar'
@@ -35,6 +39,8 @@ interface FilterState {
   statuses: Set<WorkItemStatus>
   project?: string
   assignee?: string // 'unassigned' | memberId
+  engine?: string
+  orgFunction?: string
   layout?: ViewLayout
 }
 
@@ -43,6 +49,8 @@ function workHref(filter: FilterState, page: number) {
   if (filter.statuses.size > 0) params.set('status', [...filter.statuses].join(','))
   if (filter.project) params.set('project', filter.project)
   if (filter.assignee) params.set('assignee', filter.assignee)
+  if (filter.engine) params.set('engine', filter.engine)
+  if (filter.orgFunction) params.set('function', filter.orgFunction)
   if (filter.layout && filter.layout !== 'list') params.set('layout', filter.layout)
   if (page > 1) params.set('page', String(page))
   const qs = params.toString()
@@ -56,7 +64,15 @@ function sameSet(a: Set<WorkItemStatus>, b: WorkItemStatus[]) {
 export default async function WorkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; page?: string; project?: string; assignee?: string; layout?: string }>
+  searchParams: Promise<{
+    status?: string
+    page?: string
+    project?: string
+    assignee?: string
+    engine?: string
+    function?: string
+    layout?: string
+  }>
 }) {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
@@ -67,6 +83,8 @@ export default async function WorkPage({
     page: rawPage,
     project: rawProject,
     assignee: rawAssignee,
+    engine: rawEngine,
+    function: rawFunction,
     layout: rawLayout,
   } = await searchParams
   const statuses = new Set(
@@ -75,7 +93,7 @@ export default async function WorkPage({
   const layout: ViewLayout = rawLayout === 'board' ? 'board' : 'list'
   const page = parsePage(rawPage)
 
-  const [projectList, fullRoster, savedViews] = await Promise.all([
+  const [projectList, fullRoster, savedViews, engineOptions, functionOptions] = await Promise.all([
     db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
@@ -87,8 +105,12 @@ export default async function WorkPage({
       .where(eq(members.workspaceId, workspaceId))
       .orderBy(members.name),
     db.select().from(viewsTable).where(eq(viewsTable.workspaceId, workspaceId)).orderBy(asc(viewsTable.name)),
+    listEngineOptions(workspaceId),
+    listFunctionOptions(workspaceId),
   ])
   const project = projectList.find((p) => p.id === rawProject)?.id
+  const engine = engineOptions.find((e) => e.id === rawEngine)?.id
+  const orgFunction = functionOptions.find((f) => f.id === rawFunction)?.id
 
   const visible = await visibleMemberIds(ctx)
   // Assignee filter dropdown only ever offers people this viewer is allowed to see.
@@ -118,6 +140,8 @@ export default async function WorkPage({
     eq(workItems.workspaceId, workspaceId),
     statuses.size > 0 ? inArray(workItems.status, [...statuses]) : undefined,
     project ? eq(workItems.projectId, project) : undefined,
+    engine ? eq(workItems.engineId, engine) : undefined,
+    orgFunction ? eq(workItems.functionId, orgFunction) : undefined,
     assigneeFilter,
     visibility,
     snoozeFilter,
@@ -126,6 +150,8 @@ export default async function WorkPage({
   const countsWhere = and(
     eq(workItems.workspaceId, workspaceId),
     project ? eq(workItems.projectId, project) : undefined,
+    engine ? eq(workItems.engineId, engine) : undefined,
+    orgFunction ? eq(workItems.functionId, orgFunction) : undefined,
     assigneeFilter,
     visibility,
   )
@@ -141,6 +167,8 @@ export default async function WorkPage({
         priority: workItems.priority,
         assigneeName: members.name,
         projectName: projects.name,
+        engineName: engines.name,
+        functionName: functions.name,
         externalUrl: workItems.externalUrl,
         lastEventAt: workItems.lastEventAt,
         updatedAt: workItems.updatedAt,
@@ -148,6 +176,8 @@ export default async function WorkPage({
       .from(workItems)
       .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
       .leftJoin(projects, eq(projects.id, workItems.projectId))
+      .leftJoin(engines, eq(engines.id, workItems.engineId))
+      .leftJoin(functions, eq(functions.id, workItems.functionId))
       .where(where)
       // Rank is the canonical manual order (drag-and-drop below writes it);
       // createdAt breaks ties for items that predate ranking.
@@ -166,20 +196,27 @@ export default async function WorkPage({
   const total = statuses.size > 0 ? [...statuses].reduce((n, s) => n + (countByStatus.get(s) ?? 0), 0) : totalAll
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const filter: FilterState = { statuses, project, assignee, layout }
+  const filter: FilterState = { statuses, project, assignee, engine, orgFunction, layout }
   const isTriageView = statuses.size === 1 && statuses.has('triage')
 
   const currentFilterPayload = {
     statuses: statuses.size > 0 ? [...statuses] : undefined,
     projectId: project,
     assignee,
+    engineId: engine,
+    functionId: orgFunction,
   }
   const activeView =
     savedViews.find((v) => {
       const f = v.filters ?? {}
       const vStatuses = new Set(f.statuses ?? [])
       return (
-        v.layout === layout && sameSet(statuses, [...vStatuses]) && f.projectId === project && f.assignee === assignee
+        v.layout === layout &&
+        sameSet(statuses, [...vStatuses]) &&
+        f.projectId === project &&
+        f.assignee === assignee &&
+        f.engineId === engine &&
+        f.functionId === orgFunction
       )
     }) ?? null
 
@@ -297,6 +334,12 @@ export default async function WorkPage({
               <span className="mx-1 h-4 w-px shrink-0 bg-border" />
               <AssigneeFilter roster={roster} current={assignee} />
             </>
+          )}
+          {engineOptions.length > 0 && (
+            <OrgTagFilter options={engineOptions} current={engine} paramName="engine" allLabel="Any engine" />
+          )}
+          {functionOptions.length > 0 && (
+            <OrgTagFilter options={functionOptions} current={orgFunction} paramName="function" allLabel="Any team" />
           )}
           <span className="mx-1 h-4 w-px shrink-0 bg-border" />
           <Link

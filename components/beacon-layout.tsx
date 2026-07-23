@@ -14,6 +14,7 @@ import {
   ListTodo,
   Menu,
   Moon,
+  Network,
   RefreshCw,
   Sparkles,
   Sun,
@@ -44,6 +45,7 @@ const navSections = [
       { href: '/inbox', label: 'Inbox', icon: Inbox },
       { href: '/docs', label: 'Docs', icon: FileText },
       { href: '/team', label: 'Team', icon: Users },
+      { href: '/org', label: 'Org', icon: Network },
     ],
   },
   {

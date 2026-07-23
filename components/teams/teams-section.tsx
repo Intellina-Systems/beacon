@@ -256,10 +256,15 @@ export function TeamsSection({
   teams,
   roster,
   canManage,
+  scopedToSelf = false,
 }: {
   teams: TeamWithMembers[]
   roster: RosterMember[]
   canManage: boolean
+  /** True when this list has already been narrowed to "your teams only" (a
+   * plain employee's view) — changes the empty-state copy so it doesn't read
+   * as "no teams exist" when really it's "you're not on one yet." */
+  scopedToSelf?: boolean
 }) {
   const [newOpen, setNewOpen] = useState(false)
   const [managing, setManaging] = useState<TeamWithMembers | null>(null)
@@ -267,7 +272,7 @@ export function TeamsSection({
   return (
     <Panel>
       <PanelHeader
-        label="Teams"
+        label={scopedToSelf ? 'Your teams' : 'Teams'}
         meta={
           canManage ? (
             <Button variant="outline" size="sm" className="h-7" onClick={() => setNewOpen(true)}>
@@ -279,7 +284,9 @@ export function TeamsSection({
       />
       {teams.length === 0 ? (
         <p className="px-4 py-6 text-sm text-muted-foreground">
-          No teams yet{canManage ? ' — create one to group members and assign leads.' : '.'}
+          {scopedToSelf
+            ? "You're not on a team yet — an admin can add you."
+            : `No teams yet${canManage ? ' — create one to group members and assign leads.' : '.'}`}
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">

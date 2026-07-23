@@ -114,6 +114,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               title={member.title}
               accessRole={member.accessRole}
               showAccessRole={member.status !== 'profile'}
+              isSelf={member.id === ctx.member.id}
             />
           )}
         </>

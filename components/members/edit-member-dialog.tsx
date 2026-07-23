@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Pencil } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -16,6 +17,7 @@ export function EditMemberDialog({
   title,
   accessRole,
   showAccessRole = false,
+  isSelf = false,
 }: {
   memberId: string
   name: string
@@ -23,10 +25,12 @@ export function EditMemberDialog({
   title: string | null
   accessRole?: 'admin' | 'manager' | 'engineer'
   showAccessRole?: boolean
+  isSelf?: boolean
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [nameVal, setNameVal] = useState(name)
   const [emailVal, setEmailVal] = useState(email ?? '')
   const [titleVal, setTitleVal] = useState(title ?? '')
@@ -53,6 +57,30 @@ export function EditMemberDialog({
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (
+      !confirm(
+        `Remove ${name} from the workspace? Their past activity and history stay attributed to them, but they'll lose access and any assignments are cleared. This can't be undone.`,
+      )
+    ) {
+      return
+    }
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/members/${memberId}`, { method: 'DELETE' })
+      if (res.ok) {
+        setOpen(false)
+        router.push('/team')
+        router.refresh()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? 'Failed to remove member')
+      }
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -107,13 +135,30 @@ export function EditMemberDialog({
                 </Select>
               </div>
             )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={saving || !nameVal.trim()}>
-                {saving ? 'Saving…' : 'Save'}
-              </Button>
+            <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+              {isSelf ? (
+                <span />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  disabled={deleting}
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  {deleting ? 'Removing…' : 'Remove from workspace'}
+                </Button>
+              )}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={saving || !nameVal.trim()}>
+                  {saving ? 'Saving…' : 'Save'}
+                </Button>
+              </div>
             </DialogFooter>
           </form>
         </DialogContent>
