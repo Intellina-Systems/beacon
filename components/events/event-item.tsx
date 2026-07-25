@@ -1,4 +1,5 @@
 import { createElement } from 'react'
+import Link from 'next/link'
 import {
   AlertTriangle,
   Bot,
@@ -63,13 +64,14 @@ export interface EventItemData {
   summary: string
   actorLabel: string | null
   memberName?: string | null
+  workItemId?: string | null
   workItemKey?: string | null
   occurredAt: Date
 }
 
 export function EventItem({ event }: { event: EventItemData }) {
-  return (
-    <div className="flex items-start gap-3 py-2.5">
+  const inner = (
+    <>
       {createElement(eventIcon(event.type), { className: cn('h-4 w-4 mt-0.5 shrink-0', eventTone(event.type)) })}
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug">{event.summary}</p>
@@ -85,6 +87,21 @@ export function EventItem({ event }: { event: EventItemData }) {
           <span className="font-mono text-[11px]">{relativeTime(event.occurredAt)}</span>
         </div>
       </div>
-    </div>
+    </>
   )
+
+  // Events linked to a work item deep-link to that issue; everything else is
+  // static (no misleading click target).
+  if (event.workItemId) {
+    return (
+      <Link
+        href={`/work?item=${event.workItemId}`}
+        className="-mx-2 flex items-start gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/60"
+      >
+        {inner}
+      </Link>
+    )
+  }
+
+  return <div className="flex items-start gap-3 py-2.5">{inner}</div>
 }

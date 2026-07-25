@@ -54,15 +54,22 @@ export const EVENT_TYPES = [
   'agent.completed',
   // Communication & knowledge
   'message.posted',
+  'meeting.scheduled',
+  'meeting.updated',
+  'meeting.cancelled',
+  'meeting.rsvp',
   'meeting.held',
   'knowledge.added',
   'knowledge.signal',
+  // Daily planning — the one intent signal members declare by hand
+  'plan.declared',
+  'plan.updated',
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]
 
 export const EVENT_CATEGORIES = {
-  work: /^(task|sprint|automation|project)\./,
+  work: /^(task|sprint|automation|project|plan)\./,
   code: /^(code|pr)\./,
   cicd: /^(ci|deploy)\./,
   agent: /^agent\./,

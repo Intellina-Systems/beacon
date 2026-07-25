@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { STATUS_META } from '@/lib/work-items/constants'
@@ -29,10 +29,15 @@ export function BoardView({
   currentMemberId: string
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [localRows, setLocalRows] = useState(rows)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [clickedId, setClickedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<WorkItemStatus | null>(null)
+
+  // Deep-link: /work?item=<id> opens that item's detail sheet (derived, no effect).
+  const itemParam = searchParams.get('item')
+  const selectedId = clickedId ?? itemParam
 
   // Resync local state when the server-rendered page reloads (same pattern
   // as components/work-items/work-items-table.tsx).
@@ -124,7 +129,7 @@ export function BoardView({
                     setDraggingId(null)
                     setDragOverStatus(null)
                   }}
-                  onClick={() => setSelectedId(item.id)}
+                  onClick={() => setClickedId(item.id)}
                   className={cn(
                     'ease-out-soft cursor-pointer rounded-md border bg-background p-2 text-xs shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-beacon/40 hover:shadow-md',
                     draggingId === item.id && 'scale-[0.97] opacity-40 shadow-none',
@@ -155,7 +160,10 @@ export function BoardView({
       <WorkItemDetailSheet
         itemId={selectedId}
         open={selectedId !== null}
-        onClose={() => setSelectedId(null)}
+        onClose={() => {
+          setClickedId(null)
+          if (itemParam) router.replace('/work', { scroll: false })
+        }}
         roster={roster}
         currentMemberId={currentMemberId}
       />

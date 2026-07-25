@@ -146,6 +146,9 @@ export const members = pgTable(
     // Free-form aliases used by coding agents / CI to identify the engineer
     aliases: jsonb('aliases').$type<string[]>(),
     skills: jsonb('skills').$type<string[]>(),
+    // IANA timezone (e.g. "Asia/Kolkata") for calendar display + reminders;
+    // captured from the browser on first calendar visit.
+    timezone: text('timezone'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -1225,3 +1228,327 @@ export const docCollaborators = pgTable(
 
 export type DocCollaborator = typeof docCollaborators.$inferSelect
 export type InsertDocCollaborator = typeof docCollaborators.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Daily plans — the one manual signal Beacon deliberately asks for: what a
+// member intends to work on today. Freeform text the person types, plus
+// optionally linked work items to show what they're on. One row per member
+// per day; edits update in place. Every submit/edit also emits a
+// plan.declared / plan.updated event, so intent lands on the timeline and
+// feeds plan-vs-actual (planned items vs items that actually got activity).
+// ---------------------------------------------------------------------------
+
+export const dailyPlans = pgTable(
+  'daily_plans',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    // Local calendar day, 'YYYY-MM-DD'. One plan per member per day.
+    date: text('date').notNull(),
+    intention: text('intention').notNull(),
+    workItemIds: jsonb('work_item_ids').$type<string[]>().notNull().default([]),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    memberDateUnique: uniqueIndex('daily_plans_member_date_idx').on(table.memberId, table.date),
+    workspaceDateIdx: index('daily_plans_workspace_date_idx').on(table.workspaceId, table.date),
+  }),
+)
+
+export type DailyPlan = typeof dailyPlans.$inferSelect
+export type InsertDailyPlan = typeof dailyPlans.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Calendar accounts — per-member OAuth connections to a personal calendar
+// (Google today; the shape is provider-generic so Outlook can follow). Unlike
+// `connections` (workspace-scoped, one row per provider), a calendar belongs
+// to a person, so this is keyed by member and stores the refresh token +
+// expiry that Google's short-lived access tokens require. Both tokens are
+// encrypted at rest (lib/crypto.ts). syncToken drives incremental sync.
+// ---------------------------------------------------------------------------
+
+export const CALENDAR_PROVIDERS = ['google'] as const
+export type CalendarProvider = (typeof CALENDAR_PROVIDERS)[number]
+
+export const calendarAccounts = pgTable(
+  'calendar_accounts',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    provider: text('provider', { enum: CALENDAR_PROVIDERS }).notNull().default('google'),
+    accessToken: text('access_token').notNull(), // encrypted
+    refreshToken: text('refresh_token'), // encrypted
+    tokenExpiresAt: timestamp('token_expires_at'),
+    externalEmail: text('external_email'),
+    calendarId: text('calendar_id').notNull().default('primary'),
+    // Incremental sync position from the Calendar API; cleared on 410 → full resync.
+    syncToken: text('sync_token'),
+    enabled: boolean('enabled').notNull().default(true),
+    lastSyncedAt: timestamp('last_synced_at'),
+    lastSyncError: text('last_sync_error'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    memberUnique: uniqueIndex('calendar_accounts_member_idx').on(table.memberId),
+    workspaceIdx: index('calendar_accounts_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type CalendarAccount = typeof calendarAccounts.$inferSelect
+export type InsertCalendarAccount = typeof calendarAccounts.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Native calendar — a first-class, Google-grade calendar Beacon owns. A
+// `calendar` is a container; `calendar_events` are its (single or recurring)
+// masters; `calendar_event_overrides` carry per-occurrence exceptions
+// (RECURRENCE-ID / EXDATE); attendees, reminders, and shares hang off events
+// and calendars. Every mutation also appends a Beacon event (source
+// 'calendar') so the calendar feeds Pulse/Timeline — same dual pattern as
+// work_items (stored entity that also emits events).
+// ---------------------------------------------------------------------------
+
+export const CALENDAR_VISIBILITY = ['private', 'workspace'] as const
+export type CalendarVisibility = (typeof CALENDAR_VISIBILITY)[number]
+
+export interface ReminderSpec {
+  method: 'popup' | 'email'
+  minutesBefore: number
+}
+
+export const calendars = pgTable(
+  'calendars',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerMemberId: text('owner_member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    color: text('color').notNull().default('#3b82f6'),
+    timezone: text('timezone').notNull().default('UTC'),
+    isPrimary: boolean('is_primary').notNull().default(false),
+    visibility: text('visibility', { enum: CALENDAR_VISIBILITY }).notNull().default('private'),
+    // Set when this calendar mirrors an external source (e.g. Google import).
+    // Its events are read-only in Beacon.
+    externalProvider: text('external_provider'),
+    defaultReminders: jsonb('default_reminders').$type<ReminderSpec[]>().notNull().default([]),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    workspaceIdx: index('calendars_workspace_idx').on(table.workspaceId),
+    ownerIdx: index('calendars_owner_idx').on(table.ownerMemberId),
+  }),
+)
+
+export type Calendar = typeof calendars.$inferSelect
+export type InsertCalendar = typeof calendars.$inferInsert
+
+export const CALENDAR_EVENT_STATUSES = ['confirmed', 'tentative', 'cancelled'] as const
+export type CalendarEventStatus = (typeof CALENDAR_EVENT_STATUSES)[number]
+
+export const CALENDAR_EVENT_VISIBILITY = ['default', 'public', 'private'] as const
+export type CalendarEventVisibility = (typeof CALENDAR_EVENT_VISIBILITY)[number]
+
+export const CALENDAR_EVENT_TRANSPARENCY = ['opaque', 'transparent'] as const
+export type CalendarEventTransparency = (typeof CALENDAR_EVENT_TRANSPARENCY)[number]
+
+export const calendarEvents = pgTable(
+  'calendar_events',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    calendarId: text('calendar_id')
+      .notNull()
+      .references(() => calendars.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('(No title)'),
+    description: text('description'),
+    location: text('location'),
+    // Null inherits the calendar's color.
+    color: text('color'),
+    // startAt is the DTSTART instant; startTimezone is the wall-clock zone it
+    // was authored in — required to expand recurrences correctly across DST.
+    startAt: timestamp('start_at', { withTimezone: true }).notNull(),
+    endAt: timestamp('end_at', { withTimezone: true }).notNull(),
+    startTimezone: text('start_timezone').notNull().default('UTC'),
+    endTimezone: text('end_timezone').notNull().default('UTC'),
+    allDay: boolean('all_day').notNull().default(false),
+    // RFC 5545 RRULE (e.g. "FREQ=WEEKLY;BYDAY=MO,WE"); null = single event.
+    rrule: text('rrule'),
+    // Cached last-possible occurrence (UNTIL/COUNT horizon) for range pruning;
+    // null for single events or unbounded rules.
+    recurrenceEndAt: timestamp('recurrence_end_at', { withTimezone: true }),
+    status: text('status', { enum: CALENDAR_EVENT_STATUSES }).notNull().default('confirmed'),
+    visibility: text('visibility', { enum: CALENDAR_EVENT_VISIBILITY }).notNull().default('default'),
+    transparency: text('transparency', { enum: CALENDAR_EVENT_TRANSPARENCY }).notNull().default('opaque'),
+    organizerMemberId: text('organizer_member_id').references(() => members.id, { onDelete: 'set null' }),
+    conferenceUrl: text('conference_url'),
+    externalProvider: text('external_provider'),
+    externalId: text('external_id'),
+    createdByMemberId: text('created_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    calendarStartIdx: index('calendar_events_calendar_start_idx').on(table.calendarId, table.startAt),
+    workspaceStartIdx: index('calendar_events_workspace_start_idx').on(table.workspaceId, table.startAt),
+    externalUnique: uniqueIndex('calendar_events_external_idx')
+      .on(table.workspaceId, table.externalProvider, table.externalId)
+      .where(sql`${table.externalId} is not null`),
+  }),
+)
+
+export type CalendarEvent = typeof calendarEvents.$inferSelect
+export type InsertCalendarEvent = typeof calendarEvents.$inferInsert
+
+// Per-occurrence exceptions to a recurring master. cancelled=true is an EXDATE
+// (occurrence removed); otherwise the non-null columns override just that one
+// occurrence (Google's "edit this event").
+export const calendarEventOverrides = pgTable(
+  'calendar_event_overrides',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    masterEventId: text('master_event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    // The original (un-overridden) start of the occurrence being modified —
+    // RFC 5545 RECURRENCE-ID.
+    recurrenceDate: timestamp('recurrence_date', { withTimezone: true }).notNull(),
+    cancelled: boolean('cancelled').notNull().default(false),
+    title: text('title'),
+    description: text('description'),
+    location: text('location'),
+    startAt: timestamp('start_at', { withTimezone: true }),
+    endAt: timestamp('end_at', { withTimezone: true }),
+    allDay: boolean('all_day'),
+    status: text('status', { enum: CALENDAR_EVENT_STATUSES }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    masterRecurrenceUnique: uniqueIndex('calendar_event_overrides_master_recurrence_idx').on(
+      table.masterEventId,
+      table.recurrenceDate,
+    ),
+  }),
+)
+
+export type CalendarEventOverride = typeof calendarEventOverrides.$inferSelect
+export type InsertCalendarEventOverride = typeof calendarEventOverrides.$inferInsert
+
+export const ATTENDEE_ROLES = ['required', 'optional'] as const
+export type AttendeeRole = (typeof ATTENDEE_ROLES)[number]
+
+export const ATTENDEE_RESPONSES = ['needsAction', 'accepted', 'declined', 'tentative'] as const
+export type AttendeeResponse = (typeof ATTENDEE_RESPONSES)[number]
+
+export const eventAttendees = pgTable(
+  'event_attendees',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    // Internal guest (member) or external (email only).
+    memberId: text('member_id').references(() => members.id, { onDelete: 'cascade' }),
+    email: text('email'),
+    role: text('role', { enum: ATTENDEE_ROLES }).notNull().default('required'),
+    responseStatus: text('response_status', { enum: ATTENDEE_RESPONSES }).notNull().default('needsAction'),
+    isOrganizer: boolean('is_organizer').notNull().default(false),
+    comment: text('comment'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    eventMemberUnique: uniqueIndex('event_attendees_event_member_idx')
+      .on(table.eventId, table.memberId)
+      .where(sql`${table.memberId} is not null`),
+    eventEmailUnique: uniqueIndex('event_attendees_event_email_idx')
+      .on(table.eventId, table.email)
+      .where(sql`${table.email} is not null`),
+    memberIdx: index('event_attendees_member_idx').on(table.memberId),
+  }),
+)
+
+export type EventAttendee = typeof eventAttendees.$inferSelect
+export type InsertEventAttendee = typeof eventAttendees.$inferInsert
+
+export const REMINDER_METHODS = ['popup', 'email'] as const
+export type ReminderMethod = (typeof REMINDER_METHODS)[number]
+
+export const eventReminders = pgTable(
+  'event_reminders',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    eventId: text('event_id')
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    method: text('method', { enum: REMINDER_METHODS }).notNull().default('popup'),
+    minutesBefore: integer('minutes_before').notNull().default(10),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    eventMemberIdx: index('event_reminders_event_member_idx').on(table.eventId, table.memberId),
+  }),
+)
+
+export type EventReminder = typeof eventReminders.$inferSelect
+export type InsertEventReminder = typeof eventReminders.$inferInsert
+
+export const CALENDAR_SHARE_ROLES = ['freeBusy', 'reader', 'writer', 'owner'] as const
+export type CalendarShareRole = (typeof CALENDAR_SHARE_ROLES)[number]
+
+export const calendarShares = pgTable(
+  'calendar_shares',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    calendarId: text('calendar_id')
+      .notNull()
+      .references(() => calendars.id, { onDelete: 'cascade' }),
+    sharedWithMemberId: text('shared_with_member_id').references(() => members.id, { onDelete: 'cascade' }),
+    sharedWithEmail: text('shared_with_email'),
+    role: text('role', { enum: CALENDAR_SHARE_ROLES }).notNull().default('reader'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    calendarMemberUnique: uniqueIndex('calendar_shares_calendar_member_idx')
+      .on(table.calendarId, table.sharedWithMemberId)
+      .where(sql`${table.sharedWithMemberId} is not null`),
+    sharedMemberIdx: index('calendar_shares_shared_member_idx').on(table.sharedWithMemberId),
+  }),
+)
+
+export type CalendarShare = typeof calendarShares.$inferSelect
+export type InsertCalendarShare = typeof calendarShares.$inferInsert
