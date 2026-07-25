@@ -3,7 +3,7 @@ import { type NextRequest } from 'next/server'
 import { db } from '@/lib/db/client'
 import { cycles } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, forbidden } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig, forbidden } from '@/lib/auth/permissions'
 import { closeCycleAndRollover } from '@/lib/cycles/lifecycle'
 import { snapshotCycle } from '@/lib/cycles/snapshots'
 
@@ -13,7 +13,7 @@ import { snapshotCycle } from '@/lib/cycles/snapshots'
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canViewAllTeams(ctx)) return forbidden()
+  if (!canManageWorkspaceConfig(ctx)) return forbidden()
 
   const { id } = await params
   const [cycle] = await db

@@ -40,7 +40,7 @@ export default async function Home() {
 
   if (session?.user) {
     const ctx = await getWorkspaceContext()
-    redirect(ctx && (ctx.role === 'admin' || ctx.role === 'manager') ? '/pulse' : '/timeline')
+    redirect(ctx ? '/pulse' : '/timeline')
   }
 
   return (

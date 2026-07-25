@@ -15,7 +15,7 @@ import {
   type WorkItemStatus,
 } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
 import { listEngineOptions, listFunctionOptions } from '@/lib/org/list'
 import { ManageProjectsDialog } from '@/components/projects/manage-projects-dialog'
 import { CreateWorkItemDialog } from '@/components/work-items/create-work-item-dialog'
@@ -234,7 +234,7 @@ export default async function WorkPage({
       actions={
         <>
           <ManageTemplatesDialog />
-          {canViewAllTeams(ctx) && <ManageProjectsDialog canDelete={isAdmin(ctx)} />}
+          {canManageWorkspaceConfig(ctx) && <ManageProjectsDialog canDelete={isAdmin(ctx)} />}
           <CreateWorkItemDialog defaultProjectId={project} />
         </>
       }

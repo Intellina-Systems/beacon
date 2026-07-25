@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { projects, PROJECT_STATUSES, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, forbidden, isAdmin } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig, forbidden, isAdmin } from '@/lib/auth/permissions'
 
 const patchSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -17,7 +17,7 @@ const patchSchema = z.object({
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canViewAllTeams(ctx)) return forbidden()
+  if (!canManageWorkspaceConfig(ctx)) return forbidden()
 
   const parsed = patchSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return Response.json({ error: 'Invalid body' }, { status: 400 })

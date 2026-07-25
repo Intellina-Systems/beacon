@@ -16,8 +16,17 @@ export async function isSuperAdminUser(userId: string): Promise<boolean> {
   return row?.isSuperAdmin ?? false
 }
 
-// Admins and managers see every team; everyone else is scoped to their own.
+// Only admins see every team; everyone else (managers included) is scoped to
+// their own team(s) — a manager's "own team" is just their teamMembers rows,
+// the same membership managers already have via ctx.teams.
 export function canViewAllTeams(ctx: WorkspaceContext): boolean {
+  return ctx.role === 'admin'
+}
+
+// Workspace-wide config surfaces (cycles, automation rules, projects) have no
+// team dimension to scope by, so admin and manager stay the same unrestricted
+// tier here regardless of canViewAllTeams' team-visibility scoping.
+export function canManageWorkspaceConfig(ctx: WorkspaceContext): boolean {
   return ctx.role === 'admin' || ctx.role === 'manager'
 }
 
@@ -26,7 +35,7 @@ export function leadTeamIds(ctx: WorkspaceContext): string[] {
 }
 
 // The member ids whose activity this viewer may see. `null` means unrestricted
-// (admin/manager). For everyone else: teammates across all their teams + self.
+// (admin only). For everyone else: teammates across all their teams + self.
 export async function visibleMemberIds(ctx: WorkspaceContext): Promise<string[] | null> {
   if (canViewAllTeams(ctx)) return null
   const teamIds = ctx.teams.map((t) => t.id)
@@ -41,8 +50,9 @@ export async function visibleMemberIds(ctx: WorkspaceContext): Promise<string[] 
 }
 
 // Members whose individual metrics/drill-downs this viewer may open: everyone
-// for admin/manager (`null`), self + led teams' members for a team lead, and
-// only self for a plain engineer. Roster names are visible to all regardless.
+// for admin (`null`), self + led teams' members for a team lead, and only
+// self for anyone else (including a non-lead manager). Roster names are
+// visible to all regardless.
 export async function detailVisibleMemberIds(ctx: WorkspaceContext): Promise<string[] | null> {
   if (canViewAllTeams(ctx)) return null
   const ledTeams = leadTeamIds(ctx)

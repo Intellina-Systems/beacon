@@ -139,7 +139,7 @@ export function BeaconLayout({
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const homeHref = role === 'admin' || role === 'manager' ? '/pulse' : '/timeline'
+  const homeHref = '/pulse'
   const visibleSections = navSections
     .map((section) => ({
       ...section,

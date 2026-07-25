@@ -3,7 +3,7 @@ import { asc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { automationRules } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig } from '@/lib/auth/permissions'
 import { PageShell, EmptyState } from '@/components/page-shell'
 import { CreateRuleDialog } from '@/components/automation/create-rule-dialog'
 import { RuleRowActions } from '@/components/automation/rule-row-actions'
@@ -43,7 +43,7 @@ function describeAction(a: { type: string; value: unknown }): string {
 export default async function AutomationPage() {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
-  if (!canViewAllTeams(ctx)) redirect('/work')
+  if (!canManageWorkspaceConfig(ctx)) redirect('/work')
 
   const rules = await db
     .select()

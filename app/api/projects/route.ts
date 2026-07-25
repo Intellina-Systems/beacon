@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, forbidden } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig, forbidden } from '@/lib/auth/permissions'
 
 export async function GET(): Promise<Response> {
   const ctx = await getWorkspaceContext()
@@ -36,7 +36,7 @@ const createSchema = z.object({
 export async function POST(req: Request): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!canViewAllTeams(ctx)) return forbidden()
+  if (!canManageWorkspaceConfig(ctx)) return forbidden()
 
   const parsed = createSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return Response.json({ error: 'Invalid project', issues: parsed.error.issues }, { status: 400 })

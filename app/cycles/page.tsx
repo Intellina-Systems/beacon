@@ -4,7 +4,7 @@ import { and, asc, desc, eq, ne } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { cycles, members, projectUpdates, projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams } from '@/lib/auth/permissions'
+import { canManageWorkspaceConfig } from '@/lib/auth/permissions'
 import { getCurrentCycle } from '@/lib/cycles/lifecycle'
 import { listSnapshots } from '@/lib/cycles/snapshots'
 import { isUpdateStale } from '@/lib/projects/health'
@@ -140,7 +140,7 @@ export default async function CyclesPage({
       ])
     : [[], []]
 
-  const canManage = canViewAllTeams(ctx)
+  const canManage = canManageWorkspaceConfig(ctx)
   const status = selectedCycle ? cycleStatus(selectedCycle) : null
 
   return (
