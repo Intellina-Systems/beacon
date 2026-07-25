@@ -86,19 +86,32 @@ export interface Pulse {
 }
 
 // Aggregate view of what happened in the last N days — the dashboard backbone.
-export async function getPulse(workspaceId: string, sinceDays = 7): Promise<Pulse> {
+export async function getPulse(
+  workspaceId: string,
+  sinceDays = 7,
+  visibleMemberIds?: string[] | null,
+): Promise<Pulse> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
 
   const typeRows = await db
     .select({ type: events.type, count: count() })
     .from(events)
-    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since)))
+    .where(
+      and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since), visibilityCondition(visibleMemberIds)),
+    )
     .groupBy(events.type)
 
   const memberRows = await db
     .selectDistinct({ memberId: events.memberId })
     .from(events)
-    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since), isNotNull(events.memberId)))
+    .where(
+      and(
+        eq(events.workspaceId, workspaceId),
+        gte(events.occurredAt, since),
+        isNotNull(events.memberId),
+        visibilityCondition(visibleMemberIds),
+      ),
+    )
 
   const byCategory: Pulse['byCategory'] = { work: 0, code: 0, cicd: 0, agent: 0, comms: 0, knowledge: 0, other: 0 }
   let totalEvents = 0
@@ -238,7 +251,7 @@ export async function getMemberActivity(workspaceId: string, sinceDays = 7, visi
 }
 
 // Daily event counts for sparkline-style charts.
-export async function getDailyActivity(workspaceId: string, sinceDays = 14) {
+export async function getDailyActivity(workspaceId: string, sinceDays = 14, visibleMemberIds?: string[] | null) {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
   return db
     .select({
@@ -246,7 +259,9 @@ export async function getDailyActivity(workspaceId: string, sinceDays = 14) {
       count: count(),
     })
     .from(events)
-    .where(and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since)))
+    .where(
+      and(eq(events.workspaceId, workspaceId), gte(events.occurredAt, since), visibilityCondition(visibleMemberIds)),
+    )
     .groupBy(sql`to_char(${events.occurredAt}, 'YYYY-MM-DD')`)
     .orderBy(sql`to_char(${events.occurredAt}, 'YYYY-MM-DD')`)
 }

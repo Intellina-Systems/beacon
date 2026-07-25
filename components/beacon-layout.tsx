@@ -39,7 +39,7 @@ const navSections = [
   {
     label: 'Monitor',
     items: [
-      { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager'] as Role[] },
+      { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager', 'engineer'] as Role[] },
       { href: '/timeline', label: 'Timeline', icon: Activity },
       { href: '/work', label: 'Work', icon: ListTodo },
       { href: '/cycles', label: 'Cycles', icon: RefreshCw },

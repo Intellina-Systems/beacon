@@ -5,7 +5,7 @@ import { Activity, ArrowUpRight, Bot, GitMerge, Lightbulb, Users } from 'lucide-
 import { db } from '@/lib/db/client'
 import { insights, members, projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams } from '@/lib/auth/permissions'
+import { visibleMemberIds } from '@/lib/auth/permissions'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import {
   getAssignedWorkItems,
@@ -75,8 +75,11 @@ function fillDays(rows: { day: string; count: number }[], days: number) {
 export default async function PulsePage() {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
-  if (!canViewAllTeams(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
+
+  // Admins/managers see the whole workspace (`null`); everyone else is scoped
+  // to their own teams + self, same as the rest of the app.
+  const visible = await visibleMemberIds(ctx)
 
   const today = serverDateKey()
 
@@ -86,18 +89,18 @@ export default async function PulsePage() {
     recentEvents,
     dailyActivity,
     memberActivity,
-    roster,
+    fullRoster,
     activeInsights,
-    activeItems,
+    scopedItems,
     myPlan,
     assignedItems,
     todaysPlans,
   ] = await Promise.all([
-    getPulse(workspaceId, 7),
-    getActiveBlockers(workspaceId),
-    listEvents(workspaceId, { limit: 30 }),
-    getDailyActivity(workspaceId, 14),
-    getMemberActivity(workspaceId, 7),
+    getPulse(workspaceId, 7, visible),
+    getActiveBlockers(workspaceId, 14, visible),
+    listEvents(workspaceId, { limit: 30, visibleMemberIds: visible }),
+    getDailyActivity(workspaceId, 14, visible),
+    getMemberActivity(workspaceId, 7, visible),
     db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
     db
       .select({
@@ -118,6 +121,7 @@ export default async function PulsePage() {
         id: workItems.id,
         projectId: workItems.projectId,
         projectName: projects.name,
+        assigneeMemberId: workItems.assigneeMemberId,
       })
       .from(workItems)
       .leftJoin(projects, eq(projects.id, workItems.projectId))
@@ -131,6 +135,13 @@ export default async function PulsePage() {
     getAssignedWorkItems(workspaceId, ctx.member.id),
     getTodaysPlans(ctx, today),
   ])
+
+  // Roster and work-in-flight panels respect the same visibility scope as
+  // the rest of Pulse — an engineer sees their own teams, not every hire.
+  const roster = visible ? fullRoster.filter((m) => visible.includes(m.id)) : fullRoster
+  const activeItems = visible
+    ? scopedItems.filter((item) => !item.assigneeMemberId || visible.includes(item.assigneeMemberId))
+    : scopedItems
 
   // The composer's pick list: assigned active items plus anything already
   // linked (which may no longer be assigned/active), deduped.
@@ -190,7 +201,13 @@ export default async function PulsePage() {
   ]
 
   return (
-    <PageShell title="Pulse" description={`What's happening across ${ctx.workspaceName}, right now`} fixed>
+    <PageShell
+      title="Pulse"
+      description={
+        visible ? "What's happening across your teams, right now" : `What's happening across ${ctx.workspaceName}, right now`
+      }
+      fixed
+    >
       <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
         {/* Your plan for today — the one manual signal Beacon asks for */}
         <div className="shrink-0">
