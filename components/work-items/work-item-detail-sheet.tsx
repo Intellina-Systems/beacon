@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Ban, Check, Clock, Eye, EyeOff, Trash2, UserPlus, X } from 'lucide-react'
+import { Ban, Check, Clock, ExternalLink, Eye, EyeOff, Pencil, Trash2, UserPlus, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { Streamdown } from 'streamdown'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,10 +12,22 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
+import { relativeTime } from '@/lib/utils/relative-time'
 import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
 import type { WorkItemRelationType, WorkItemStatus } from '@/lib/db/schema'
+
+interface ActivityEvent {
+  id: string
+  type: string
+  summary: string
+  source: string
+  actorLabel: string | null
+  memberName: string | null
+  occurredAt: string
+}
 
 interface RosterOption {
   id: string
@@ -78,11 +91,13 @@ export function WorkItemDetailSheet({
 }) {
   const router = useRouter()
   const [item, setItem] = useState<ItemDetail | null>(null)
+  const [events, setEvents] = useState<ActivityEvent[]>([])
   const [relations, setRelations] = useState<RelationsView | null>(null)
   const [watchers, setWatchers] = useState<WatcherEntry[]>([])
   const [engineOptions, setEngineOptions] = useState<RosterOption[]>([])
   const [functionOptions, setFunctionOptions] = useState<RosterOption[]>([])
   const [loading, setLoading] = useState(false)
+  const [editingDesc, setEditingDesc] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
   const [labelsDraft, setLabelsDraft] = useState('')
   const [pickerFor, setPickerFor] = useState<WorkItemRelationType | 'duplicate-triage' | null>(null)
@@ -110,6 +125,7 @@ export function WorkItemDetailSheet({
       const engineData = await engineRes.json().catch(() => ({}))
       const functionData = await functionRes.json().catch(() => ({}))
       setItem(itemData.item)
+      setEvents(itemData.events ?? [])
       setDescriptionDraft(itemData.item.description ?? '')
       setLabelsDraft((itemData.item.labels ?? []).join(', '))
       setRelations(relationsData.relations)
@@ -130,9 +146,11 @@ export function WorkItemDetailSheet({
     if (open && itemId) load()
     if (!open) {
       setItem(null)
+      setEvents([])
       setRelations(null)
       setWatchers([])
       setPickerFor(null)
+      setEditingDesc(false)
     }
   }, [open, itemId, load])
 
@@ -264,38 +282,65 @@ export function WorkItemDetailSheet({
 
   return (
     <Drawer open={open} onOpenChange={(value) => !value && onClose()} direction="right">
-      <DrawerContent className="!w-full sm:!max-w-lg">
+      <DrawerContent className="!w-full sm:!max-w-3xl">
         {loading || !item ? (
-          <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">Loading…</div>
+          <div className="flex h-full flex-col gap-4 p-6">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-40 w-full" />
+          </div>
         ) : (
-          <div className="flex h-full flex-col overflow-y-auto">
-            <DrawerHeader className="border-b text-left">
+          <div className="flex h-full flex-col">
+            <DrawerHeader className="shrink-0 space-y-0 border-b px-6 py-3 text-left">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {item.key && <span className="font-mono text-xs text-muted-foreground">{item.key}</span>}
                   <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px] uppercase">
                     {KIND_LABEL[item.kind]}
                   </Badge>
+                  {item.externalUrl && (
+                    <a
+                      href={item.externalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-muted-foreground transition-colors hover:text-foreground"
+                      title="Open in tracker"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
                 </div>
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" onClick={handleDelete}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                  onClick={handleDelete}
+                  title="Delete"
+                >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
-              <Input
-                value={item.title}
-                onChange={(e) => setItem({ ...item, title: e.target.value })}
-                onBlur={() => item.title.trim() && patch({ title: item.title.trim() })}
-                className="mt-2 border-none px-0 text-base font-semibold shadow-none focus-visible:ring-0"
-              />
               <DrawerTitle className="sr-only">{item.title}</DrawerTitle>
             </DrawerHeader>
 
-            <div className="flex-1 space-y-5 px-4 py-4">
-              {/* Status / triage actions */}
-              <div className="space-y-2">
-                <Label className="micro-label">Status</Label>
-                {item.status === 'triage' ? (
-                  <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+              {/* Main column — the issue as a document */}
+              <div className="min-w-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+                <Input
+                  value={item.title}
+                  onChange={(e) => setItem({ ...item, title: e.target.value })}
+                  onBlur={() => item.title.trim() && patch({ title: item.title.trim() })}
+                  placeholder="Untitled"
+                  className="h-auto border-none px-0 text-2xl font-semibold leading-tight tracking-tight shadow-none focus-visible:ring-0"
+                />
+
+                {item.status === 'triage' && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2.5">
+                    <span className="micro-label mr-1">Triage</span>
                     <Button size="sm" onClick={() => triage({ action: 'accept' })}>
                       <Check className="mr-1.5 h-3.5 w-3.5" />
                       Accept
@@ -318,30 +363,180 @@ export function WorkItemDetailSheet({
                       Mark duplicate
                     </Button>
                   </div>
-                ) : (
-                  <Select value={item.status} onValueChange={(v) => patch({ status: v })}>
-                    <SelectTrigger>
-                      <span className="flex items-center gap-1.5">
-                        <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[item.status].tone)} />
-                        <SelectValue />
-                      </span>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EDITABLE_STATUSES.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {STATUS_META[s].label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 )}
+
+                {/* Description — rendered markdown, click to edit */}
+                <section className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="micro-label">Description</Label>
+                    {!editingDesc && item.description && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[11px] text-muted-foreground"
+                        onClick={() => setEditingDesc(true)}
+                      >
+                        <Pencil className="mr-1 h-3 w-3" />
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                  {editingDesc ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        rows={8}
+                        value={descriptionDraft}
+                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        placeholder="Add a description… Markdown supported."
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (descriptionDraft !== (item.description ?? ''))
+                              patch({ description: descriptionDraft || null })
+                            setItem({ ...item, description: descriptionDraft || null })
+                            setEditingDesc(false)
+                          }}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setDescriptionDraft(item.description ?? '')
+                            setEditingDesc(false)
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : item.description ? (
+                    <Streamdown className="text-sm leading-relaxed text-foreground/90 [&_a]:text-beacon [&_a]:underline [&_a]:underline-offset-4 [&_h1]:mt-4 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-medium [&_li]:my-0.5 [&_pre]:max-w-full [&_ul]:list-disc [&_ul]:pl-5">
+                      {item.description}
+                    </Streamdown>
+                  ) : (
+                    <button
+                      onClick={() => setEditingDesc(true)}
+                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Add a description…
+                    </button>
+                  )}
+                </section>
+
+                {/* Relations */}
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="micro-label">Relations</Label>
+                    <div className="flex gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => setPickerFor('blocks')}
+                      >
+                        + Blocks
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => setPickerFor('related')}
+                      >
+                        + Related
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[11px]"
+                        onClick={() => setPickerFor('duplicate')}
+                      >
+                        + Duplicate
+                      </Button>
+                    </div>
+                  </div>
+                  {relations && (
+                    <div className="space-y-2 text-xs">
+                      <RelationGroup label="Blocks" entries={relations.blocks} onRemove={removeRelation} />
+                      <RelationGroup label="Blocked by" entries={relations.blockedBy} onRemove={removeRelation} />
+                      {relations.duplicateOf && (
+                        <RelationGroup
+                          label="Duplicate of"
+                          entries={[relations.duplicateOf]}
+                          onRemove={removeRelation}
+                        />
+                      )}
+                      <RelationGroup label="Duplicates" entries={relations.duplicates} onRemove={removeRelation} />
+                      <RelationGroup label="Related" entries={relations.related} onRemove={removeRelation} />
+                      {relations.blocks.length === 0 &&
+                        relations.blockedBy.length === 0 &&
+                        !relations.duplicateOf &&
+                        relations.duplicates.length === 0 &&
+                        relations.related.length === 0 && <p className="text-muted-foreground">No relations yet.</p>}
+                    </div>
+                  )}
+                </section>
+
+                {/* Activity — the real derived history from the event stream */}
+                <section className="space-y-3">
+                  <Label className="micro-label">Activity</Label>
+                  {events.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No activity yet.</p>
+                  ) : (
+                    <div className="ml-1 border-l pl-4">
+                      {events.map((e) => (
+                        <div key={e.id} className="relative py-2">
+                          <span className="absolute -left-[19px] top-[13px] h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+                          <p className="text-sm leading-snug">{e.summary}</p>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                            <span className="font-mono text-[11px]">{e.type}</span>
+                            {(e.memberName ?? e.actorLabel) && (
+                              <span className="font-medium text-foreground/70">{e.memberName ?? e.actorLabel}</span>
+                            )}
+                            <span className="font-mono text-[11px]">{relativeTime(new Date(e.occurredAt))}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+              {/* Properties rail */}
+              <aside className="shrink-0 space-y-4 overflow-y-auto border-t bg-muted/20 px-5 py-5 lg:w-[248px] lg:border-l lg:border-t-0">
+                <div className="space-y-1.5">
+                  <Label className="micro-label">Status</Label>
+                  {item.status === 'triage' ? (
+                    <Badge variant="outline" className="font-mono text-[10px] uppercase">
+                      Triage
+                    </Badge>
+                  ) : (
+                    <Select value={item.status} onValueChange={(v) => patch({ status: v })}>
+                      <SelectTrigger className="h-8">
+                        <span className="flex items-center gap-1.5">
+                          <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[item.status].tone)} />
+                          <SelectValue />
+                        </span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EDITABLE_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {STATUS_META[s].label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
                   <Label className="micro-label">Priority</Label>
                   <Select value={String(item.priority ?? 0)} onValueChange={(v) => patch({ priority: Number(v) })}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -353,13 +548,14 @@ export function WorkItemDetailSheet({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+
+                <div className="space-y-1.5">
                   <Label className="micro-label">Assignee</Label>
                   <Select
                     value={item.assigneeMemberId ?? 'none'}
                     onValueChange={(v) => patch({ assigneeMemberId: v === 'none' ? null : v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-8">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -372,226 +568,173 @@ export function WorkItemDetailSheet({
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
 
-              {(engineOptions.length > 0 || functionOptions.length > 0) && (
-                <div className="grid grid-cols-2 gap-3">
-                  {engineOptions.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="micro-label">Engine</Label>
-                      <Select
-                        value={item.engineId ?? 'none'}
-                        onValueChange={(v) => patch({ engineId: v === 'none' ? null : v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No engine</SelectItem>
-                          {engineOptions.map((e) => (
-                            <SelectItem key={e.id} value={e.id}>
-                              {e.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  {functionOptions.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="micro-label">Team</Label>
-                      <Select
-                        value={item.functionId ?? 'none'}
-                        onValueChange={(v) => patch({ functionId: v === 'none' ? null : v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No team</SelectItem>
-                          {functionOptions.map((f) => (
-                            <SelectItem key={f.id} value={f.id}>
-                              {f.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label className="micro-label">Estimate</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.5"
-                    value={item.estimate ?? ''}
-                    onChange={(e) =>
-                      setItem({ ...item, estimate: e.target.value === '' ? null : Number(e.target.value) })
-                    }
-                    onBlur={() => patch({ estimate: item.estimate })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="micro-label">Due date</Label>
-                  <Input
-                    type="date"
-                    value={toDateInputValue(item.dueDate)}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setItem({ ...item, dueDate: value ? new Date(value).toISOString() : null })
-                      patch({ dueDate: value || null })
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="micro-label">Labels</Label>
-                <Input
-                  value={labelsDraft}
-                  onChange={(e) => setLabelsDraft(e.target.value)}
-                  onBlur={() =>
-                    patch({
-                      labels: labelsDraft
-                        .split(',')
-                        .map((l) => l.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  placeholder="bug, frontend"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="micro-label">Description</Label>
-                <Textarea
-                  rows={4}
-                  value={descriptionDraft}
-                  onChange={(e) => setDescriptionDraft(e.target.value)}
-                  onBlur={() =>
-                    descriptionDraft !== (item.description ?? '') && patch({ description: descriptionDraft || null })
-                  }
-                />
-              </div>
-
-              {/* Relations */}
-              <div className="space-y-3 border-t pt-4">
-                <div className="flex items-center justify-between">
-                  <Label className="micro-label">Relations</Label>
-                  <div className="flex gap-1.5">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setPickerFor('blocks')}
+                {engineOptions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="micro-label">Engine</Label>
+                    <Select
+                      value={item.engineId ?? 'none'}
+                      onValueChange={(v) => patch({ engineId: v === 'none' ? null : v })}
                     >
-                      + Blocks
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setPickerFor('related')}
-                    >
-                      + Related
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-[11px]"
-                      onClick={() => setPickerFor('duplicate')}
-                    >
-                      + Duplicate
-                    </Button>
-                  </div>
-                </div>
-
-                {relations && (
-                  <div className="space-y-2 text-xs">
-                    <RelationGroup label="Blocks" entries={relations.blocks} onRemove={removeRelation} />
-                    <RelationGroup label="Blocked by" entries={relations.blockedBy} onRemove={removeRelation} />
-                    {relations.duplicateOf && (
-                      <RelationGroup label="Duplicate of" entries={[relations.duplicateOf]} onRemove={removeRelation} />
-                    )}
-                    <RelationGroup label="Duplicates" entries={relations.duplicates} onRemove={removeRelation} />
-                    <RelationGroup label="Related" entries={relations.related} onRemove={removeRelation} />
-                    {relations.blocks.length === 0 &&
-                      relations.blockedBy.length === 0 &&
-                      !relations.duplicateOf &&
-                      relations.duplicates.length === 0 &&
-                      relations.related.length === 0 && <p className="text-muted-foreground">No relations yet.</p>}
-                  </div>
-                )}
-              </div>
-
-              {/* Watchers */}
-              <div className="space-y-3 border-t pt-4">
-                <div className="flex items-center justify-between">
-                  <Label className="micro-label">Watchers</Label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-2 text-[11px]"
-                    onClick={() => toggleWatch(isWatching)}
-                  >
-                    {isWatching ? (
-                      <>
-                        <EyeOff className="mr-1 h-3 w-3" />
-                        Unwatch
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="mr-1 h-3 w-3" />
-                        Watch
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  {watchers.map((w) => (
-                    <div key={w.memberId} className="flex items-center justify-between text-xs">
-                      <span>
-                        {w.name} <span className="text-muted-foreground">· {w.reason}</span>
-                      </span>
-                      <button
-                        onClick={() => removeWatcherEntry(w.memberId)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex gap-2">
-                  <Select value={addWatcherId} onValueChange={setAddWatcherId}>
-                    <SelectTrigger className="h-8 flex-1 text-xs">
-                      <SelectValue placeholder="Add a watcher…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roster
-                        .filter((m) => !watcherIds.has(m.id))
-                        .map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No engine</SelectItem>
+                        {engineOptions.map((e) => (
+                          <SelectItem key={e.id} value={e.id}>
+                            {e.name}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 shrink-0 px-2"
-                    disabled={!addWatcherId}
-                    onClick={addWatcher}
-                  >
-                    <UserPlus className="h-3.5 w-3.5" />
-                  </Button>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {functionOptions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="micro-label">Team</Label>
+                    <Select
+                      value={item.functionId ?? 'none'}
+                      onValueChange={(v) => patch({ functionId: v === 'none' ? null : v })}
+                    >
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No team</SelectItem>
+                        {functionOptions.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="micro-label">Estimate</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.5"
+                      value={item.estimate ?? ''}
+                      onChange={(e) =>
+                        setItem({ ...item, estimate: e.target.value === '' ? null : Number(e.target.value) })
+                      }
+                      onBlur={() => patch({ estimate: item.estimate })}
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="micro-label">Due date</Label>
+                    <Input
+                      type="date"
+                      value={toDateInputValue(item.dueDate)}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setItem({ ...item, dueDate: value ? new Date(value).toISOString() : null })
+                        patch({ dueDate: value || null })
+                      }}
+                      className="h-8"
+                    />
+                  </div>
                 </div>
-              </div>
+
+                <div className="space-y-1.5">
+                  <Label className="micro-label">Labels</Label>
+                  {item.labels && item.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {item.labels.map((l) => (
+                        <Badge key={l} variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                          {l}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <Input
+                    value={labelsDraft}
+                    onChange={(e) => setLabelsDraft(e.target.value)}
+                    onBlur={() =>
+                      patch({
+                        labels: labelsDraft
+                          .split(',')
+                          .map((l) => l.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="bug, frontend"
+                    className="h-8"
+                  />
+                </div>
+
+                {/* Watchers */}
+                <div className="space-y-2 border-t pt-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="micro-label">Watchers</Label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[11px]"
+                      onClick={() => toggleWatch(isWatching)}
+                    >
+                      {isWatching ? (
+                        <>
+                          <EyeOff className="mr-1 h-3 w-3" />
+                          Unwatch
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="mr-1 h-3 w-3" />
+                          Watch
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    {watchers.map((w) => (
+                      <div key={w.memberId} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="min-w-0 truncate">
+                          {w.name} <span className="text-muted-foreground">· {w.reason}</span>
+                        </span>
+                        <button
+                          onClick={() => removeWatcherEntry(w.memberId)}
+                          className="shrink-0 text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Select value={addWatcherId} onValueChange={setAddWatcherId}>
+                      <SelectTrigger className="h-8 flex-1 text-xs">
+                        <SelectValue placeholder="Add a watcher…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {roster
+                          .filter((m) => !watcherIds.has(m.id))
+                          .map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0 px-2"
+                      disabled={!addWatcherId}
+                      onClick={addWatcher}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </aside>
             </div>
           </div>
         )}

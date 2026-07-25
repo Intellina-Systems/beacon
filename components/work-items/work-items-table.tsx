@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Ban, Check, Clock, ExternalLink, GripVertical } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -46,13 +46,20 @@ export function WorkItemsTable({
   isTriageView: boolean
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [localRows, setLocalRows] = useState(rows)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [clickedId, setClickedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [duplicatePickerFor, setDuplicatePickerFor] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => setLocalRows(rows), [rows])
+
+  // Deep-link: /work?item=<id> opens that item's detail sheet (used by Pulse
+  // plans/blockers/events links). Derived from the URL so no effect/setState is
+  // needed; a local click takes precedence over the param.
+  const itemParam = searchParams.get('item')
+  const selectedId = clickedId ?? itemParam
 
   async function moveTo(draggedId: string, overId: string) {
     const order = localRows.map((r) => r.id).filter((id) => id !== draggedId)
@@ -148,7 +155,7 @@ export function WorkItemsTable({
                   setDraggingId(null)
                 }}
                 onDragEnd={() => setDraggingId(null)}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => setClickedId(item.id)}
                 className={cn(
                   'cursor-pointer transition-colors hover:bg-accent/40',
                   draggingId === item.id && 'opacity-40',
@@ -281,7 +288,10 @@ export function WorkItemsTable({
       <WorkItemDetailSheet
         itemId={selectedId}
         open={selectedId !== null}
-        onClose={() => setSelectedId(null)}
+        onClose={() => {
+          setClickedId(null)
+          if (itemParam) router.replace('/work', { scroll: false })
+        }}
         roster={roster}
         currentMemberId={currentMemberId}
       />

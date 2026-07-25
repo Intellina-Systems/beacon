@@ -6,6 +6,9 @@ import { syncLinearSource } from './linear'
 import type { SyncResult } from './types'
 
 export type { SyncResult } from './types'
+// Calendar accounts are per-member OAuth connections, not signal sources, so
+// they sweep through their own entry point (called alongside syncAllSources).
+export { syncCalendarAccount, syncAllCalendarAccounts, type CalendarSyncSummary } from './google-calendar'
 
 export async function syncSource(workspaceId: string, source: SignalSource): Promise<SyncResult> {
   switch (source.kind) {

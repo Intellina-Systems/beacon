@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server'
-import { syncAllSources } from '@/lib/connectors'
+import { syncAllCalendarAccounts, syncAllSources } from '@/lib/connectors'
 
 export const maxDuration = 300
 
@@ -17,8 +17,8 @@ export async function GET(req: NextRequest): Promise<Response> {
   }
 
   try {
-    const summary = await syncAllSources()
-    return Response.json({ success: true, ...summary })
+    const [summary, calendars] = await Promise.all([syncAllSources(), syncAllCalendarAccounts()])
+    return Response.json({ success: true, ...summary, calendars })
   } catch (error) {
     console.error('[cron sync] failed:', error)
     return Response.json({ error: 'Cron sync failed' }, { status: 500 })

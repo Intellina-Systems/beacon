@@ -5,6 +5,7 @@ import { db } from '@/lib/db/client'
 import { cycles, members, workItems, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
+import { listEvents } from '@/lib/events/queries'
 import { rankForMove } from '@/lib/work-items/ordering'
 import { addWatchers } from '@/lib/work-items/watchers'
 import { demoteResolvedBlocks } from '@/lib/work-items/relations'
@@ -67,7 +68,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .limit(1)
 
   if (!rows[0]) return Response.json({ error: 'Not found' }, { status: 404 })
-  return Response.json({ item: rows[0] })
+
+  // The item's own event history — the real, derived activity feed.
+  const events = await listEvents(ctx.workspaceId, { workItemId: id, limit: 40 })
+  return Response.json({ item: rows[0], events })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {

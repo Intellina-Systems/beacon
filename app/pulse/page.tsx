@@ -1,14 +1,25 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { and, desc, eq, inArray } from 'drizzle-orm'
-import { AlertTriangle, Activity, ArrowUpRight, Bot, GitMerge, Lightbulb, Users } from 'lucide-react'
+import { Activity, ArrowUpRight, Bot, GitMerge, Lightbulb, Users } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { insights, members, projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { canViewAllTeams } from '@/lib/auth/permissions'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
+import {
+  getAssignedWorkItems,
+  getMemberPlan,
+  getTodaysPlans,
+  hydrateWorkItems,
+  serverDateKey,
+} from '@/lib/plans/queries'
+import { getBusyIntervals } from '@/lib/calendar/free-busy'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
+import { DailyPlanCard, type PlanWorkItemOption } from '@/components/plans/daily-plan-card'
+import { TodaysPlansPanel } from '@/components/plans/todays-plans-panel'
+import { BlockersPanel, type BlockerRow } from '@/components/pulse/blockers-panel'
 import { EventItem } from '@/components/events/event-item'
 import { InsightActions } from '@/components/insights/insight-actions'
 import { relativeTime } from '@/lib/utils/relative-time'
@@ -67,43 +78,93 @@ export default async function PulsePage() {
   if (!canViewAllTeams(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
 
-  const [pulse, blockers, recentEvents, dailyActivity, memberActivity, roster, activeInsights, activeItems] =
-    await Promise.all([
-      getPulse(workspaceId, 7),
-      getActiveBlockers(workspaceId),
-      listEvents(workspaceId, { limit: 30 }),
-      getDailyActivity(workspaceId, 14),
-      getMemberActivity(workspaceId, 7),
-      db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
-      db
-        .select({
-          id: insights.id,
-          kind: insights.kind,
-          severity: insights.severity,
-          title: insights.title,
-          detail: insights.detail,
-          createdAt: insights.createdAt,
-        })
-        .from(insights)
-        .where(and(eq(insights.workspaceId, workspaceId), eq(insights.status, 'active')))
-        .orderBy(desc(insights.createdAt))
-        .limit(20),
-      db
-        .select({
-          status: workItems.status,
-          id: workItems.id,
-          projectId: workItems.projectId,
-          projectName: projects.name,
-        })
-        .from(workItems)
-        .leftJoin(projects, eq(projects.id, workItems.projectId))
-        .where(
-          and(
-            eq(workItems.workspaceId, workspaceId),
-            inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked']),
-          ),
+  const today = serverDateKey()
+
+  const [
+    pulse,
+    blockers,
+    recentEvents,
+    dailyActivity,
+    memberActivity,
+    roster,
+    activeInsights,
+    activeItems,
+    myPlan,
+    assignedItems,
+    todaysPlans,
+  ] = await Promise.all([
+    getPulse(workspaceId, 7),
+    getActiveBlockers(workspaceId),
+    listEvents(workspaceId, { limit: 30 }),
+    getDailyActivity(workspaceId, 14),
+    getMemberActivity(workspaceId, 7),
+    db.select().from(members).where(eq(members.workspaceId, workspaceId)).orderBy(members.name).limit(12),
+    db
+      .select({
+        id: insights.id,
+        kind: insights.kind,
+        severity: insights.severity,
+        title: insights.title,
+        detail: insights.detail,
+        createdAt: insights.createdAt,
+      })
+      .from(insights)
+      .where(and(eq(insights.workspaceId, workspaceId), eq(insights.status, 'active')))
+      .orderBy(desc(insights.createdAt))
+      .limit(20),
+    db
+      .select({
+        status: workItems.status,
+        id: workItems.id,
+        projectId: workItems.projectId,
+        projectName: projects.name,
+      })
+      .from(workItems)
+      .leftJoin(projects, eq(projects.id, workItems.projectId))
+      .where(
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          inArray(workItems.status, ['todo', 'in_progress', 'in_review', 'blocked']),
         ),
-    ])
+      ),
+    getMemberPlan(ctx.member.id, today),
+    getAssignedWorkItems(workspaceId, ctx.member.id),
+    getTodaysPlans(ctx, today),
+  ])
+
+  // The composer's pick list: assigned active items plus anything already
+  // linked (which may no longer be assigned/active), deduped.
+  const linkedExtra = myPlan ? await hydrateWorkItems(workspaceId, myPlan.workItemIds) : []
+  const planOptionMap = new Map<string, PlanWorkItemOption>()
+  for (const item of [...assignedItems, ...linkedExtra]) {
+    planOptionMap.set(item.id, { id: item.id, key: item.key, title: item.title })
+  }
+  const planOptions = [...planOptionMap.values()]
+
+  const blockerRows: BlockerRow[] = blockers.map((b) => {
+    const payload = b.event.payload
+    const reason =
+      payload && typeof payload === 'object' && 'reason' in payload
+        ? String((payload as Record<string, unknown>).reason)
+        : null
+    return {
+      eventId: b.event.id,
+      summary: b.event.summary,
+      reason,
+      workItemId: b.event.workItemId,
+      workItemKey: b.event.workItemKey ?? null,
+      memberId: b.member?.id ?? b.event.memberId ?? null,
+      memberName: b.member?.name ?? b.event.memberName ?? null,
+      actorLabel: b.event.actorLabel ?? null,
+      occurredAt: b.event.occurredAt.toISOString(),
+    }
+  })
+
+  // Today's meeting count for the current member, from the native calendar.
+  const dayStart = new Date(`${today}T00:00:00.000Z`)
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+  const myBusy = await getBusyIntervals(workspaceId, [ctx.member.id], dayStart, dayEnd)
+  const myMeetingCount = myBusy.get(ctx.member.id)?.length ?? 0
 
   const statusCounts = activeItems.reduce<Record<string, number>>((acc, item) => {
     acc[item.status] = (acc[item.status] ?? 0) + 1
@@ -122,29 +183,40 @@ export default async function PulsePage() {
   const maxDaily = Math.max(1, ...series.map((d) => d.count))
 
   const stats = [
-    { icon: Activity, label: 'Events · 7d', value: pulse.totalEvents },
-    { icon: GitMerge, label: 'PRs merged', value: pulse.prsMerged },
-    { icon: Users, label: 'Active engineers', value: pulse.activeMemberIds.length },
-    { icon: Bot, label: 'Agent events', value: pulse.byCategory.agent },
+    { icon: Activity, label: 'Events · 7d', value: pulse.totalEvents, href: '/timeline' },
+    { icon: GitMerge, label: 'PRs merged', value: pulse.prsMerged, href: '/timeline' },
+    { icon: Users, label: 'Active engineers', value: pulse.activeMemberIds.length, href: '/team' },
+    { icon: Bot, label: 'Agent events', value: pulse.byCategory.agent, href: '/timeline' },
   ]
 
   return (
     <PageShell title="Pulse" description={`What's happening across ${ctx.workspaceName}, right now`} fixed>
       <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
+        {/* Your plan for today — the one manual signal Beacon asks for */}
+        <div className="shrink-0">
+          <DailyPlanCard
+            initialIntention={myPlan?.intention ?? null}
+            initialWorkItemIds={myPlan?.workItemIds ?? []}
+            options={planOptions}
+            meetingCount={myMeetingCount}
+          />
+        </div>
+
         {/* KPI row */}
         <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-          {stats.map(({ icon: Icon, label, value }, i) => (
-            <div
+          {stats.map(({ icon: Icon, label, value, href }, i) => (
+            <Link
               key={label}
-              className="animate-rise rounded-lg border bg-card px-4 py-3.5 shadow-xs transition-colors duration-200 hover:border-beacon/30"
+              href={href}
+              className="animate-rise group rounded-lg border bg-card px-4 py-3.5 shadow-xs transition-colors duration-200 hover:border-beacon/30 hover:bg-accent/30"
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <div className="flex items-center justify-between">
                 <p className="micro-label">{label}</p>
-                <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <Icon className="h-3.5 w-3.5 text-muted-foreground/60 transition-colors group-hover:text-beacon" />
               </div>
               <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight lg:text-[28px]">{value}</p>
-            </div>
+            </Link>
           ))}
         </div>
 
@@ -193,36 +265,10 @@ export default async function PulsePage() {
             </Panel>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-4 lg:col-span-4">
-            <Panel className={cn('max-h-[40%] shrink-0', blockers.length > 0 && 'border-destructive/40')}>
-              <PanelHeader
-                label={
-                  <span className={cn('flex items-center gap-1.5', blockers.length > 0 && 'text-destructive')}>
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    Blockers
-                  </span>
-                }
-                meta={
-                  <Badge variant={blockers.length > 0 ? 'destructive' : 'outline'} className="tabular-nums">
-                    {blockers.length}
-                  </Badge>
-                }
-              />
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-                {blockers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nobody is blocked.</p>
-                ) : (
-                  blockers.map((blocker) => (
-                    <div key={blocker.event.id} className="text-sm">
-                      <p className="leading-snug">{blocker.event.summary}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {[blocker.member?.name, relativeTime(blocker.event.occurredAt)].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Panel>
+          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto lg:col-span-4">
+            <BlockersPanel blockers={blockerRows} className="max-h-[300px] shrink-0" />
+
+            <TodaysPlansPanel plans={todaysPlans} className="max-h-[300px] shrink-0" />
 
             <Panel className="shrink-0">
               <PanelHeader label="Work in flight" meta={<PanelLink href="/work" label="All work" />} />
@@ -231,13 +277,17 @@ export default async function PulsePage() {
                   <p className="text-sm text-muted-foreground">No active work items.</p>
                 ) : (
                   Object.entries(statusCounts).map(([status, statusCount]) => (
-                    <div key={status} className="flex items-center gap-2 text-sm">
+                    <Link
+                      key={status}
+                      href={`/work?status=${status}`}
+                      className="-mx-2 flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-accent/60"
+                    >
                       <span
                         className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[status] ?? 'bg-muted-foreground/50')}
                       />
                       <span className="flex-1">{STATUS_LABEL[status] ?? status}</span>
                       <span className="font-mono text-xs text-muted-foreground tabular-nums">{statusCount}</span>
-                    </div>
+                    </Link>
                   ))
                 )}
                 {projectCounts.size > 1 && (
@@ -290,7 +340,7 @@ export default async function PulsePage() {
               </div>
             </Panel>
 
-            <Panel className="flex-1">
+            <Panel className="max-h-80 min-h-40 shrink-0">
               <PanelHeader
                 label={
                   <span className="flex items-center gap-1.5">

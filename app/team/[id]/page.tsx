@@ -3,12 +3,13 @@ import { notFound, redirect } from 'next/navigation'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { AlertTriangle, ArrowLeft, ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { connections, members, teamMembers, teams, workItems } from '@/lib/db/schema'
+import { calendarAccounts, connections, members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { decrypt } from '@/lib/crypto'
 import { getLinearUsers } from '@/lib/linear/client'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
 import { getActiveBlockers, getMemberActivity, listEvents } from '@/lib/events/queries'
+import { isGoogleConfigured } from '@/lib/google/oauth'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-she
 import { EventItem } from '@/components/events/event-item'
 import { EditMemberDialog } from '@/components/members/edit-member-dialog'
 import { MemberConnections } from '@/components/members/member-connections'
+import { GoogleCalendarCard } from '@/components/integrations/google-calendar-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -83,6 +85,18 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const availableLinearUsers = linearConnectionRows[0]
     ? await getLinearUsers(decrypt(linearConnectionRows[0].accessToken)).catch(() => [])
     : []
+
+  // A personal calendar connection is only shown on your own profile.
+  const isSelf = member.id === ctx.member.id
+  const calendarAccount = isSelf
+    ? ((
+        await db
+          .select({ externalEmail: calendarAccounts.externalEmail, lastSyncedAt: calendarAccounts.lastSyncedAt })
+          .from(calendarAccounts)
+          .where(and(eq(calendarAccounts.workspaceId, workspaceId), eq(calendarAccounts.memberId, member.id)))
+          .limit(1)
+      )[0] ?? null)
+    : null
 
   const memberBlockers = allBlockers.filter((blocker) => blocker.member?.id === member.id)
   const weekActivity = activityByMember.get(member.id)
@@ -231,6 +245,15 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
             </div>
           </Panel>
         </div>
+
+        {isSelf && (
+          <GoogleCalendarCard
+            configured={isGoogleConfigured()}
+            connected={Boolean(calendarAccount)}
+            email={calendarAccount?.externalEmail ?? null}
+            lastSyncedAt={calendarAccount?.lastSyncedAt ?? null}
+          />
+        )}
 
         <MemberConnections
           memberId={member.id}
