@@ -47,7 +47,6 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --animate-shimmer: shimmer 1.8s linear infinite;
   --animate-rise: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -167,15 +166,6 @@ button {
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
 }
 
-@keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
 @keyframes rise {
   from {
     opacity: 0;
@@ -187,20 +177,7 @@ button {
   }
 }
 
-/* Skeletons sweep a soft highlight instead of pulsing (wired in
-   components/ui/skeleton.tsx via animate-shimmer). */
-[data-slot='skeleton'] {
-  background-image: linear-gradient(
-    105deg,
-    var(--muted) 40%,
-    color-mix(in oklch, var(--muted) 90%, var(--foreground) 10%) 50%,
-    var(--muted) 60%
-  );
-  background-size: 200% 100%;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .animate-shimmer,
   .animate-rise {
     animation: none;
   }
