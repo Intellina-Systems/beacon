@@ -1,12 +1,19 @@
 import 'server-only'
 
-import { inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { teamMembers } from '@/lib/db/schema'
+import { teamMembers, users } from '@/lib/db/schema'
 import type { WorkspaceContext } from './workspace-context'
 
 export function isAdmin(ctx: WorkspaceContext): boolean {
   return ctx.role === 'admin'
+}
+
+// Platform-wide admin, independent of workspace membership/role. There is no
+// in-app way to grant this — it's set with a direct DB update on `users`.
+export async function isSuperAdminUser(userId: string): Promise<boolean> {
+  const [row] = await db.select({ isSuperAdmin: users.isSuperAdmin }).from(users).where(eq(users.id, userId)).limit(1)
+  return row?.isSuperAdmin ?? false
 }
 
 // Admins and managers see every team; everyone else is scoped to their own.

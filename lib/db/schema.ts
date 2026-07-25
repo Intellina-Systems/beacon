@@ -29,6 +29,9 @@ export const users = pgTable(
     email: text('email'),
     name: text('name'),
     avatarUrl: text('avatar_url'),
+    // Platform-wide admin, independent of any workspace's `members.role`. Not
+    // settable through the app — grant only via a direct DB update.
+    isSuperAdmin: boolean('is_super_admin').notNull().default(false),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
     lastLoginAt: timestamp('last_login_at').defaultNow().notNull(),
