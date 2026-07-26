@@ -204,7 +204,9 @@ export default async function PulsePage() {
     <PageShell
       title="Pulse"
       description={
-        visible ? "What's happening across your teams, right now" : `What's happening across ${ctx.workspaceName}, right now`
+        visible
+          ? "What's happening across your teams, right now"
+          : `What's happening across ${ctx.workspaceName}, right now`
       }
       fixed
     >

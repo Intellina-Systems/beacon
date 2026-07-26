@@ -151,7 +151,7 @@ Authorization: Bearer bcn_****
         </div>
 
         <p className="shrink-0 px-1 font-mono text-[11px] tracking-wide text-muted-foreground">
-          GitHub · Linear · CI/CD · Coding agents · Knowledge
+          GitHub · CI/CD · Coding agents · Knowledge
         </p>
       </div>
     </div>

@@ -33,7 +33,7 @@ const EMPTY_FORM = {
   assigneeMemberId: '',
   projectId: '',
   engineId: '',
-  functionId: '',
+  teamId: '',
   estimate: '',
   dueDate: '',
   labels: '',
@@ -46,7 +46,7 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
   const [roster, setRoster] = useState<Option[]>([])
   const [projects, setProjects] = useState<Option[]>([])
   const [engineOptions, setEngineOptions] = useState<Option[]>([])
-  const [functionOptions, setFunctionOptions] = useState<Option[]>([])
+  const [teamOptions, setTeamOptions] = useState<Option[]>([])
   const [templates, setTemplates] = useState<TemplateOption[]>([])
   const [templateId, setTemplateId] = useState('none')
   const [form, setForm] = useState(EMPTY_FORM)
@@ -60,9 +60,9 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
       fetch('/api/projects').then((res) => res.json()),
       fetch('/api/work-item-templates').then((res) => res.json()),
       fetch('/api/engines').then((res) => res.json()),
-      fetch('/api/functions').then((res) => res.json()),
+      fetch('/api/teams').then((res) => res.json()),
     ])
-      .then(([membersData, projectsData, templatesData, engineData, functionData]) => {
+      .then(([membersData, projectsData, templatesData, engineData, teamData]) => {
         setRoster((membersData.members ?? []).map((m: { id: string; name: string }) => ({ id: m.id, name: m.name })))
         setProjects(
           (projectsData.projects ?? []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
@@ -71,9 +71,7 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
         setEngineOptions(
           (engineData.engines ?? []).map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
         )
-        setFunctionOptions(
-          (functionData.functions ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })),
-        )
+        setTeamOptions((teamData.teams ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })))
       })
       .catch(() => toast.error('Failed to load create-issue options'))
   }, [open, defaultProjectId])
@@ -115,7 +113,7 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
           assigneeMemberId: form.assigneeMemberId || undefined,
           projectId: form.projectId || undefined,
           engineId: form.engineId || undefined,
-          functionId: form.functionId || undefined,
+          teamId: form.teamId || undefined,
           estimate: form.estimate ? Number(form.estimate) : undefined,
           dueDate: form.dueDate || undefined,
           labels: form.labels
@@ -290,7 +288,7 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
               </div>
             )}
 
-            {(engineOptions.length > 0 || functionOptions.length > 0) && (
+            {(engineOptions.length > 0 || teamOptions.length > 0) && (
               <div className="grid grid-cols-2 gap-3">
                 {engineOptions.length > 0 && (
                   <div className="space-y-2">
@@ -313,19 +311,19 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
                     </Select>
                   </div>
                 )}
-                {functionOptions.length > 0 && (
+                {teamOptions.length > 0 && (
                   <div className="space-y-2">
                     <Label>Team</Label>
                     <Select
-                      value={form.functionId || 'none'}
-                      onValueChange={(v) => setForm((f) => ({ ...f, functionId: v === 'none' ? '' : v }))}
+                      value={form.teamId || 'none'}
+                      onValueChange={(v) => setForm((f) => ({ ...f, teamId: v === 'none' ? '' : v }))}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No team</SelectItem>
-                        {functionOptions.map((fn) => (
+                        {teamOptions.map((fn) => (
                           <SelectItem key={fn.id} value={fn.id}>
                             {fn.name}
                           </SelectItem>

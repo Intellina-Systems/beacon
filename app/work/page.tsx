@@ -5,9 +5,9 @@ import { and, asc, count, eq, inArray, isNull, lte, ne, or } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   engines,
-  functions,
   members,
   projects,
+  teams,
   views as viewsTable,
   workItems,
   WORK_ITEM_STATUSES,
@@ -16,7 +16,7 @@ import {
 } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { canManageWorkspaceConfig, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
-import { listEngineOptions, listFunctionOptions } from '@/lib/org/list'
+import { listEngineOptions, listTeamOptions } from '@/lib/org/list'
 import { ManageProjectsDialog } from '@/components/projects/manage-projects-dialog'
 import { CreateWorkItemDialog } from '@/components/work-items/create-work-item-dialog'
 import { ManageTemplatesDialog } from '@/components/work-items/manage-templates-dialog'
@@ -40,7 +40,7 @@ interface FilterState {
   project?: string
   assignee?: string // 'unassigned' | memberId
   engine?: string
-  orgFunction?: string
+  orgTeam?: string
   layout?: ViewLayout
 }
 
@@ -50,7 +50,7 @@ function workHref(filter: FilterState, page: number) {
   if (filter.project) params.set('project', filter.project)
   if (filter.assignee) params.set('assignee', filter.assignee)
   if (filter.engine) params.set('engine', filter.engine)
-  if (filter.orgFunction) params.set('function', filter.orgFunction)
+  if (filter.orgTeam) params.set('team', filter.orgTeam)
   if (filter.layout && filter.layout !== 'list') params.set('layout', filter.layout)
   if (page > 1) params.set('page', String(page))
   const qs = params.toString()
@@ -70,7 +70,7 @@ export default async function WorkPage({
     project?: string
     assignee?: string
     engine?: string
-    function?: string
+    team?: string
     layout?: string
   }>
 }) {
@@ -84,7 +84,7 @@ export default async function WorkPage({
     project: rawProject,
     assignee: rawAssignee,
     engine: rawEngine,
-    function: rawFunction,
+    team: rawTeam,
     layout: rawLayout,
   } = await searchParams
   const statuses = new Set(
@@ -93,7 +93,7 @@ export default async function WorkPage({
   const layout: ViewLayout = rawLayout === 'board' ? 'board' : 'list'
   const page = parsePage(rawPage)
 
-  const [projectList, fullRoster, savedViews, engineOptions, functionOptions] = await Promise.all([
+  const [projectList, fullRoster, savedViews, engineOptions, teamOptions] = await Promise.all([
     db
       .select({ id: projects.id, name: projects.name })
       .from(projects)
@@ -106,11 +106,11 @@ export default async function WorkPage({
       .orderBy(members.name),
     db.select().from(viewsTable).where(eq(viewsTable.workspaceId, workspaceId)).orderBy(asc(viewsTable.name)),
     listEngineOptions(workspaceId),
-    listFunctionOptions(workspaceId),
+    listTeamOptions(workspaceId),
   ])
   const project = projectList.find((p) => p.id === rawProject)?.id
   const engine = engineOptions.find((e) => e.id === rawEngine)?.id
-  const orgFunction = functionOptions.find((f) => f.id === rawFunction)?.id
+  const orgTeam = teamOptions.find((f) => f.id === rawTeam)?.id
 
   const visible = await visibleMemberIds(ctx)
   // Assignee filter dropdown only ever offers people this viewer is allowed to see.
@@ -141,7 +141,7 @@ export default async function WorkPage({
     statuses.size > 0 ? inArray(workItems.status, [...statuses]) : undefined,
     project ? eq(workItems.projectId, project) : undefined,
     engine ? eq(workItems.engineId, engine) : undefined,
-    orgFunction ? eq(workItems.functionId, orgFunction) : undefined,
+    orgTeam ? eq(workItems.teamId, orgTeam) : undefined,
     assigneeFilter,
     visibility,
     snoozeFilter,
@@ -151,7 +151,7 @@ export default async function WorkPage({
     eq(workItems.workspaceId, workspaceId),
     project ? eq(workItems.projectId, project) : undefined,
     engine ? eq(workItems.engineId, engine) : undefined,
-    orgFunction ? eq(workItems.functionId, orgFunction) : undefined,
+    orgTeam ? eq(workItems.teamId, orgTeam) : undefined,
     assigneeFilter,
     visibility,
   )
@@ -168,7 +168,7 @@ export default async function WorkPage({
         assigneeName: members.name,
         projectName: projects.name,
         engineName: engines.name,
-        functionName: functions.name,
+        teamName: teams.name,
         externalUrl: workItems.externalUrl,
         lastEventAt: workItems.lastEventAt,
         updatedAt: workItems.updatedAt,
@@ -177,7 +177,7 @@ export default async function WorkPage({
       .leftJoin(members, eq(members.id, workItems.assigneeMemberId))
       .leftJoin(projects, eq(projects.id, workItems.projectId))
       .leftJoin(engines, eq(engines.id, workItems.engineId))
-      .leftJoin(functions, eq(functions.id, workItems.functionId))
+      .leftJoin(teams, eq(teams.id, workItems.teamId))
       .where(where)
       // Rank is the canonical manual order (drag-and-drop below writes it);
       // createdAt breaks ties for items that predate ranking.
@@ -196,7 +196,7 @@ export default async function WorkPage({
   const total = statuses.size > 0 ? [...statuses].reduce((n, s) => n + (countByStatus.get(s) ?? 0), 0) : totalAll
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const filter: FilterState = { statuses, project, assignee, engine, orgFunction, layout }
+  const filter: FilterState = { statuses, project, assignee, engine, orgTeam, layout }
   const isTriageView = statuses.size === 1 && statuses.has('triage')
 
   const currentFilterPayload = {
@@ -204,7 +204,7 @@ export default async function WorkPage({
     projectId: project,
     assignee,
     engineId: engine,
-    functionId: orgFunction,
+    teamId: orgTeam,
   }
   const activeView =
     savedViews.find((v) => {
@@ -216,7 +216,7 @@ export default async function WorkPage({
         f.projectId === project &&
         f.assignee === assignee &&
         f.engineId === engine &&
-        f.functionId === orgFunction
+        f.teamId === orgTeam
       )
     }) ?? null
 
@@ -338,8 +338,8 @@ export default async function WorkPage({
           {engineOptions.length > 0 && (
             <OrgTagFilter options={engineOptions} current={engine} paramName="engine" allLabel="Any engine" />
           )}
-          {functionOptions.length > 0 && (
-            <OrgTagFilter options={functionOptions} current={orgFunction} paramName="function" allLabel="Any team" />
+          {teamOptions.length > 0 && (
+            <OrgTagFilter options={teamOptions} current={orgTeam} paramName="team" allLabel="Any team" />
           )}
           <span className="mx-1 h-4 w-px shrink-0 bg-border" />
           <Link

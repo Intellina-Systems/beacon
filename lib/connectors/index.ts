@@ -2,7 +2,6 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { signalSources, type SignalSource } from '@/lib/db/schema'
 import { syncGitHubSource } from './github'
-import { syncLinearSource } from './linear'
 import type { SyncResult } from './types'
 
 export type { SyncResult } from './types'
@@ -14,10 +13,6 @@ export async function syncSource(workspaceId: string, source: SignalSource): Pro
   switch (source.kind) {
     case 'github_repo':
       return syncGitHubSource(workspaceId, source)
-    case 'linear_project':
-    case 'linear_team':
-    case 'linear_workspace':
-      return syncLinearSource(workspaceId, source)
     default:
       throw new Error(`No connector for source kind: ${source.kind}`)
   }

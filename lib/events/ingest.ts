@@ -45,6 +45,8 @@ export const rawEventSchema = z.object({
   reason: z.string().max(2000).optional(),
   confidence: z.number().min(0).max(1).optional(),
   occurredAt: z.coerce.date().optional(),
+  // Repository the work is happening in, e.g. "Intellina-Systems/beacon".
+  repo: z.string().max(300).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -76,7 +78,6 @@ function memberMatches(member: Member, needle: string): boolean {
     member.name.toLowerCase() === lower ||
     member.email?.toLowerCase() === lower ||
     member.githubUsername?.toLowerCase() === lower ||
-    member.linearUserId === needle ||
     member.slackHandle?.toLowerCase() === lower ||
     (member.aliases ?? []).some((alias) => alias.toLowerCase() === lower)
   )
@@ -134,6 +135,7 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
         ...(raw.reason ? { reason: raw.reason } : {}),
         ...(raw.task && !workItemId ? { unresolvedTask: raw.task } : {}),
       },
+      repo: raw.repo ?? null,
       externalId: raw.externalId ?? null,
       confidence: raw.confidence ?? null,
       occurredAt: raw.occurredAt ?? now,

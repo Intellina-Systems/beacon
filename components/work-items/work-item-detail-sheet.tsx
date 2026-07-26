@@ -49,7 +49,7 @@ interface ItemDetail {
   snoozedUntil: string | null
   externalUrl: string | null
   engineId: string | null
-  functionId: string | null
+  teamId: string | null
 }
 
 interface RelationEntry {
@@ -95,7 +95,7 @@ export function WorkItemDetailSheet({
   const [relations, setRelations] = useState<RelationsView | null>(null)
   const [watchers, setWatchers] = useState<WatcherEntry[]>([])
   const [engineOptions, setEngineOptions] = useState<RosterOption[]>([])
-  const [functionOptions, setFunctionOptions] = useState<RosterOption[]>([])
+  const [teamOptions, setTeamOptions] = useState<RosterOption[]>([])
   const [loading, setLoading] = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
@@ -107,12 +107,12 @@ export function WorkItemDetailSheet({
     if (!itemId) return
     setLoading(true)
     try {
-      const [itemRes, relationsRes, watchersRes, engineRes, functionRes] = await Promise.all([
+      const [itemRes, relationsRes, watchersRes, engineRes, teamRes] = await Promise.all([
         fetch(`/api/work-items/${itemId}`),
         fetch(`/api/work-items/${itemId}/relations`),
         fetch(`/api/work-items/${itemId}/watchers`),
         fetch('/api/engines'),
-        fetch('/api/functions'),
+        fetch('/api/teams'),
       ])
       if (!itemRes.ok) {
         toast.error('Failed to load work item')
@@ -123,7 +123,7 @@ export function WorkItemDetailSheet({
       const relationsData = await relationsRes.json()
       const watchersData = await watchersRes.json()
       const engineData = await engineRes.json().catch(() => ({}))
-      const functionData = await functionRes.json().catch(() => ({}))
+      const teamData = await teamRes.json().catch(() => ({}))
       setItem(itemData.item)
       setEvents(itemData.events ?? [])
       setDescriptionDraft(itemData.item.description ?? '')
@@ -133,9 +133,7 @@ export function WorkItemDetailSheet({
       setEngineOptions(
         (engineData.engines ?? []).map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
       )
-      setFunctionOptions(
-        (functionData.functions ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })),
-      )
+      setTeamOptions((teamData.teams ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })))
     } finally {
       setLoading(false)
     }
@@ -591,19 +589,19 @@ export function WorkItemDetailSheet({
                   </div>
                 )}
 
-                {functionOptions.length > 0 && (
+                {teamOptions.length > 0 && (
                   <div className="space-y-1.5">
                     <Label className="micro-label">Team</Label>
                     <Select
-                      value={item.functionId ?? 'none'}
-                      onValueChange={(v) => patch({ functionId: v === 'none' ? null : v })}
+                      value={item.teamId ?? 'none'}
+                      onValueChange={(v) => patch({ teamId: v === 'none' ? null : v })}
                     >
                       <SelectTrigger className="h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">No team</SelectItem>
-                        {functionOptions.map((f) => (
+                        {teamOptions.map((f) => (
                           <SelectItem key={f.id} value={f.id}>
                             {f.name}
                           </SelectItem>

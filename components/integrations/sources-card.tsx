@@ -29,24 +29,19 @@ interface ProjectOption {
 
 const KIND_LABEL: Record<string, string> = {
   github_repo: 'GitHub repo',
-  linear_project: 'Linear project',
-  linear_team: 'Linear team',
-  linear_workspace: 'Linear workspace',
 }
 
 export function SourcesCard({
   sources,
   projects,
   githubConnected,
-  linearConnected,
 }: {
   sources: SourceRow[]
   projects: ProjectOption[]
   githubConnected: boolean
-  linearConnected: boolean
 }) {
   const router = useRouter()
-  const [dialog, setDialog] = useState<'github' | 'linear' | null>(null)
+  const [dialog, setDialog] = useState<'github' | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   async function syncNow(id: string) {
@@ -103,16 +98,12 @@ export function SourcesCard({
             <Plus className="h-3.5 w-3.5 mr-1" />
             Repo
           </Button>
-          <Button size="sm" variant="outline" disabled={!linearConnected} onClick={() => setDialog('linear')}>
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Linear
-          </Button>
         </div>
       </CardHeader>
       <CardContent>
         {sources.length === 0 ? (
           <p className="text-sm text-muted-foreground py-2">
-            No sources yet. Add a GitHub repo or a Linear project/team to start collecting signals.
+            No sources yet. Add a GitHub repo to start collecting signals.
           </p>
         ) : (
           <div className="divide-y">
@@ -182,7 +173,6 @@ export function SourcesCard({
       </CardContent>
 
       <AddGitHubSourceDialog open={dialog === 'github'} onClose={() => setDialog(null)} />
-      <AddLinearSourceDialog open={dialog === 'linear'} onClose={() => setDialog(null)} />
     </Card>
   )
 }
@@ -250,93 +240,6 @@ function AddGitHubSourceDialog({ open, onClose }: { open: boolean; onClose: () =
                   <SelectItem key={`${repo.owner}/${repo.repo}`} value={`${repo.owner}/${repo.repo}`}>
                     {repo.owner}/{repo.repo}
                     {repo.private ? ' (private)' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={add} disabled={!selected || saving} className="w-full">
-              {saving ? 'Adding…' : 'Add source'}
-            </Button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function AddLinearSourceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter()
-  const [options, setOptions] = useState<{
-    projects: { id: string; name: string }[]
-    teams: { id: string; name: string; key: string }[]
-  }>({ projects: [], teams: [] })
-  const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    fetch('/api/integrations/linear/options')
-      .then((res) => res.json())
-      .then((data) => setOptions({ projects: data.projects ?? [], teams: data.teams ?? [] }))
-      .catch(() => toast.error('Failed to load Linear workspace'))
-      .finally(() => setLoading(false))
-  }, [open])
-
-  async function add() {
-    const [type, id] = selected.split(':')
-    const project = options.projects.find((p) => p.id === id)
-    const team = options.teams.find((t) => t.id === id)
-    const displayName = type === 'project' ? project?.name : team ? `${team.name} (${team.key})` : null
-    if (!displayName) return
-
-    setSaving(true)
-    try {
-      const res = await fetch('/api/sources', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind: type === 'project' ? 'linear_project' : 'linear_team',
-          identifier: id,
-          displayName,
-        }),
-      })
-      if (res.ok) {
-        toast.success('Source added')
-        onClose()
-        router.refresh()
-      } else {
-        toast.error('Failed to add source')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Track a Linear project or team</DialogTitle>
-        </DialogHeader>
-        {loading ? (
-          <p className="text-sm text-muted-foreground py-4">Loading workspace…</p>
-        ) : (
-          <div className="space-y-4">
-            <Select value={selected} onValueChange={setSelected}>
-              <SelectTrigger>
-                <SelectValue placeholder="Pick a project or team…" />
-              </SelectTrigger>
-              <SelectContent>
-                {options.projects.map((project) => (
-                  <SelectItem key={project.id} value={`project:${project.id}`}>
-                    Project · {project.name}
-                  </SelectItem>
-                ))}
-                {options.teams.map((team) => (
-                  <SelectItem key={team.id} value={`team:${team.id}`}>
-                    Team · {team.name} ({team.key})
                   </SelectItem>
                 ))}
               </SelectContent>

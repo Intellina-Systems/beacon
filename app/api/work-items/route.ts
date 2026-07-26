@@ -30,7 +30,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const parentId = params.get('parentId')
   const assignee = params.get('assignee') // 'unassigned' | a member id
   const engine = params.get('engine')
-  const orgFunction = params.get('function')
+  const orgTeam = params.get('team')
   const includeSnoozed = params.get('includeSnoozed') === '1'
 
   const conditions: (SQL | undefined)[] = [eq(workItems.workspaceId, ctx.workspaceId)]
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (assignee === 'unassigned') conditions.push(isNull(workItems.assigneeMemberId))
   else if (assignee) conditions.push(eq(workItems.assigneeMemberId, assignee))
   if (engine) conditions.push(eq(workItems.engineId, engine))
-  if (orgFunction) conditions.push(eq(workItems.functionId, orgFunction))
+  if (orgTeam) conditions.push(eq(workItems.teamId, orgTeam))
   // Triage queue hides snoozed items until the snooze passes, mirroring
   // Linear: snoozing removes noise without losing the item.
   if (statuses?.includes('triage') && !includeSnoozed) {
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       externalProvider: workItems.externalProvider,
       externalUrl: workItems.externalUrl,
       engineId: workItems.engineId,
-      functionId: workItems.functionId,
+      teamId: workItems.teamId,
       lastEventAt: workItems.lastEventAt,
       createdAt: workItems.createdAt,
       updatedAt: workItems.updatedAt,
@@ -101,7 +101,7 @@ const createSchema = z.object({
   priority: z.number().int().min(0).max(4).default(0),
   assigneeMemberId: z.string().optional(),
   engineId: z.string().optional(),
-  functionId: z.string().optional(),
+  teamId: z.string().optional(),
   labels: z.array(z.string()).max(20).optional(),
   dueDate: z.coerce.date().optional(),
   estimate: z.number().min(0).max(1000).nullable().optional(),

@@ -22,11 +22,10 @@ Rationale: prevents accidental leakage of user IDs, tokens, or internal paths in
 
 Never expose these in logs or API responses to clients:
 
-- `LINEAR_CLIENT_SECRET`, `LINEAR_CLIENT_ID`
 - `GITHUB_CLIENT_SECRET`
 - `JWE_SECRET`, `ENCRYPTION_KEY`, `CRON_SECRET`
 - `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
-- Decrypted Linear/GitHub access tokens
+- Decrypted GitHub access tokens
 - Plaintext Beacon API keys (only shown once at creation; only the SHA-256 hash is stored)
 
 Only `NEXT_PUBLIC_*` vars should reach the browser.
@@ -65,7 +64,7 @@ Beacon is an **Engineering Intelligence Layer** (see `docs/BEACON.md`). The core
 
 > **Never store status. Store events. Everything else is derived.**
 
-GitHub and Linear are *not* the center of the product — they are two connectors among many. The event store is the center.
+GitHub is *not* the center of the product — it is one connector among many. The event store is the center.
 
 ### Project structure
 
@@ -78,9 +77,9 @@ app/
     work-items/      # Native work graph CRUD
     knowledge/       # Knowledge ingestion (notes, files, links) + signals
     members/         # Team roster CRUD
-    integrations/    # Provider helper endpoints (e.g. Linear project/team options)
+    integrations/    # Provider helper endpoints
     cron/sync/       # Hourly connector sync (Vercel cron)
-    auth/            # OAuth flows: GitHub, Vercel, Linear
+    auth/            # OAuth flows: GitHub, Vercel
   pulse/             # Executive dashboard (default page when signed in)
   timeline/          # Filterable event stream
   work/              # Work items grouped by derived status
@@ -96,11 +95,9 @@ lib/
     queries.ts       # listEvents, getPulse, getActiveBlockers, member/daily activity
   connectors/        # One module per source kind; each sync() emits normalized events
     github.ts        # Repo commits/PRs → code.commit, pr.opened, pr.merged…
-    linear.ts        # Issues → work item mirror + task.created / task.status_changed
   db/schema.ts       # Drizzle schema (see tables below)
   api-keys.ts        # bcn_* key create/verify (SHA-256 hashed at rest)
   knowledge/         # Ingestion pipeline, embeddings, signal extraction, retrieval
-  linear/client.ts   # Linear GraphQL client
   github/            # Octokit client + repo listing helpers
   session/           # Session management (JWE cookies)
   crypto.ts          # AES-256-CBC encrypt/decrypt for stored tokens
@@ -112,9 +109,9 @@ lib/
 | --------------------- | ----------------------------------------------------------------------- |
 | `events`              | **Append-only event store — the heart of Beacon.** Deduped by (user, source, external_id) |
 | `work_items`          | Epics → Features → Tasks. `status` is a cached fold of the event stream |
-| `members`             | Roster with identity aliases (GitHub login, Linear id, agent aliases)   |
-| `signal_sources`      | Streams Beacon watches (repos, Linear projects/teams) with sync cursors |
-| `connections`         | OAuth connections to providers (Linear, future Slack/Calendar)          |
+| `members`             | Roster with identity aliases (GitHub login, agent aliases)              |
+| `signal_sources`      | Streams Beacon watches (repos) with sync cursors                        |
+| `connections`         | OAuth connections to providers (Slack, Google Calendar)                 |
 | `api_keys`            | Hashed ingestion keys for coding agents / CI / plugins                  |
 | `knowledge_documents` | Ingested notes/docs/links with embeddings                               |
 | `knowledge_signals`   | AI-extracted signals (blockers, risks, decisions…)                      |

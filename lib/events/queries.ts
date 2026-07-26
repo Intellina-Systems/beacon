@@ -86,11 +86,7 @@ export interface Pulse {
 }
 
 // Aggregate view of what happened in the last N days — the dashboard backbone.
-export async function getPulse(
-  workspaceId: string,
-  sinceDays = 7,
-  visibleMemberIds?: string[] | null,
-): Promise<Pulse> {
+export async function getPulse(workspaceId: string, sinceDays = 7, visibleMemberIds?: string[] | null): Promise<Pulse> {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)
 
   const typeRows = await db

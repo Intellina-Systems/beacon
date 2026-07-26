@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, Settings2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -20,15 +19,9 @@ export interface OrgUnit {
   ownerMemberId: string | null
   ownerName: string | null
   members: { id: string; name: string }[]
-  teams: { id: string; name: string }[]
 }
 
 export interface RosterOption {
-  id: string
-  name: string
-}
-
-export interface TeamOption {
   id: string
   name: string
 }
@@ -142,7 +135,6 @@ function ManageUnitDialog({
   apiBase,
   unit,
   roster,
-  teamOptions,
   isWorkspaceAdmin,
   onOpenChange,
 }: {
@@ -150,7 +142,6 @@ function ManageUnitDialog({
   apiBase: string
   unit: OrgUnit
   roster: RosterOption[]
-  teamOptions: TeamOption[]
   isWorkspaceAdmin: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -160,19 +151,9 @@ function ManageUnitDialog({
   const [description, setDescription] = useState(unit.description ?? '')
   const [ownerMemberId, setOwnerMemberId] = useState(unit.ownerMemberId ?? '')
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set(unit.members.map((m) => m.id)))
-  const [teamIds, setTeamIds] = useState<Set<string>>(new Set(unit.teams.map((t) => t.id)))
 
   function toggleMember(id: string) {
     setMemberIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  function toggleTeam(id: string) {
-    setTeamIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -215,24 +196,6 @@ function ManageUnitDialog({
       for (const id of beforeMembers) {
         if (!memberIds.has(id)) {
           requests.push(fetch(`${apiBase}/${unit.id}/members?memberId=${id}`, { method: 'DELETE' }))
-        }
-      }
-
-      const beforeTeams = new Set(unit.teams.map((t) => t.id))
-      for (const id of teamIds) {
-        if (!beforeTeams.has(id)) {
-          requests.push(
-            fetch(`${apiBase}/${unit.id}/teams`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ teamId: id }),
-            }),
-          )
-        }
-      }
-      for (const id of beforeTeams) {
-        if (!teamIds.has(id)) {
-          requests.push(fetch(`${apiBase}/${unit.id}/teams?teamId=${id}`, { method: 'DELETE' }))
         }
       }
 
@@ -320,27 +283,6 @@ function ManageUnitDialog({
               ))}
             </div>
           </div>
-
-          <div className="space-y-1.5">
-            <Label>Related teams</Label>
-            <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border p-1.5">
-              {teamOptions.length === 0 && <p className="px-1.5 py-1 text-xs text-muted-foreground">No teams yet.</p>}
-              {teamOptions.map((team) => (
-                <label
-                  key={team.id}
-                  htmlFor={`unit-team-${team.id}`}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/40"
-                >
-                  <Checkbox
-                    id={`unit-team-${team.id}`}
-                    checked={teamIds.has(team.id)}
-                    onCheckedChange={() => toggleTeam(team.id)}
-                  />
-                  <span className="text-sm">{team.name}</span>
-                </label>
-              ))}
-            </div>
-          </div>
         </div>
         <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
           {isWorkspaceAdmin ? (
@@ -411,16 +353,6 @@ function UnitCard({ unit, canManage, onManage }: { unit: OrgUnit; canManage: boo
           )}
         </div>
       )}
-
-      {unit.teams.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {unit.teams.map((t) => (
-            <Badge key={t.id} variant="outline" className="px-1.5 py-0 text-[10px]">
-              {t.name}
-            </Badge>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
@@ -430,7 +362,6 @@ export function OrgUnitSection({
   apiBase,
   units,
   roster,
-  teamOptions,
   canCreate,
   manageableIds,
   isWorkspaceAdmin,
@@ -439,7 +370,6 @@ export function OrgUnitSection({
   apiBase: string
   units: OrgUnit[]
   roster: RosterOption[]
-  teamOptions: TeamOption[]
   canCreate: boolean
   manageableIds: Set<string>
   isWorkspaceAdmin: boolean
@@ -484,7 +414,6 @@ export function OrgUnitSection({
           apiBase={apiBase}
           unit={managing}
           roster={roster}
-          teamOptions={teamOptions}
           isWorkspaceAdmin={isWorkspaceAdmin}
           onOpenChange={() => setManaging(null)}
         />

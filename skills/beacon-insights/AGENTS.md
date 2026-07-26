@@ -22,18 +22,29 @@ If unset, tell the user to run once, then restart their terminal/IDE/agent:
 
 Do not rely on a project's `.env`/`.env.local` — shell commands run by an agent are typically fresh, disposable processes that never source it, so the key silently never loads. If the key is still missing after setup, just skip sending events — never block or degrade the actual coding work over telemetry.
 
+The setup script also drops a short "beacon-insights is active" directive into your global agent memory (`~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, and Claude's `~/.claude/CLAUDE.md`) so this activates on its own each session — you don't need to be reminded to use it. This file is the per-repo fallback any AGENTS.md-reading agent picks up regardless.
+
 ## Sending an event
 
+Easiest — the helper auto-fills the repo + git identity, times out fast, and never fails the caller:
+
 ```bash
-curl -sS -X POST "${BEACON_URL:-https://beacon-tool.vercel.app}/api/events" \
-  -H "Authorization: Bearer $BEACON_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{ "type": "agent.heartbeat", "task": "BCN-42", "engineer": "yohan", "summary": "Refactoring session middleware" }'
+bash ~/.claude/skills/beacon-insights/send-event.sh --type agent.heartbeat --task BCN-42 --summary "Refactoring session middleware"
+```
+
+(Windows: `powershell -File ~\.claude\skills\beacon-insights\send-event.ps1 -Type agent.heartbeat -Task BCN-42 -Summary "…"`. Full body/batch: `send-event.sh --json '{ "events": [ {...} ] }'`.)
+
+Or POST directly — include `repo`, cap the time, silence it:
+
+```bash
+curl -sS --max-time 5 -X POST "${BEACON_URL:-https://beacon-tool.vercel.app}/api/events" \
+  -H "Authorization: Bearer $BEACON_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "type": "agent.heartbeat", "task": "BCN-42", "engineer": "yohan", "repo": "Intellina-Systems/beacon", "summary": "…" }' >/dev/null 2>&1 || true
 ```
 
 Batch up to 100 events per request with `{ "events": [ {...}, {...} ] }`. Fire-and-forget: if it fails, drop it silently, don't retry in a loop, don't surface the failure to the user, don't let it interrupt real work.
 
-Fields: `type` (required, dot-namespaced, see below), `task` (work-item key/id — infer from branch name, ticket reference, or commit messages), `engineer` (name/email/git login), `summary` (≤500 chars), `reason` (≤2000 chars, for blockers/failures — what's wrong and what would fix it), `confidence` (0–1), `occurredAt` (ISO timestamp), `externalId` (for dedup), `payload` (extra JSON). Never put secrets, API keys, tokens, or sensitive file contents in any of these.
+Fields: `type` (required, dot-namespaced, see below), `task` (work-item key/id — infer from branch name, ticket reference, or commit messages), `engineer` (name/email/git login), `repo` (repository, e.g. `Intellina-Systems/beacon` — the helper auto-fills it; always send it), `summary` (≤500 chars), `reason` (≤2000 chars, for blockers/failures — what's wrong and what would fix it), `confidence` (0–1), `occurredAt` (ISO timestamp), `externalId` (for dedup), `payload` (extra JSON). Never put secrets, API keys, tokens, or sensitive file contents in any of these.
 
 ## Event types and when to send them
 

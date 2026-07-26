@@ -27,26 +27,38 @@ Do **not** rely on a project's `.env`/`.env.local` file for these — a coding a
 
 If `BEACON_API_KEY` is still not set after that (setup skipped, wrong shell, etc.), do nothing — never block or degrade the coding session over telemetry.
 
+### How this stays loaded
+
+You shouldn't need to be reminded to use this skill. The setup script wires two things so it activates on its own once `BEACON_API_KEY` is set:
+
+- A **Claude Code SessionStart hook** (`~/.claude/settings.json`) that fires a reminder into *every* session — start, resume, `/clear`, compaction — so the instruction is always in context, not left to chance.
+- A directive in your **global agent memory** (`~/.claude/CLAUDE.md`, and `~/.codex/AGENTS.md` / `~/.gemini/GEMINI.md` when present) for agents that don't run Claude Code hooks.
+
+Together with the OS-level env var, that means: set up once, and every session on the machine reports progress automatically.
+
 ## How to send an event
 
-POST to `/api/events` with the API key as a Bearer token:
+**Use the helper** — it auto-fills the `repo` and your git identity, times out fast so it can never hang your work, and never fails the caller:
 
 ```bash
-curl -sS -X POST "${BEACON_URL:-https://beacon-tool.vercel.app}/api/events" \
-  -H "Authorization: Bearer $BEACON_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "agent.blocked",
-    "task": "BCN-42",
-    "engineer": "yohan",
-    "reason": "API schema mismatch between client and server",
-    "confidence": 0.92
-  }'
+bash "$HOME/.claude/skills/beacon-insights/send-event.sh" \
+  --type agent.blocked --task BCN-42 \
+  --reason "API schema mismatch between client and server" --confidence 0.92
 ```
 
-Batch multiple events in one request (up to 100): `{ "events": [ {...}, {...} ] }`.
+- Windows: `powershell -File "$HOME\.claude\skills\beacon-insights\send-event.ps1" -Type agent.blocked -Task BCN-42 -Reason "…"`
+- Flags: `--type` (required), `--task`, `--summary`, `--reason`, `--confidence`, `--engineer`, `--repo`. Omit `--repo`/`--engineer` and the helper fills them from git.
+- Full body or a batch (up to 100): `send-event.sh --json '{ "events": [ {...}, {...} ] }'`.
 
-Send events fire-and-forget in the background. If the request fails, drop it silently — do not retry in a loop, surface errors to the user, or let telemetry interrupt the actual work.
+**Or POST directly** — always include `repo`, cap the time, and silence it:
+
+```bash
+curl -sS --max-time 5 -X POST "${BEACON_URL:-https://beacon-tool.vercel.app}/api/events" \
+  -H "Authorization: Bearer $BEACON_API_KEY" -H "Content-Type: application/json" \
+  -d '{ "type": "agent.blocked", "task": "BCN-42", "engineer": "yohan", "repo": "Intellina-Systems/beacon", "reason": "API schema mismatch", "confidence": 0.92 }' >/dev/null 2>&1 || true
+```
+
+Either way it's **fire-and-forget**: if it fails, drop it silently — never retry in a loop, surface errors to the user, or let telemetry interrupt the actual work.
 
 ## Event fields
 
@@ -55,6 +67,7 @@ Send events fire-and-forget in the background. If the request fails, drop it sil
 | `type` | yes | Dot-namespaced, lowercase, e.g. `agent.blocked` (see taxonomy below) |
 | `task` | no | Work-item key or id, e.g. `"BCN-42"` — how Beacon correlates the event to a work item. Infer from the branch name, ticket reference in the task description, or commit messages |
 | `engineer` | no | Who's working: name, email, GitHub login, or alias. Use the git user or GitHub login if known |
+| `repo` | no | Repository the work is in, e.g. `"Intellina-Systems/beacon"`. The helper auto-fills it from the git remote — always send it so Beacon can show what work is happening in which repo |
 | `summary` | no | One line, ≤500 chars. Auto-generated from type/task/reason if omitted |
 | `reason` | no | ≤2000 chars. For blockers/failures: what went wrong and what would unblock it |
 | `confidence` | no | 0–1, how sure you are about the insight |

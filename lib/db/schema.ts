@@ -122,7 +122,7 @@ export const MEMBER_STATUSES = ['profile', 'invited', 'active'] as const
 export type MemberStatus = (typeof MEMBER_STATUSES)[number]
 
 // People in the workspace. Signals from every source are attributed to a member
-// through identity aliases (GitHub login, Linear user id, agent name, email…).
+// through identity aliases (GitHub login, agent name, email…).
 // A member may be a pure attribution profile (no login), an invitee, or an
 // active user (authUserId set). accessRole controls what they see when they
 // log in; title is just the human job title.
@@ -141,7 +141,6 @@ export const members = pgTable(
     avatarUrl: text('avatar_url'),
     title: text('title'),
     githubUsername: text('github_username'),
-    linearUserId: text('linear_user_id'),
     slackHandle: text('slack_handle'),
     // Free-form aliases used by coding agents / CI to identify the engineer
     aliases: jsonb('aliases').$type<string[]>(),
@@ -268,92 +267,6 @@ export const engineMembers = pgTable(
 export type EngineMember = typeof engineMembers.$inferSelect
 export type InsertEngineMember = typeof engineMembers.$inferInsert
 
-export const engineTeams = pgTable(
-  'engine_teams',
-  {
-    id: text('id').primaryKey(),
-    engineId: text('engine_id')
-      .notNull()
-      .references(() => engines.id, { onDelete: 'cascade' }),
-    teamId: text('team_id')
-      .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    engineTeamUnique: uniqueIndex('engine_teams_engine_team_idx').on(table.engineId, table.teamId),
-    teamIdx: index('engine_teams_team_idx').on(table.teamId),
-  }),
-)
-
-export type EngineTeam = typeof engineTeams.$inferSelect
-export type InsertEngineTeam = typeof engineTeams.$inferInsert
-
-// "OrgFunction" (not "Function") to avoid colliding with the built-in TS type.
-export const functions = pgTable(
-  'functions',
-  {
-    id: text('id').primaryKey(),
-    workspaceId: text('workspace_id')
-      .notNull()
-      .references(() => workspaces.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    description: text('description'),
-    ownerMemberId: text('owner_member_id').references(() => members.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-    updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    workspaceNameUnique: uniqueIndex('functions_workspace_name_idx').on(table.workspaceId, table.name),
-    workspaceIdx: index('functions_workspace_idx').on(table.workspaceId),
-  }),
-)
-
-export type OrgFunction = typeof functions.$inferSelect
-export type InsertOrgFunction = typeof functions.$inferInsert
-
-export const functionMembers = pgTable(
-  'function_members',
-  {
-    id: text('id').primaryKey(),
-    functionId: text('function_id')
-      .notNull()
-      .references(() => functions.id, { onDelete: 'cascade' }),
-    memberId: text('member_id')
-      .notNull()
-      .references(() => members.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    functionMemberUnique: uniqueIndex('function_members_function_member_idx').on(table.functionId, table.memberId),
-    memberIdx: index('function_members_member_idx').on(table.memberId),
-  }),
-)
-
-export type FunctionMember = typeof functionMembers.$inferSelect
-export type InsertFunctionMember = typeof functionMembers.$inferInsert
-
-export const functionTeams = pgTable(
-  'function_teams',
-  {
-    id: text('id').primaryKey(),
-    functionId: text('function_id')
-      .notNull()
-      .references(() => functions.id, { onDelete: 'cascade' }),
-    teamId: text('team_id')
-      .notNull()
-      .references(() => teams.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    functionTeamUnique: uniqueIndex('function_teams_function_team_idx').on(table.functionId, table.teamId),
-    teamIdx: index('function_teams_team_idx').on(table.teamId),
-  }),
-)
-
-export type FunctionTeam = typeof functionTeams.$inferSelect
-export type InsertFunctionTeam = typeof functionTeams.$inferInsert
-
 // Link-based invites. The member row (with role + team assignments) is created
 // up front by an admin; claiming the token binds the signing-in user to it.
 export const invites = pgTable(
@@ -473,7 +386,7 @@ export const workItems = pgTable(
       .references(() => projects.id, { onDelete: 'cascade' }),
     // Independent org-chart tags, orthogonal to projectId — see "Org units" above.
     engineId: text('engine_id').references(() => engines.id, { onDelete: 'set null' }),
-    functionId: text('function_id').references(() => functions.id, { onDelete: 'set null' }),
+    teamId: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
     parentId: text('parent_id'),
     kind: text('kind', { enum: WORK_ITEM_KINDS }).notNull().default('task'),
     // Short human handle used to correlate signals, e.g. "BCN-42" or "AIRS-421"
@@ -514,7 +427,7 @@ export const workItems = pgTable(
     workspaceStatusIdx: index('work_items_workspace_status_idx').on(table.workspaceId, table.status),
     projectIdx: index('work_items_project_idx').on(table.projectId),
     engineIdx: index('work_items_engine_idx').on(table.engineId),
-    functionIdx: index('work_items_function_idx').on(table.functionId),
+    teamIdx: index('work_items_team_idx').on(table.teamId),
     parentIdx: index('work_items_parent_idx').on(table.parentId),
     cycleIdx: index('work_items_cycle_idx').on(table.cycleId),
     archivedIdx: index('work_items_archived_idx').on(table.archivedAt),
@@ -615,7 +528,7 @@ export interface ViewFilters {
   assignee?: string // 'unassigned' | a member id
   cycleId?: string
   engineId?: string
-  functionId?: string
+  teamId?: string
 }
 
 export const views = pgTable(
@@ -676,6 +589,9 @@ export const events = pgTable(
     // One-line human-readable description of the event
     summary: text('summary').notNull(),
     payload: jsonb('payload').$type<Record<string, unknown>>(),
+    // Which repository the work happened in (e.g. "Intellina-Systems/beacon"),
+    // for the multi-repo view — what work is being done where.
+    repo: text('repo'),
     // Idempotency key from the source system (commit sha, delivery id…)
     externalId: text('external_id'),
     confidence: real('confidence'),
@@ -687,6 +603,7 @@ export const events = pgTable(
     workspaceTypeIdx: index('events_workspace_type_idx').on(table.workspaceId, table.type),
     workItemIdx: index('events_work_item_idx').on(table.workItemId),
     memberIdx: index('events_member_idx').on(table.memberId),
+    workspaceRepoIdx: index('events_workspace_repo_idx').on(table.workspaceId, table.repo),
     dedupeUnique: uniqueIndex('events_dedupe_idx').on(table.workspaceId, table.source, table.externalId),
   }),
 )
@@ -927,7 +844,7 @@ export type InsertProjectUpdate = typeof projectUpdates.$inferInsert
 // Integrations — every tool is just a signal source, none of them is "the" one
 // ---------------------------------------------------------------------------
 
-export const CONNECTION_PROVIDERS = ['linear', 'slack', 'google_calendar'] as const
+export const CONNECTION_PROVIDERS = ['slack', 'google_calendar'] as const
 export type ConnectionProvider = (typeof CONNECTION_PROVIDERS)[number]
 
 // OAuth-style connections to external providers (GitHub lives on users/accounts).
@@ -944,7 +861,7 @@ export const connections = pgTable(
     provider: text('provider', { enum: CONNECTION_PROVIDERS }).notNull(),
     accessToken: text('access_token').notNull(), // encrypted
     externalUserId: text('external_user_id'),
-    // The provider's own workspace/org (e.g. the Linear workspace), not ours
+    // The provider's own workspace/org (e.g. the Slack workspace), not ours
     providerWorkspaceId: text('provider_workspace_id'),
     providerWorkspaceName: text('provider_workspace_name'),
     config: jsonb('config').$type<Record<string, unknown>>(),
@@ -959,10 +876,10 @@ export const connections = pgTable(
 export type Connection = typeof connections.$inferSelect
 export type InsertConnection = typeof connections.$inferInsert
 
-export const SIGNAL_SOURCE_KINDS = ['github_repo', 'linear_project', 'linear_team', 'linear_workspace'] as const
+export const SIGNAL_SOURCE_KINDS = ['github_repo'] as const
 export type SignalSourceKind = (typeof SIGNAL_SOURCE_KINDS)[number]
 
-// A concrete stream Beacon watches: a repo, a Linear project/team, a channel…
+// A concrete stream Beacon watches: a repo, a channel…
 // projectId maps the stream to a Beacon project so ingested signals attribute
 // automatically; null means "General".
 export const signalSources = pgTable(
@@ -974,7 +891,7 @@ export const signalSources = pgTable(
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
     kind: text('kind', { enum: SIGNAL_SOURCE_KINDS }).notNull(),
-    // e.g. "vercel/next.js" for a repo, the Linear project/team id otherwise
+    // e.g. "vercel/next.js" for a repo
     identifier: text('identifier').notNull(),
     displayName: text('display_name').notNull(),
     url: text('url'),
@@ -1060,7 +977,7 @@ export const knowledgeDocuments = pgTable(
     embedding: vector('embedding', { dimensions: 1536 }),
     // Independent org-chart tags, same as work_items — see "Org units" above.
     engineId: text('engine_id').references(() => engines.id, { onDelete: 'set null' }),
-    functionId: text('function_id').references(() => functions.id, { onDelete: 'set null' }),
+    teamId: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
     lastSyncedAt: timestamp('last_synced_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -1068,7 +985,7 @@ export const knowledgeDocuments = pgTable(
   (table) => ({
     workspaceIdx: index('knowledge_documents_workspace_idx').on(table.workspaceId),
     engineIdx: index('knowledge_documents_engine_idx').on(table.engineId),
-    functionIdx: index('knowledge_documents_function_idx').on(table.functionId),
+    teamIdx: index('knowledge_documents_team_idx').on(table.teamId),
   }),
 )
 

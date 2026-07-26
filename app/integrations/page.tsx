@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
-import { and, desc, eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { apiKeys, connections, projects, signalSources } from '@/lib/db/schema'
+import { apiKeys, projects, signalSources } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { isAdmin } from '@/lib/auth/permissions'
@@ -23,13 +23,8 @@ export default async function IntegrationsPage() {
   if (!isAdmin(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
 
-  const [github, linearRows, sources, projectList, keys] = await Promise.all([
+  const [github, sources, projectList, keys] = await Promise.all([
     getServerGitHubConnection(session.user.id),
-    db
-      .select({ workspaceName: connections.providerWorkspaceName })
-      .from(connections)
-      .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
-      .limit(1),
     db
       .select()
       .from(signalSources)
@@ -54,19 +49,13 @@ export default async function IntegrationsPage() {
       .orderBy(desc(apiKeys.createdAt)),
   ])
 
-  const linear = linearRows[0] ?? null
-
   return (
     <PageShell
       title="Integrations"
       description="Every tool is just a signal source — connect them and Beacon does the rest"
     >
       <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-5 lg:px-6">
-        <ConnectionsCard
-          githubConnected={github.connected}
-          githubUsername={github.username}
-          linearWorkspace={linear?.workspaceName ?? null}
-        />
+        <ConnectionsCard githubConnected={github.connected} githubUsername={github.username} />
 
         <SourcesCard
           sources={sources.map((source) => ({
@@ -81,7 +70,6 @@ export default async function IntegrationsPage() {
           }))}
           projects={projectList}
           githubConnected={github.connected}
-          linearConnected={!!linear}
         />
 
         <ApiKeysCard

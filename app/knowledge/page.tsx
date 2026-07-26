@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
 import { and, count, desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { engines, functions, knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
+import { engines, teams, knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { listEngineOptions, listFunctionOptions } from '@/lib/org/list'
+import { listEngineOptions, listTeamOptions } from '@/lib/org/list'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { KnowledgeForm } from '@/components/knowledge/knowledge-form'
@@ -26,12 +26,12 @@ const SIGNAL_TONE: Record<string, 'destructive' | 'secondary' | 'outline'> = {
   question: 'outline',
 }
 
-function knowledgeHref(docPage: number, sigPage: number, engine?: string, orgFunction?: string) {
+function knowledgeHref(docPage: number, sigPage: number, engine?: string, orgTeam?: string) {
   const params = new URLSearchParams()
   if (docPage > 1) params.set('docPage', String(docPage))
   if (sigPage > 1) params.set('sigPage', String(sigPage))
   if (engine) params.set('engine', engine)
-  if (orgFunction) params.set('function', orgFunction)
+  if (orgTeam) params.set('team', orgTeam)
   const qs = params.toString()
   return qs ? `/knowledge?${qs}` : '/knowledge'
 }
@@ -39,7 +39,7 @@ function knowledgeHref(docPage: number, sigPage: number, engine?: string, orgFun
 export default async function KnowledgePage({
   searchParams,
 }: {
-  searchParams: Promise<{ docPage?: string; sigPage?: string; engine?: string; function?: string }>
+  searchParams: Promise<{ docPage?: string; sigPage?: string; engine?: string; team?: string }>
 }) {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
@@ -48,17 +48,14 @@ export default async function KnowledgePage({
   const params = await searchParams
   const docPage = parsePage(params.docPage)
   const sigPage = parsePage(params.sigPage)
-  const [engineOptions, functionOptions] = await Promise.all([
-    listEngineOptions(workspaceId),
-    listFunctionOptions(workspaceId),
-  ])
+  const [engineOptions, teamOptions] = await Promise.all([listEngineOptions(workspaceId), listTeamOptions(workspaceId)])
   const engine = engineOptions.find((e) => e.id === params.engine)?.id
-  const orgFunction = functionOptions.find((f) => f.id === params.function)?.id
+  const orgTeam = teamOptions.find((f) => f.id === params.team)?.id
 
   const docsWhere = and(
     eq(knowledgeDocuments.workspaceId, workspaceId),
     engine ? eq(knowledgeDocuments.engineId, engine) : undefined,
-    orgFunction ? eq(knowledgeDocuments.functionId, orgFunction) : undefined,
+    orgTeam ? eq(knowledgeDocuments.teamId, orgTeam) : undefined,
   )
 
   const [documents, [{ value: docTotal }], signals, [{ value: sigTotal }]] = await Promise.all([
@@ -70,11 +67,11 @@ export default async function KnowledgePage({
         summary: knowledgeDocuments.summary,
         createdAt: knowledgeDocuments.createdAt,
         engineName: engines.name,
-        functionName: functions.name,
+        teamName: teams.name,
       })
       .from(knowledgeDocuments)
       .leftJoin(engines, eq(engines.id, knowledgeDocuments.engineId))
-      .leftJoin(functions, eq(functions.id, knowledgeDocuments.functionId))
+      .leftJoin(teams, eq(teams.id, knowledgeDocuments.teamId))
       .where(docsWhere)
       .orderBy(desc(knowledgeDocuments.createdAt))
       .limit(PAGE_SIZE)
@@ -113,11 +110,11 @@ export default async function KnowledgePage({
                       basePath="/knowledge"
                     />
                   )}
-                  {functionOptions.length > 0 && (
+                  {teamOptions.length > 0 && (
                     <OrgTagFilter
-                      options={functionOptions}
-                      current={orgFunction}
-                      paramName="function"
+                      options={teamOptions}
+                      current={orgTeam}
+                      paramName="team"
                       allLabel="Any team"
                       basePath="/knowledge"
                     />
@@ -139,9 +136,9 @@ export default async function KnowledgePage({
                           {document.engineName}
                         </Badge>
                       )}
-                      {document.functionName && (
+                      {document.teamName && (
                         <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
-                          {document.functionName}
+                          {document.teamName}
                         </Badge>
                       )}
                       <Badge variant="outline" className="shrink-0 px-1.5 py-0 font-mono text-[10px]">
@@ -164,7 +161,7 @@ export default async function KnowledgePage({
               page={docPage}
               pageCount={Math.max(1, Math.ceil(docTotal / PAGE_SIZE))}
               total={docTotal}
-              hrefFor={(p) => knowledgeHref(p, sigPage, engine, orgFunction)}
+              hrefFor={(p) => knowledgeHref(p, sigPage, engine, orgTeam)}
               className="px-4"
             />
           </Panel>
@@ -198,7 +195,7 @@ export default async function KnowledgePage({
               page={sigPage}
               pageCount={Math.max(1, Math.ceil(sigTotal / PAGE_SIZE))}
               total={sigTotal}
-              hrefFor={(p) => knowledgeHref(docPage, p, engine, orgFunction)}
+              hrefFor={(p) => knowledgeHref(docPage, p, engine, orgTeam)}
               className="px-4"
             />
           </Panel>

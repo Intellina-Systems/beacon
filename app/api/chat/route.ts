@@ -83,7 +83,7 @@ export async function POST(req: Request) {
   const memberById = new Map(roster.map((member) => [member.id, member]))
 
   const systemParts: string[] = [
-    'You are Beacon, the engineering intelligence layer for this team. You sit above GitHub, Linear, coding agents, CI/CD, and communication tools, continuously understanding what is happening. Everything you know is derived from an append-only event stream — never guess beyond it.',
+    'You are Beacon, the engineering intelligence layer for this team. You sit above GitHub, coding agents, CI/CD, and communication tools, continuously understanding what is happening. Everything you know is derived from an append-only event stream — never guess beyond it.',
     'Be concise and direct. Default to answering in plain prose, even for questions about work items, the team, or blockers — use query_events, or the context already provided above, to write a short text answer. Only call display_work_items, display_team, or get_blockers when the user explicitly asks to see/show/list a board, roster, or set of cards (e.g. "show me the backlog", "list the team"); do not call them just because the topic is tasks, people, or blockers. search_knowledge is for docs/notes context.',
     RESPONSE_LEVEL_INSTRUCTIONS[responseLevel],
     '',
@@ -149,7 +149,7 @@ export async function POST(req: Request) {
     tools: {
       query_events: tool({
         description:
-          'Query the raw event stream with filters — time range, source (github, linear, agent, cicd…), event types, or a member name. Use for questions like "what happened yesterday", "what did X do this week", "any deploys?", "what merged?". Returns raw events for you to summarize in prose.',
+          'Query the raw event stream with filters — time range, source (github, agent, cicd…), event types, or a member name. Use for questions like "what happened yesterday", "what did X do this week", "any deploys?", "what merged?". Returns raw events for you to summarize in prose.',
         inputSchema: zodSchema(
           z.object({
             sinceDays: z.number().int().min(1).max(90).default(7),

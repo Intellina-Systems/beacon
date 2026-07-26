@@ -24,16 +24,16 @@ export function KnowledgeForm() {
   const [content, setContent] = useState('')
   const [url, setUrl] = useState('')
   const [engineId, setEngineId] = useState('')
-  const [functionId, setFunctionId] = useState('')
+  const [teamId, setTeamId] = useState('')
   const [engineOptions, setEngineOptions] = useState<Option[]>([])
-  const [functionOptions, setFunctionOptions] = useState<Option[]>([])
+  const [teamOptions, setTeamOptions] = useState<Option[]>([])
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    Promise.all([fetch('/api/engines').then((res) => res.json()), fetch('/api/functions').then((res) => res.json())])
-      .then(([engineData, functionData]) => {
+    Promise.all([fetch('/api/engines').then((res) => res.json()), fetch('/api/teams').then((res) => res.json())])
+      .then(([engineData, teamData]) => {
         setEngineOptions((engineData.engines ?? []).map((e: Option) => ({ id: e.id, name: e.name })))
-        setFunctionOptions((functionData.functions ?? []).map((f: Option) => ({ id: f.id, name: f.name })))
+        setTeamOptions((teamData.teams ?? []).map((f: Option) => ({ id: f.id, name: f.name })))
       })
       .catch(() => {})
   }, [])
@@ -45,7 +45,7 @@ export function KnowledgeForm() {
       setContent('')
       setUrl('')
       setEngineId('')
-      setFunctionId('')
+      setTeamId('')
       router.refresh()
     } else {
       const data = await res.json().catch(() => null)
@@ -65,7 +65,7 @@ export function KnowledgeForm() {
             content: content.trim(),
             sourceType: 'note',
             engineId: engineId || undefined,
-            functionId: functionId || undefined,
+            teamId: teamId || undefined,
           }),
         }),
       )
@@ -85,7 +85,7 @@ export function KnowledgeForm() {
             sourceUrl: url.trim(),
             title: title.trim() || undefined,
             engineId: engineId || undefined,
-            functionId: functionId || undefined,
+            teamId: teamId || undefined,
           }),
         }),
       )
@@ -100,7 +100,7 @@ export function KnowledgeForm() {
       const formData = new FormData()
       formData.set('file', file)
       if (engineId) formData.set('engineId', engineId)
-      if (functionId) formData.set('functionId', functionId)
+      if (teamId) formData.set('teamId', teamId)
       await handle(await fetch('/api/knowledge', { method: 'POST', body: formData }))
     } finally {
       setBusy(false)
@@ -111,7 +111,7 @@ export function KnowledgeForm() {
   return (
     <Card>
       <CardContent className="pt-6">
-        {(engineOptions.length > 0 || functionOptions.length > 0) && (
+        {(engineOptions.length > 0 || teamOptions.length > 0) && (
           <div className="mb-4 grid grid-cols-2 gap-3">
             {engineOptions.length > 0 && (
               <div className="space-y-1.5">
@@ -131,16 +131,16 @@ export function KnowledgeForm() {
                 </Select>
               </div>
             )}
-            {functionOptions.length > 0 && (
+            {teamOptions.length > 0 && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Team</Label>
-                <Select value={functionId || 'none'} onValueChange={(v) => setFunctionId(v === 'none' ? '' : v)}>
+                <Select value={teamId || 'none'} onValueChange={(v) => setTeamId(v === 'none' ? '' : v)}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No team</SelectItem>
-                    {functionOptions.map((f) => (
+                    {teamOptions.map((f) => (
                       <SelectItem key={f.id} value={f.id}>
                         {f.name}
                       </SelectItem>

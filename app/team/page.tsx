@@ -115,7 +115,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           <div className="flex rounded-lg border border-dashed">
             <EmptyState
               title="No team members yet"
-              hint="Connect Linear and sync to import your workspace members, or add them manually."
+              hint="Connect GitHub and sync to import your workspace members, or add them manually."
             />
           </div>
         ) : (
@@ -192,14 +192,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                               gh:{member.githubUsername}
                             </span>
                           )}
-                          {member.linearUserId && (
-                            <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                              linear
-                            </span>
-                          )}
-                          {!member.githubUsername && !member.linearUserId && (
-                            <span className="text-xs text-muted-foreground/50">unlinked</span>
-                          )}
+                          {!member.githubUsername && <span className="text-xs text-muted-foreground/50">unlinked</span>}
                         </div>
                       </td>
                       <td

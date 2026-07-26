@@ -23,7 +23,7 @@ export interface WorkItemRow {
   assigneeName: string | null
   projectName: string | null
   engineName?: string | null
-  functionName?: string | null
+  teamName?: string | null
   externalUrl: string | null
   lastEventAt: string | Date | null
   updatedAt: string | Date | null
@@ -178,9 +178,9 @@ export function WorkItemsTable({
                         {item.engineName}
                       </Badge>
                     )}
-                    {item.functionName && (
+                    {item.teamName && (
                       <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
-                        {item.functionName}
+                        {item.teamName}
                       </Badge>
                     )}
                   </div>

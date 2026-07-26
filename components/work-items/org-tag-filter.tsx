@@ -22,7 +22,7 @@ export function OrgTagFilter({
 }: {
   options: Option[]
   current: string | undefined
-  paramName: 'engine' | 'function'
+  paramName: 'engine' | 'team'
   allLabel: string
   basePath?: string
 }) {

@@ -17,7 +17,6 @@ const PAGE_SIZE = 50
 const SOURCE_FILTERS = [
   { value: '', label: 'All' },
   { value: 'github', label: 'GitHub' },
-  { value: 'linear', label: 'Linear' },
   { value: 'agent', label: 'Agents' },
   { value: 'cicd', label: 'CI/CD' },
   { value: 'knowledge', label: 'Knowledge' },

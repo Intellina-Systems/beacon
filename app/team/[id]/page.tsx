@@ -3,9 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { AlertTriangle, ArrowLeft, ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
-import { calendarAccounts, connections, members, teamMembers, teams, workItems } from '@/lib/db/schema'
-import { decrypt } from '@/lib/crypto'
-import { getLinearUsers } from '@/lib/linear/client'
+import { calendarAccounts, members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
 import { getActiveBlockers, getMemberActivity, listEvents } from '@/lib/events/queries'
@@ -52,7 +50,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
     .where(eq(teamMembers.memberId, member.id))
     .orderBy(teams.name)
 
-  const [recentEvents, assignedItems, allBlockers, activityByMember, linearConnectionRows] = await Promise.all([
+  const [recentEvents, assignedItems, allBlockers, activityByMember] = await Promise.all([
     listEvents(workspaceId, { memberId: member.id, sinceDays: 30, limit: 40 }),
     db
       .select({
@@ -75,16 +73,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
       .limit(30),
     getActiveBlockers(workspaceId),
     getMemberActivity(workspaceId, 7),
-    db
-      .select()
-      .from(connections)
-      .where(and(eq(connections.workspaceId, workspaceId), eq(connections.provider, 'linear')))
-      .limit(1),
   ])
-
-  const availableLinearUsers = linearConnectionRows[0]
-    ? await getLinearUsers(decrypt(linearConnectionRows[0].accessToken)).catch(() => [])
-    : []
 
   // A personal calendar connection is only shown on your own profile.
   const isSelf = member.id === ctx.member.id
@@ -255,13 +244,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           />
         )}
 
-        <MemberConnections
-          memberId={member.id}
-          githubUsername={member.githubUsername}
-          linearUserId={member.linearUserId}
-          linearUserName={availableLinearUsers.find((u) => u.id === member.linearUserId)?.name ?? null}
-          availableLinearUsers={availableLinearUsers}
-        />
+        <MemberConnections memberId={member.id} githubUsername={member.githubUsername} />
       </div>
     </PageShell>
   )

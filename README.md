@@ -1,6 +1,6 @@
 # Beacon
 
-**The Engineering Intelligence Layer.** Beacon sits above GitHub, Linear, coding agents, CI/CD, and communication tools, continuously understanding what's happening across your engineering organization.
+**The Engineering Intelligence Layer.** Beacon sits above GitHub, coding agents, CI/CD, and communication tools, continuously understanding what's happening across your engineering organization.
 
 > Don't manage tasks. Understand engineering.
 
@@ -11,7 +11,7 @@ Instead of asking *"can everyone give a status update?"*, you ask Beacon *"what'
 Beacon never stores status. It stores **events** — an append-only stream of everything that happens — and derives everything else from it.
 
 ```
-GitHub · Linear · CI/CD · Coding agents · Docs · Meeting notes
+GitHub · CI/CD · Coding agents · Docs · Meeting notes
         │
         ▼
 Connectors (pull) + Ingestion API (push)
@@ -26,7 +26,7 @@ Intelligence: pulse, blocker detection, AI chat
 Dashboards · Timeline · Chat
 ```
 
-- **Connectors** pull signals from tracked sources (GitHub repos, Linear projects/teams) and normalize them into events like `code.commit`, `pr.merged`, `task.status_changed`.
+- **Connectors** pull signals from tracked sources (GitHub repos) and normalize them into events like `code.commit`, `pr.merged`, `task.status_changed`.
 - **Coding agents and CI** push structured events directly:
 
   ```bash
@@ -36,7 +36,7 @@ Dashboards · Timeline · Chat
     -d '{ "type": "agent.blocked", "task": "BCN-42", "engineer": "nandu", "reason": "API schema mismatch", "confidence": 0.92 }'
   ```
 
-- **Identity resolution** attributes every signal to the right engineer (GitHub login, Linear id, agent aliases) and the right work item (key like `BCN-42`, external id).
+- **Identity resolution** attributes every signal to the right engineer (GitHub login, agent aliases) and the right work item (key like `BCN-42`, external id).
 - **Work item status is a projection** — folding the event stream (`task.started` → in progress, `pr.opened` → in review, `pr.merged` → done, `agent.blocked` → blocked).
 - **Blocker detection** finds blocking events with no later unblocking signal.
 - **AI chat** answers "who is blocked?", "what slipped this week?", "what did X ship?" grounded in the live stream plus a semantic knowledge base.
@@ -85,7 +85,6 @@ pnpm dev
 | `POSTGRES_URL`                                           | Postgres with pgvector               |
 | `JWE_SECRET`, `ENCRYPTION_KEY`                           | Session + token encryption at rest   |
 | `NEXT_PUBLIC_GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`   | GitHub OAuth (sign-in + connector)   |
-| `LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`               | Linear OAuth (connector)             |
 | `OPENAI_API_KEY`                                         | Chat, embeddings, signal extraction  |
 | `CRON_SECRET`                                            | Protects `/api/cron/sync`            |
 

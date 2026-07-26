@@ -48,7 +48,7 @@ type ParsedKnowledgeRequest = {
   input: KnowledgeIngestInput
   sourceUrl: string | null
   engineId: string | null
-  functionId: string | null
+  teamId: string | null
 }
 
 function readTag(value: FormDataEntryValue | string | null | undefined): string | null {
@@ -153,7 +153,7 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
           input: parsed.data,
           sourceUrl: null,
           engineId: readTag(formData.get('engineId')),
-          functionId: readTag(formData.get('functionId')),
+          teamId: readTag(formData.get('teamId')),
         }
       : null
   }
@@ -171,7 +171,7 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
     const fetched = await fetchLinkContent(trimmedUrl)
     const providedTitle = 'title' in body && typeof body.title === 'string' ? body.title.trim() : ''
     const engineId = 'engineId' in body ? readTag(body.engineId as string | null) : null
-    const functionId = 'functionId' in body ? readTag(body.functionId as string | null) : null
+    const teamId = 'teamId' in body ? readTag(body.teamId as string | null) : null
 
     const parsed = ingestSchema.safeParse({
       title: providedTitle || fetched.title || defaultLinkTitle(fetched.sourceType),
@@ -179,15 +179,14 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
       content: fetched.text.slice(0, MAX_KNOWLEDGE_CHARS),
     })
 
-    return parsed.success ? { input: parsed.data, sourceUrl: trimmedUrl, engineId, functionId } : null
+    return parsed.success ? { input: parsed.data, sourceUrl: trimmedUrl, engineId, teamId } : null
   }
 
   const parsed = ingestSchema.safeParse(body)
   const engineId =
     body && typeof body === 'object' && 'engineId' in body ? readTag(body.engineId as string | null) : null
-  const functionId =
-    body && typeof body === 'object' && 'functionId' in body ? readTag(body.functionId as string | null) : null
-  return parsed.success ? { input: parsed.data, sourceUrl: null, engineId, functionId } : null
+  const teamId = body && typeof body === 'object' && 'teamId' in body ? readTag(body.teamId as string | null) : null
+  return parsed.success ? { input: parsed.data, sourceUrl: null, engineId, teamId } : null
 }
 
 export async function GET(): Promise<Response> {
@@ -238,7 +237,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: 'Invalid knowledge input' }, { status: 400 })
   }
 
-  const { input: knowledgeInput, sourceUrl, engineId, functionId } = parsedRequest
+  const { input: knowledgeInput, sourceUrl, engineId, teamId } = parsedRequest
   const documentId = nanoid()
   const now = new Date()
 
@@ -254,7 +253,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         sourceUrl,
         content: knowledgeInput.content,
         engineId,
-        functionId,
+        teamId,
         lastSyncedAt: sourceUrl ? now : null,
         createdAt: now,
         updatedAt: now,
