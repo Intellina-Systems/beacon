@@ -116,3 +116,5 @@ Canonical types Beacon understands deeply (anything dot-namespaced is accepted):
 - Assist engineers, don't monitor them
 
 See `docs/BEACON.md` for the full product vision and roadmap, and `AGENTS.md` for contributor/agent guidelines.
+
+
