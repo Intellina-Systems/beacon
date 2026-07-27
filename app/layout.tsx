@@ -12,6 +12,7 @@ import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { db } from '@/lib/db/client'
 import { notifications } from '@/lib/db/schema'
 import { and, count, eq, isNull } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 
 const plexSans = IBM_Plex_Sans({
   variable: '--font-plex-sans',
@@ -39,6 +40,8 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   const session = await getServerSession()
+  const sidebarState = (await cookies()).get('sidebar_state')?.value
+  const defaultSidebarOpen = sidebarState !== 'false'
   const githubConnection = session?.user
     ? await getServerGitHubConnection(session.user.id)
     : { connected: false, username: null }
@@ -79,6 +82,7 @@ export default async function RootLayout({
                   : null
               }
               unreadNotifications={unreadNotifications}
+              defaultSidebarOpen={defaultSidebarOpen}
             >
               {children}
             </BeaconLayout>

@@ -2,10 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { Building2, Check, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 interface Membership {
@@ -13,30 +17,17 @@ interface Membership {
   workspaceName: string
 }
 
-/**
- * Sidebar workspace name — becomes a switcher dropdown once the signed-in
- * account belongs to more than one workspace (e.g. invited into a second org
- * with the same login). Single-workspace accounts see plain text, unchanged.
- */
-export function WorkspaceSwitcher({
+// Designed to be used as a submenu item inside a DropdownMenu. Only render when
+// the account belongs to more than one workspace.
+export function SwitchWorkspaceMenu({
   currentWorkspaceId,
-  currentWorkspaceName,
   memberships,
 }: {
   currentWorkspaceId: string
-  currentWorkspaceName: string
   memberships: Membership[]
 }) {
   const router = useRouter()
   const [switching, setSwitching] = useState<string | null>(null)
-
-  if (memberships.length <= 1) {
-    return (
-      <p className="min-w-0 truncate text-sm font-semibold text-sidebar-foreground" title={currentWorkspaceName}>
-        {currentWorkspaceName}
-      </p>
-    )
-  }
 
   async function switchTo(workspaceId: string) {
     if (workspaceId === currentWorkspaceId || switching) return
@@ -59,24 +50,20 @@ export function WorkspaceSwitcher({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className="h-auto min-w-0 justify-start gap-1 p-0 text-sm font-semibold text-sidebar-foreground hover:bg-transparent hover:opacity-80"
-        >
-          <span className="min-w-0 truncate" title={currentWorkspaceName}>
-            {currentWorkspaceName}
-          </span>
-          <ChevronsUpDown className="h-3 w-3 shrink-0 text-sidebar-foreground/50" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="cursor-pointer">
+        <Building2 className="mr-2 h-4 w-4" />
+        Switch workspace
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent>
         {memberships.map((m) => (
           <DropdownMenuItem
             key={m.workspaceId}
             onClick={() => switchTo(m.workspaceId)}
-            className={cn('flex items-center justify-between gap-2', switching && 'pointer-events-none opacity-60')}
+            className={cn(
+              'flex cursor-pointer items-center justify-between gap-2',
+              switching && 'pointer-events-none opacity-60',
+            )}
           >
             <span className="truncate">{m.workspaceName}</span>
             {switching === m.workspaceId ? (
@@ -86,7 +73,7 @@ export function WorkspaceSwitcher({
             ) : null}
           </DropdownMenuItem>
         ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
   )
 }

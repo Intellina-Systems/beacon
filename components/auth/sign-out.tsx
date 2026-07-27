@@ -1,12 +1,15 @@
 'use client'
 
+import { useState } from 'react'
 import type { Session } from '@/lib/session/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -15,7 +18,17 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { getEnabledAuthProviders } from '@/lib/auth/providers'
-import { ChevronsUpDown } from 'lucide-react'
+import { ChevronsUpDown, Crown, Pencil } from 'lucide-react'
+import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-dialog'
+import { SwitchWorkspaceMenu } from '@/components/workspace/switch-workspace-menu'
+
+type Role = 'admin' | 'manager' | 'engineer'
+
+const ROLE_LABEL: Record<Role, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  engineer: 'Engineer',
+}
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -29,11 +42,19 @@ interface SignOutProps {
   user: Session['user']
   authProvider: Session['authProvider']
   githubConnection: { connected: boolean; username: string | null }
+  role: Role
+  workspace: {
+    id: string
+    name: string
+    teams: { id: string; name: string; isLead: boolean }[]
+    memberships: { workspaceId: string; workspaceName: string }[]
+  } | null
 }
 
-export function SignOut({ user, authProvider, githubConnection }: SignOutProps) {
+export function SignOut({ user, authProvider, githubConnection, role, workspace }: SignOutProps) {
   const router = useRouter()
   const { github: hasGitHub } = getEnabledAuthProviders()
+  const [renameOpen, setRenameOpen] = useState(false)
 
   const handleSignOut = async () => {
     await redirectToSignOut()
@@ -59,13 +80,13 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-1.5 text-left font-normal hover:bg-sidebar-accent/60 focus-visible:ring-sidebar-ring"
+          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-1.5 text-left font-normal hover:bg-sidebar-accent/60 focus-visible:ring-sidebar-ring group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <Avatar className="h-8 w-8 shrink-0">
             <AvatarImage src={user?.avatar ? `${user.avatar}&s=72` : undefined} alt={user.username} />
             <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
-          <span className="min-w-0 flex-1">
+          <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
             <span className="block truncate text-sm font-medium text-sidebar-foreground">
               {user.name ?? user.username}
             </span>
@@ -73,11 +94,53 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
               {user.email ?? `@${user.username}`}
             </span>
           </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40" />
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden" />
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-64">
+        {workspace && (
+          <>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-semibold" title={workspace.name}>
+                  {workspace.name}
+                </span>
+                <Badge variant="outline" className="shrink-0 border-beacon/20 bg-beacon/10 text-beacon">
+                  {ROLE_LABEL[role]}
+                </Badge>
+              </div>
+              {workspace.teams.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  {workspace.teams.map((team) => (
+                    <Badge key={team.id} variant="secondary" className="gap-1 font-normal">
+                      {team.isLead && <Crown className="h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />}
+                      {team.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {workspace.memberships.length > 1 && (
+              <SwitchWorkspaceMenu currentWorkspaceId={workspace.id} memberships={workspace.memberships} />
+            )}
+            {role === 'admin' && (
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setRenameOpen(true)
+                }}
+                className="cursor-pointer"
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Rename workspace
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+
         <ThemeToggle />
 
         {authProvider === 'vercel' && hasGitHub && (
@@ -117,6 +180,10 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
           )}
         </DropdownMenuItem>
       </DropdownMenuContent>
+
+      {workspace && (
+        <RenameWorkspaceDialog currentName={workspace.name} open={renameOpen} onOpenChange={setRenameOpen} />
+      )}
     </DropdownMenu>
   )
 }
