@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Plus, Settings2, Trash2 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { ChevronRight, Plus, Settings2, Trash2 } from 'lucide-react'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -18,7 +19,7 @@ export interface OrgUnit {
   description: string | null
   ownerMemberId: string | null
   ownerName: string | null
-  members: { id: string; name: string }[]
+  members: { id: string; name: string; avatarUrl: string | null }[]
 }
 
 export interface RosterOption {
@@ -307,28 +308,43 @@ function ManageUnitDialog({
   )
 }
 
-function UnitCard({ unit, canManage, onManage }: { unit: OrgUnit; canManage: boolean; onManage: () => void }) {
+function UnitCard({
+  unit,
+  href,
+  canManage,
+  onManage,
+}: {
+  unit: OrgUnit
+  href: string
+  canManage: boolean
+  onManage: () => void
+}) {
   return (
-    <div className="rounded-lg border bg-card/60 p-3.5">
-      <div className="flex items-start justify-between gap-2">
+    <div className="group relative rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-beacon/40 hover:bg-accent/30">
+      <Link href={href} className="absolute inset-0 z-0 rounded-lg" aria-label={`View ${unit.name}`} />
+
+      <div className="relative flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{unit.name}</p>
           {unit.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{unit.description}</p>}
         </div>
-        {canManage && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 shrink-0 p-0 text-muted-foreground"
-            onClick={onManage}
-            aria-label={`Manage ${unit.name}`}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-1">
+          {canManage && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative z-10 h-6 w-6 shrink-0 p-0 text-muted-foreground"
+              onClick={onManage}
+              aria-label={`Manage ${unit.name}`}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+        </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="relative mt-3 flex items-center gap-2">
         {unit.ownerName ? (
           <span className="flex items-center gap-1.5" title={`${unit.ownerName} (lead)`}>
             <Avatar className="h-6 w-6 border">
@@ -342,15 +358,20 @@ function UnitCard({ unit, canManage, onManage }: { unit: OrgUnit; canManage: boo
       </div>
 
       {unit.members.length > 0 && (
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          {unit.members.slice(0, 4).map((m) => (
-            <span key={m.id} className="rounded border bg-muted/50 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {m.name}
-            </span>
-          ))}
-          {unit.members.length > 4 && (
-            <span className="text-[10px] text-muted-foreground">+{unit.members.length - 4} more</span>
-          )}
+        <div className="relative mt-2 flex items-center gap-1.5">
+          <div className="flex -space-x-1.5">
+            {unit.members.slice(0, 6).map((m) => (
+              <span key={m.id} className="relative inline-flex" title={m.name}>
+                <Avatar className="h-6 w-6 border bg-background">
+                  <AvatarImage src={m.avatarUrl ?? undefined} alt="" />
+                  <AvatarFallback className="text-[9px] font-medium">{initials(m.name)}</AvatarFallback>
+                </Avatar>
+              </span>
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {unit.members.length} member{unit.members.length === 1 ? '' : 's'}
+          </span>
         </div>
       )}
     </div>
@@ -360,6 +381,7 @@ function UnitCard({ unit, canManage, onManage }: { unit: OrgUnit; canManage: boo
 export function OrgUnitSection({
   label,
   apiBase,
+  hrefBase,
   units,
   roster,
   canCreate,
@@ -368,6 +390,8 @@ export function OrgUnitSection({
 }: {
   label: string
   apiBase: string
+  /** Base path for the unit's detail page — each card links to `${hrefBase}/${unit.id}`. */
+  hrefBase: string
   units: OrgUnit[]
   roster: RosterOption[]
   canCreate: boolean
@@ -395,11 +419,12 @@ export function OrgUnitSection({
           No {label.toLowerCase()}s yet{canCreate ? ` — create one to start mapping your org chart.` : '.'}
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="scrollbar-hide grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2">
           {units.map((unit) => (
             <UnitCard
               key={unit.id}
               unit={unit}
+              href={`${hrefBase}/${unit.id}`}
               canManage={manageableIds.has(unit.id)}
               onManage={() => setManaging(unit)}
             />

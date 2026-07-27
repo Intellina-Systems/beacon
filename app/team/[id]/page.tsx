@@ -106,7 +106,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
             <Link href="/team">
               <ArrowLeft className="mr-1 h-4 w-4" />
-              Team
+              People
             </Link>
           </Button>
           {isAdmin(ctx) && (

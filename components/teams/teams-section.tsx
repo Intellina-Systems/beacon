@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Crown, Plus, Settings2, Trash2 } from 'lucide-react'
+import { ChevronRight, Crown, Plus, Settings2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -289,10 +290,15 @@ export function TeamsSection({
             : `No teams yet${canManage ? ' — create one to group members and assign leads.' : '.'}`}
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="scrollbar-hide grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2">
           {teams.map((team) => (
-            <div key={team.id} className="rounded-lg border bg-card/60 p-3.5">
-              <div className="flex items-start justify-between gap-2">
+            <div
+              key={team.id}
+              className="group relative rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-beacon/40 hover:bg-accent/30"
+            >
+              <Link href={`/org/team/${team.id}`} className="absolute inset-0 z-0 rounded-lg" aria-label={`View ${team.name}`} />
+
+              <div className="relative flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold">{team.name}</p>
                   {team.description && (
@@ -309,16 +315,17 @@ export function TeamsSection({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 w-6 p-0 text-muted-foreground"
+                      className="relative z-10 h-6 w-6 p-0 text-muted-foreground"
                       onClick={() => setManaging(team)}
                       aria-label={`Manage ${team.name}`}
                     >
                       <Settings2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-1.5">
+              <div className="relative mt-3 flex items-center gap-1.5">
                 {team.members.length === 0 ? (
                   <span className="text-xs text-muted-foreground/60">no members</span>
                 ) : (

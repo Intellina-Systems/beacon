@@ -75,11 +75,12 @@ export default async function OrgPage() {
   const admin = isAdmin(ctx)
 
   return (
-    <PageShell title="Org" description="All engines and teams — the complete org chart, independent of projects">
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
+    <PageShell title="Org" description="All engines and teams — the complete org chart, independent of projects" fixed>
+      <div className="grid w-full gap-5 px-4 py-5 lg:h-full lg:grid-cols-2 lg:px-6">
         <OrgUnitSection
           label="Engine"
           apiBase="/api/engines"
+          hrefBase="/org/engine"
           units={engineUnits}
           roster={roster}
           canCreate={admin}

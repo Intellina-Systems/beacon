@@ -211,16 +211,6 @@ export default async function PulsePage() {
       fixed
     >
       <div className="flex flex-col gap-4 p-4 lg:h-full lg:p-5">
-        {/* Your plan for today — the one manual signal Beacon asks for */}
-        <div className="shrink-0">
-          <DailyPlanCard
-            initialIntention={myPlan?.intention ?? null}
-            initialWorkItemIds={myPlan?.workItemIds ?? []}
-            options={planOptions}
-            meetingCount={myMeetingCount}
-          />
-        </div>
-
         {/* KPI row */}
         <div className="grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
           {stats.map(({ icon: Icon, label, value, href }, i) => (
@@ -396,6 +386,16 @@ export default async function PulsePage() {
               </div>
             </Panel>
           </div>
+        </div>
+
+        {/* Your plan for today — the one manual signal Beacon asks for */}
+        <div className="shrink-0">
+          <DailyPlanCard
+            initialIntention={myPlan?.intention ?? null}
+            initialWorkItemIds={myPlan?.workItemIds ?? []}
+            options={planOptions}
+            meetingCount={myMeetingCount}
+          />
         </div>
       </div>
     </PageShell>

@@ -43,7 +43,7 @@ const navSections = [
       { href: '/calendar', label: 'Calendar', icon: CalendarDays },
       { href: '/inbox', label: 'Inbox', icon: Inbox },
       { href: '/docs', label: 'Docs', icon: FileText },
-      { href: '/team', label: 'Team', icon: Users },
+      { href: '/team', label: 'People', icon: Users },
       { href: '/org', label: 'Org', icon: Network },
     ],
   },

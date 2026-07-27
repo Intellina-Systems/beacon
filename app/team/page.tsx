@@ -2,11 +2,11 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { count, eq } from 'drizzle-orm'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
-import { TeamsSection, type TeamWithMembers } from '@/components/teams/teams-section'
+import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
 import { db } from '@/lib/db/client'
-import { members, teamMembers, teams } from '@/lib/db/schema'
+import { members } from '@/lib/db/schema'
 import { getMemberActivity } from '@/lib/events/queries'
+import { listTeamOptions } from '@/lib/org/list'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { AddMemberButton } from '@/components/add-member-button'
 import { EmptyState, PageShell } from '@/components/page-shell'
@@ -14,7 +14,7 @@ import { Pagination, parsePage } from '@/components/ui/pagination'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Team' }
+export const metadata = { title: 'People' }
 
 const PAGE_SIZE = 25
 
@@ -35,7 +35,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const page = parsePage((await searchParams).page)
 
   const detailVisible = await detailVisibleMemberIds(ctx)
-  const [pageMembers, [{ value: total }], activity, teamRows, fullRoster] = await Promise.all([
+  const [pageMembers, [{ value: total }], activity, teamOptions] = await Promise.all([
     db
       .select()
       .from(members)
@@ -45,84 +45,31 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
       .offset((page - 1) * PAGE_SIZE),
     db.select({ value: count() }).from(members).where(eq(members.workspaceId, workspaceId)),
     getMemberActivity(workspaceId, 7, detailVisible),
-    db
-      .select({
-        id: teams.id,
-        name: teams.name,
-        description: teams.description,
-        kind: teams.kind,
-        memberId: teamMembers.memberId,
-        memberName: members.name,
-        memberAvatarUrl: members.avatarUrl,
-        isLead: teamMembers.isLead,
-      })
-      .from(teams)
-      .leftJoin(teamMembers, eq(teamMembers.teamId, teams.id))
-      .leftJoin(members, eq(members.id, teamMembers.memberId))
-      .where(eq(teams.workspaceId, workspaceId))
-      .orderBy(teams.name),
-    db
-      .select({ id: members.id, name: members.name, avatarUrl: members.avatarUrl })
-      .from(members)
-      .where(eq(members.workspaceId, workspaceId))
-      .orderBy(members.name),
+    listTeamOptions(workspaceId),
   ])
 
-  const teamsById = new Map<string, TeamWithMembers>()
-  for (const row of teamRows) {
-    const team = teamsById.get(row.id) ?? {
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      kind: row.kind,
-      members: [],
-    }
-    if (row.memberId && row.memberName !== null) {
-      team.members.push({
-        id: row.memberId,
-        name: row.memberName,
-        avatarUrl: row.memberAvatarUrl,
-        isLead: !!row.isLead,
-      })
-    }
-    teamsById.set(row.id, team)
-  }
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
-
-  // Admins/managers see the whole company's teams; everyone else only sees
-  // the team(s) they're actually on — same "don't overwhelm the employee"
-  // rule as the Org page, reusing the visibility split already used
-  // elsewhere in the app (lib/auth/permissions.ts).
-  const allTeams = [...teamsById.values()]
-  const visibleTeams = canViewAllTeams(ctx)
-    ? allTeams
-    : allTeams.filter((t) => t.members.some((m) => m.id === ctx.member.id))
 
   return (
     <PageShell
-      title="Team"
+      title="People"
       description={`${total} member${total === 1 ? '' : 's'}`}
-      actions={isAdmin(ctx) ? <AddMemberButton teams={allTeams.map((t) => ({ id: t.id, name: t.name }))} /> : undefined}
+      actions={isAdmin(ctx) ? <AddMemberButton teams={teamOptions} /> : undefined}
+      fixed
     >
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
-        <TeamsSection
-          teams={visibleTeams}
-          roster={fullRoster}
-          canManage={isAdmin(ctx)}
-          scopedToSelf={!canViewAllTeams(ctx)}
-        />
+      <div className="flex h-full w-full flex-col gap-3 px-4 py-5 lg:px-6">
         {pageMembers.length === 0 ? (
-          <div className="flex rounded-lg border border-dashed">
+          <div className="flex flex-1 rounded-lg border border-dashed">
             <EmptyState
               title="No team members yet"
               hint="Connect GitHub and sync to import your workspace members, or add them manually."
             />
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border bg-card">
+          <div className="scrollbar-hide min-h-0 flex-1 overflow-auto rounded-lg border bg-card">
             <table className="w-full min-w-[520px] text-sm">
               <thead>
-                <tr className="border-b bg-muted/40">
+                <tr className="sticky top-0 z-10 border-b bg-muted">
                   <th className="micro-label px-4 py-2.5 text-left font-medium">Member</th>
                   <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium sm:table-cell">Title</th>
                   <th className="micro-label hidden w-28 px-4 py-2.5 text-left font-medium sm:table-cell">Access</th>
@@ -216,7 +163,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           pageCount={pageCount}
           total={total}
           hrefFor={(p) => (p > 1 ? `/team?page=${p}` : '/team')}
-          className="mt-2"
+          className="shrink-0"
         />
       </div>
     </PageShell>

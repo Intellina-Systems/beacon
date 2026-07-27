@@ -10,7 +10,7 @@ export interface OrgUnitRow {
   description: string | null
   ownerMemberId: string | null
   ownerName: string | null
-  members: { id: string; name: string }[]
+  members: { id: string; name: string; avatarUrl: string | null }[]
 }
 
 export async function listEngines(workspaceId: string): Promise<OrgUnitRow[]> {
@@ -28,7 +28,12 @@ export async function listEngines(workspaceId: string): Promise<OrgUnitRow[]> {
       .where(eq(engines.workspaceId, workspaceId))
       .orderBy(asc(engines.name)),
     db
-      .select({ engineId: engineMembers.engineId, memberId: engineMembers.memberId, name: members.name })
+      .select({
+        engineId: engineMembers.engineId,
+        memberId: engineMembers.memberId,
+        name: members.name,
+        avatarUrl: members.avatarUrl,
+      })
       .from(engineMembers)
       .innerJoin(engines, eq(engines.id, engineMembers.engineId))
       .innerJoin(members, eq(members.id, engineMembers.memberId))
@@ -37,7 +42,9 @@ export async function listEngines(workspaceId: string): Promise<OrgUnitRow[]> {
 
   return engineRows.map((engine) => ({
     ...engine,
-    members: memberRows.filter((m) => m.engineId === engine.id).map((m) => ({ id: m.memberId, name: m.name })),
+    members: memberRows
+      .filter((m) => m.engineId === engine.id)
+      .map((m) => ({ id: m.memberId, name: m.name, avatarUrl: m.avatarUrl })),
   }))
 }
 
