@@ -61,7 +61,11 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
       })
       .from(workItems)
       .where(
-        and(eq(workItems.workspaceId, workspaceId), eq(workItems.engineId, id), inArray(workItems.status, OPEN_STATUSES)),
+        and(
+          eq(workItems.workspaceId, workspaceId),
+          eq(workItems.engineId, id),
+          inArray(workItems.status, OPEN_STATUSES),
+        ),
       )
       .orderBy(desc(workItems.updatedAt))
       .limit(30),

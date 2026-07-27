@@ -296,7 +296,11 @@ export function TeamsSection({
               key={team.id}
               className="group relative rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-beacon/40 hover:bg-accent/30"
             >
-              <Link href={`/org/team/${team.id}`} className="absolute inset-0 z-0 rounded-lg" aria-label={`View ${team.name}`} />
+              <Link
+                href={`/org/team/${team.id}`}
+                className="absolute inset-0 z-0 rounded-lg"
+                aria-label={`View ${team.name}`}
+              />
 
               <div className="relative flex items-start justify-between gap-2">
                 <div className="min-w-0">

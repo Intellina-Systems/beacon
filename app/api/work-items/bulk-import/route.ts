@@ -30,10 +30,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const [roster, projectRows, engineRows, teamRows] = await Promise.all([
     db.select({ id: members.id, name: members.name }).from(members).where(eq(members.workspaceId, ctx.workspaceId)),
-    db
-      .select({ id: projects.id, name: projects.name })
-      .from(projects)
-      .where(eq(projects.workspaceId, ctx.workspaceId)),
+    db.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.workspaceId, ctx.workspaceId)),
     db.select({ id: engines.id, name: engines.name }).from(engines).where(eq(engines.workspaceId, ctx.workspaceId)),
     db.select({ id: teams.id, name: teams.name }).from(teams).where(eq(teams.workspaceId, ctx.workspaceId)),
   ])

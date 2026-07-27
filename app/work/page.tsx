@@ -355,8 +355,7 @@ export default async function WorkPage({
                 title={emptyTitle}
                 hint={
                   <>
-                    Create one with the <span className="font-medium">Create</span> button above, add a signal source
-                    in{' '}
+                    Create one with the <span className="font-medium">Create</span> button above, add a signal source in{' '}
                     <Link href="/integrations" className="underline underline-offset-2">
                       Integrations
                     </Link>

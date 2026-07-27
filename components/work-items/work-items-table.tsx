@@ -10,12 +10,7 @@ import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_M
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { WorkItemDetailSheet } from './work-item-detail-sheet'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
 import type { WorkItemStatus } from '@/lib/db/schema'
@@ -321,7 +316,13 @@ export function WorkItemsTable({
             <tr>
               <th className="w-8 px-2 py-2.5">
                 <Checkbox
-                  checked={localRows.length > 0 && selected.size === localRows.length ? true : selected.size > 0 ? 'indeterminate' : false}
+                  checked={
+                    localRows.length > 0 && selected.size === localRows.length
+                      ? true
+                      : selected.size > 0
+                        ? 'indeterminate'
+                        : false
+                  }
                   onCheckedChange={() => toggleSelectAll()}
                   aria-label="Select all"
                 />
@@ -393,7 +394,10 @@ export function WorkItemsTable({
                     <DropdownMenuTrigger asChild>
                       <button
                         disabled={busyId === item.id}
-                        className={cn('block max-w-full truncate font-mono text-[11px] text-muted-foreground', quickEditTriggerClass)}
+                        className={cn(
+                          'block max-w-full truncate font-mono text-[11px] text-muted-foreground',
+                          quickEditTriggerClass,
+                        )}
                       >
                         {item.projectName ?? '—'}
                       </button>
@@ -418,7 +422,10 @@ export function WorkItemsTable({
                       <DropdownMenuTrigger asChild>
                         <button
                           disabled={busyId === item.id}
-                          className={cn('flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground', quickEditTriggerClass)}
+                          className={cn(
+                            'flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground',
+                            quickEditTriggerClass,
+                          )}
                         >
                           <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[item.status].tone)} />
                           {STATUS_META[item.status].label}

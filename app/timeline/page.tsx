@@ -85,7 +85,9 @@ export default async function TimelinePage({
                   href={timelineHref(filter.value, 1)}
                   className={cn(
                     'flex h-full items-center gap-1.5 px-2.5 transition-colors',
-                    active ? 'bg-beacon/10 text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                    active
+                      ? 'bg-beacon/10 text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                   )}
                 >
                   <filter.icon className="h-3.5 w-3.5" />

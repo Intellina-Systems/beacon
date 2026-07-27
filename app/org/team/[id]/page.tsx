@@ -63,7 +63,9 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
         externalUrl: workItems.externalUrl,
       })
       .from(workItems)
-      .where(and(eq(workItems.workspaceId, workspaceId), eq(workItems.teamId, id), inArray(workItems.status, OPEN_STATUSES)))
+      .where(
+        and(eq(workItems.workspaceId, workspaceId), eq(workItems.teamId, id), inArray(workItems.status, OPEN_STATUSES)),
+      )
       .orderBy(desc(workItems.updatedAt))
       .limit(30),
   ])

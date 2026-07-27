@@ -36,9 +36,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // Validate every assignee up front so a bad id fails the whole batch
   // instead of silently creating some items unassigned.
-  const assigneeIds = [
-    ...new Set(parsed.data.items.map((i) => i.assigneeMemberId).filter((id): id is string => !!id)),
-  ]
+  const assigneeIds = [...new Set(parsed.data.items.map((i) => i.assigneeMemberId).filter((id): id is string => !!id))]
   const validMembers = assigneeIds.length
     ? await db
         .select({ id: members.id, name: members.name })

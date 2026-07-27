@@ -42,11 +42,7 @@ export function StatusFilter({
 
   const visibleStatuses = STATUS_TAB_ORDER.filter((s) => current.has(s) || (counts.get(s) ?? 0) > 0)
   const label =
-    current.size === 0
-      ? 'Status'
-      : current.size === 1
-        ? STATUS_META[[...current][0]].label
-        : `${current.size} statuses`
+    current.size === 0 ? 'Status' : current.size === 1 ? STATUS_META[[...current][0]].label : `${current.size} statuses`
 
   return (
     <DropdownMenu>
