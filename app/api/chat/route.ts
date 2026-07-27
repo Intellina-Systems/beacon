@@ -1,5 +1,4 @@
 import { streamText, tool, zodSchema, convertToModelMessages, stepCountIs } from 'ai'
-import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import type { UIMessage } from 'ai'
@@ -142,7 +141,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: openai('gpt-5.4-nano'),
+    model: 'openai/gpt-5.4-nano',
     system: systemParts.join('\n'),
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(5),

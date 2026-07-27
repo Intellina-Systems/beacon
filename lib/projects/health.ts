@@ -2,7 +2,6 @@ import 'server-only'
 
 import { and, count, desc, eq, gte } from 'drizzle-orm'
 import { generateObject } from 'ai'
-import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { events, workItems, type Project, type ProjectHealth } from '@/lib/db/schema'
@@ -83,7 +82,7 @@ export async function draftProjectUpdate(workspaceId: string, project: Project):
     .join('\n')
 
   const { object } = await generateObject({
-    model: openai('gpt-5.4-nano'),
+    model: 'openai/gpt-5.4-nano',
     schema: draftSchema,
     system:
       'You write short, honest project status updates for an engineering team from raw event-log data. ' +

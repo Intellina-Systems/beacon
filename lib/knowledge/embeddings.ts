@@ -1,11 +1,10 @@
-import { embed } from 'ai'
-import { openai } from '@ai-sdk/openai'
+import { embed, gateway } from 'ai'
 
-export const KNOWLEDGE_EMBEDDING_MODEL = 'text-embedding-3-small'
+export const KNOWLEDGE_EMBEDDING_MODEL = 'openai/text-embedding-3-small'
 
 export async function embedKnowledgeText(value: string) {
   const { embedding } = await embed({
-    model: openai.embeddingModel(KNOWLEDGE_EMBEDDING_MODEL),
+    model: gateway.embeddingModel(KNOWLEDGE_EMBEDDING_MODEL),
     value,
   })
 
