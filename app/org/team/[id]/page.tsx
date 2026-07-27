@@ -1,16 +1,17 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { and, desc, eq, inArray } from 'drizzle-orm'
-import { ArrowLeft, Crown, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Crown } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, detailVisibleMemberIds } from '@/lib/auth/permissions'
-import { OPEN_STATUSES, STATUS_META } from '@/lib/work-items/constants'
+import { canViewAllTeams, detailVisibleMemberIds, visibleMemberIds } from '@/lib/auth/permissions'
+import { OPEN_STATUSES } from '@/lib/work-items/constants'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
+import { OpenWorkList } from '@/components/work-items/open-work-list'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +42,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   // reached directly by id guessing.
   if (!canViewAllTeams(ctx) && !ctx.teams.some((t) => t.id === id)) redirect('/org')
 
-  const [teamMemberRows, detailVisible, openItems] = await Promise.all([
+  const [teamMemberRows, detailVisible, openItems, fullRoster, visible] = await Promise.all([
     db
       .select({
         id: members.id,
@@ -68,7 +69,15 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       )
       .orderBy(desc(workItems.updatedAt))
       .limit(30),
+    db
+      .select({ id: members.id, name: members.name })
+      .from(members)
+      .where(eq(members.workspaceId, workspaceId))
+      .orderBy(members.name),
+    visibleMemberIds(ctx),
   ])
+  // Same scoping the /work board applies to its assignee picker.
+  const roster = visible ? fullRoster.filter((m) => visible.includes(m.id)) : fullRoster
 
   return (
     <PageShell
@@ -82,9 +91,10 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
           </Link>
         </Button>
       }
+      fixed
     >
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
-        <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-4">
+      <div className="flex h-full w-full flex-col gap-5 px-4 py-5 lg:px-6">
+        <div className="flex shrink-0 items-center gap-3 rounded-lg border bg-card px-4 py-4">
           <div className="min-w-0">
             <p className="flex items-center gap-2 truncate text-lg font-semibold tracking-tight">
               {team.name}
@@ -102,10 +112,10 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        <div className="grid items-start gap-5 lg:grid-cols-2">
+        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2">
           <Panel>
             <PanelHeader label="Members" meta={<span className="tabular-nums">{teamMemberRows.length}</span>} />
-            <div className="divide-y px-4">
+            <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">
               {teamMemberRows.length === 0 ? (
                 <EmptyState title="No members yet" />
               ) : (
@@ -140,35 +150,12 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
 
           <Panel>
             <PanelHeader label="Open work" meta={<span className="tabular-nums">{openItems.length}</span>} />
-            <div className="divide-y px-4">
-              {openItems.length === 0 ? (
-                <EmptyState title="No open work tagged to this team" />
-              ) : (
-                openItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 py-2.5 text-sm">
-                    {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
-                    <span className="flex-1 truncate">{item.title}</span>
-                    <Badge
-                      variant={item.status === 'blocked' ? 'destructive' : 'outline'}
-                      className="shrink-0 px-1.5 py-0 font-mono text-[10px]"
-                    >
-                      {STATUS_META[item.status].label}
-                    </Badge>
-                    {item.externalUrl && (
-                      <a
-                        href={item.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-                        aria-label="Open in tracker"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+            <OpenWorkList
+              items={openItems}
+              roster={roster}
+              currentMemberId={ctx.member.id}
+              emptyLabel="No open work tagged to this team"
+            />
           </Panel>
         </div>
       </div>

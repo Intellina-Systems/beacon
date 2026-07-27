@@ -165,7 +165,9 @@ export function KnowledgeForm() {
       <SheetContent className="flex flex-col gap-0 sm:max-w-md">
         <SheetHeader className="border-b">
           <SheetTitle>Add source</SheetTitle>
-          <SheetDescription>Paste a note, upload a doc, or add a URL — it&rsquo;s parsed into signals.</SheetDescription>
+          <SheetDescription>
+            Paste a note, upload a doc, or add a URL — it&rsquo;s parsed into signals.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 space-y-4 overflow-y-auto p-4">

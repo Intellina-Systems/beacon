@@ -3,15 +3,22 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Plus, Settings2, Trash2 } from 'lucide-react'
+import { ChevronRight, Crown, Plus, Settings2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Panel, PanelHeader } from '@/components/page-shell'
+import { MemberPicker } from '@/components/org/member-picker'
 
 export interface OrgUnit {
   id: string
@@ -25,6 +32,7 @@ export interface OrgUnit {
 export interface RosterOption {
   id: string
   name: string
+  avatarUrl?: string | null
 }
 
 function initials(name: string): string {
@@ -150,14 +158,31 @@ function ManageUnitDialog({
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState(unit.name)
   const [description, setDescription] = useState(unit.description ?? '')
-  const [ownerMemberId, setOwnerMemberId] = useState(unit.ownerMemberId ?? '')
-  const [memberIds, setMemberIds] = useState<Set<string>>(new Set(unit.members.map((m) => m.id)))
+  // memberId -> isLead. The lead lives in a separate column server-side, but
+  // in the UI it's just the one chip with its crown lit — selecting a new
+  // lead below un-lights the previous one, same interaction as the team
+  // dialog's multi-lead toggle, just constrained to one at a time.
+  const [selection, setSelection] = useState<Map<string, boolean>>(() => {
+    const map = new Map(unit.members.map((m) => [m.id, false]))
+    if (unit.ownerMemberId) map.set(unit.ownerMemberId, true)
+    return map
+  })
 
   function toggleMember(id: string) {
-    setMemberIds((prev) => {
-      const next = new Set(prev)
+    setSelection((prev) => {
+      const next = new Map(prev)
       if (next.has(id)) next.delete(id)
-      else next.add(id)
+      else next.set(id, false)
+      return next
+    })
+  }
+
+  function toggleLead(id: string) {
+    setSelection((prev) => {
+      const wasLead = prev.get(id) ?? false
+      const next = new Map(prev)
+      for (const key of next.keys()) next.set(key, false)
+      if (!wasLead) next.set(id, true)
       return next
     })
   }
@@ -167,7 +192,8 @@ function ManageUnitDialog({
     try {
       const requests: Promise<Response>[] = []
 
-      const ownerChanged = isWorkspaceAdmin && ownerMemberId !== (unit.ownerMemberId ?? '')
+      const newOwnerMemberId = [...selection.entries()].find(([, isLead]) => isLead)?.[0] ?? ''
+      const ownerChanged = isWorkspaceAdmin && newOwnerMemberId !== (unit.ownerMemberId ?? '')
       if (name.trim() !== unit.name || description.trim() !== (unit.description ?? '') || ownerChanged) {
         requests.push(
           fetch(`${apiBase}/${unit.id}`, {
@@ -176,14 +202,14 @@ function ManageUnitDialog({
             body: JSON.stringify({
               name: name.trim(),
               description: description.trim() || null,
-              ...(ownerChanged ? { ownerMemberId: ownerMemberId || null } : {}),
+              ...(ownerChanged ? { ownerMemberId: newOwnerMemberId || null } : {}),
             }),
           }),
         )
       }
 
       const beforeMembers = new Set(unit.members.map((m) => m.id))
-      for (const id of memberIds) {
+      for (const id of selection.keys()) {
         if (!beforeMembers.has(id)) {
           requests.push(
             fetch(`${apiBase}/${unit.id}/members`, {
@@ -195,7 +221,7 @@ function ManageUnitDialog({
         }
       }
       for (const id of beforeMembers) {
-        if (!memberIds.has(id)) {
+        if (!selection.has(id)) {
           requests.push(fetch(`${apiBase}/${unit.id}/members?memberId=${id}`, { method: 'DELETE' }))
         }
       }
@@ -225,67 +251,40 @@ function ManageUnitDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Manage {unit.name}</DialogTitle>
+          <DialogDescription>Update its details, lead, and roster.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Lead</Label>
-            <Select
-              value={ownerMemberId || 'none'}
-              onValueChange={(v) => setOwnerMemberId(v === 'none' ? '' : v)}
-              disabled={!isWorkspaceAdmin}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No lead yet</SelectItem>
-                {roster.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!isWorkspaceAdmin && (
-              <p className="text-xs text-muted-foreground">Only an admin can change who leads this.</p>
-            )}
+
+        <div className="-mx-1 flex-1 space-y-6 overflow-y-auto px-1 py-1">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label>Members</Label>
-            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-1.5">
-              {roster.length === 0 && (
-                <p className="px-1.5 py-1 text-xs text-muted-foreground">No members on the roster yet.</p>
-              )}
-              {roster.map((member) => (
-                <label
-                  key={member.id}
-                  htmlFor={`unit-member-${member.id}`}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-accent/40"
-                >
-                  <Checkbox
-                    id={`unit-member-${member.id}`}
-                    checked={memberIds.has(member.id)}
-                    onCheckedChange={() => toggleMember(member.id)}
-                  />
-                  <span className="text-sm">{member.name}</span>
-                </label>
-              ))}
-            </div>
+            <MemberPicker
+              roster={roster}
+              selection={selection}
+              onToggleMember={toggleMember}
+              onToggleLead={toggleLead}
+              canEditLead={isWorkspaceAdmin}
+              leadLabel="lead"
+            />
+            {!isWorkspaceAdmin && (
+              <p className="text-xs text-muted-foreground">Only an admin can change who leads this (crown icon).</p>
+            )}
           </div>
         </div>
-        <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+
+        <DialogFooter className="flex items-center justify-between gap-2 border-t pt-4 sm:justify-between">
           {isWorkspaceAdmin ? (
             <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={handleDelete}>
               <Trash2 className="mr-1 h-3.5 w-3.5" />
@@ -319,61 +318,72 @@ function UnitCard({
   canManage: boolean
   onManage: () => void
 }) {
+  // The lead is tracked on the unit itself, not the members list, so they may
+  // not be a member — merge them in as the first avatar (matching the team
+  // card, where the lead is always part of the members list already).
+  const displayMembers = unit.ownerMemberId
+    ? [
+        {
+          id: unit.ownerMemberId,
+          name: unit.ownerName ?? '',
+          avatarUrl: unit.members.find((m) => m.id === unit.ownerMemberId)?.avatarUrl ?? null,
+          isLead: true,
+        },
+        ...unit.members.filter((m) => m.id !== unit.ownerMemberId).map((m) => ({ ...m, isLead: false })),
+      ]
+    : unit.members.map((m) => ({ ...m, isLead: false }))
+
   return (
     <div className="group relative rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-beacon/40 hover:bg-accent/30">
       <Link href={href} className="absolute inset-0 z-0 rounded-lg" aria-label={`View ${unit.name}`} />
 
-      <div className="relative flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{unit.name}</p>
-          {unit.description && <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{unit.description}</p>}
+      <div className="pointer-events-none relative z-10">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{unit.name}</p>
+            {unit.description && (
+              <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{unit.description}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {canManage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="pointer-events-auto h-6 w-6 shrink-0 p-0 text-muted-foreground"
+                onClick={onManage}
+                aria-label={`Manage ${unit.name}`}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {canManage && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="relative z-10 h-6 w-6 shrink-0 p-0 text-muted-foreground"
-              onClick={onManage}
-              aria-label={`Manage ${unit.name}`}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
-        </div>
-      </div>
 
-      <div className="relative mt-3 flex items-center gap-2">
-        {unit.ownerName ? (
-          <span className="flex items-center gap-1.5" title={`${unit.ownerName} (lead)`}>
-            <Avatar className="h-6 w-6 border">
-              <AvatarFallback className="text-[9px] font-medium">{initials(unit.ownerName)}</AvatarFallback>
-            </Avatar>
-            <span className="text-xs text-muted-foreground">{unit.ownerName}</span>
-          </span>
+        {displayMembers.length > 0 ? (
+          <div className="mt-3 flex items-center gap-1.5">
+            <div className="flex -space-x-1.5">
+              {displayMembers.slice(0, 6).map((m) => (
+                <span key={m.id} className="relative inline-flex" title={m.name + (m.isLead ? ' (lead)' : '')}>
+                  <Avatar className="h-6 w-6 border bg-background">
+                    <AvatarImage src={m.avatarUrl ?? undefined} alt="" />
+                    <AvatarFallback className="text-[9px] font-medium">{initials(m.name)}</AvatarFallback>
+                  </Avatar>
+                  {m.isLead && (
+                    <Crown className="absolute -right-0.5 -top-1 h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />
+                  )}
+                </span>
+              ))}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {displayMembers.length} member{displayMembers.length === 1 ? '' : 's'}
+            </span>
+          </div>
         ) : (
-          <span className="text-xs text-muted-foreground/60">no lead yet</span>
+          <span className="mt-3 block text-xs text-muted-foreground/60">no members yet</span>
         )}
       </div>
-
-      {unit.members.length > 0 && (
-        <div className="relative mt-2 flex items-center gap-1.5">
-          <div className="flex -space-x-1.5">
-            {unit.members.slice(0, 6).map((m) => (
-              <span key={m.id} className="relative inline-flex" title={m.name}>
-                <Avatar className="h-6 w-6 border bg-background">
-                  <AvatarImage src={m.avatarUrl ?? undefined} alt="" />
-                  <AvatarFallback className="text-[9px] font-medium">{initials(m.name)}</AvatarFallback>
-                </Avatar>
-              </span>
-            ))}
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {unit.members.length} member{unit.members.length === 1 ? '' : 's'}
-          </span>
-        </div>
-      )}
     </div>
   )
 }

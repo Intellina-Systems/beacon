@@ -7,13 +7,19 @@ import { ChevronRight, Crown, Plus, Settings2, Trash2 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Panel, PanelHeader } from '@/components/page-shell'
-import { cn } from '@/lib/utils'
+import { MemberPicker } from '@/components/org/member-picker'
 
 export interface TeamWithMembers {
   id: string
@@ -197,48 +203,23 @@ function ManageTeamDialog({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Manage {team.name}</DialogTitle>
+          <DialogDescription>Update its roster and leads.</DialogDescription>
         </DialogHeader>
-        <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-          {roster.length === 0 && <p className="text-sm text-muted-foreground">No members on the roster yet.</p>}
-          {roster.map((member) => {
-            const onTeam = selection.has(member.id)
-            const isLead = selection.get(member.id) ?? false
-            return (
-              <div key={member.id} className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-accent/40">
-                <Checkbox id={`tm-${member.id}`} checked={onTeam} onCheckedChange={() => toggleMember(member.id)} />
-                <label htmlFor={`tm-${member.id}`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                  <Avatar className="h-6 w-6 border">
-                    <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
-                    <AvatarFallback className="text-[9px] font-medium">{initials(member.name)}</AvatarFallback>
-                  </Avatar>
-                  <span className="truncate text-sm">{member.name}</span>
-                </label>
-                {onTeam && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleLead(member.id)}
-                    title={isLead ? 'Remove lead' : 'Make lead'}
-                    className={cn(
-                      'h-auto gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium',
-                      isLead
-                        ? 'border-beacon/40 bg-beacon/10 text-beacon hover:bg-beacon/10'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    <Crown className="h-3 w-3" />
-                    Lead
-                  </Button>
-                )}
-              </div>
-            )
-          })}
+
+        <div className="-mx-1 flex-1 overflow-y-auto px-1 py-1">
+          <MemberPicker
+            roster={roster}
+            selection={selection}
+            onToggleMember={toggleMember}
+            onToggleLead={toggleLead}
+            leadLabel="lead"
+          />
         </div>
-        <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
+
+        <DialogFooter className="flex items-center justify-between gap-2 border-t pt-4 sm:justify-between">
           <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={handleDeleteTeam}>
             <Trash2 className="mr-1 h-3.5 w-3.5" />
             Delete team
@@ -306,60 +287,64 @@ export function TeamsSection({
                 aria-label={`View ${team.name}`}
               />
 
-              <div className="relative flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{team.name}</p>
-                  {team.description && (
-                    <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{team.description}</p>
+              <div className="pointer-events-none relative z-10">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{team.name}</p>
+                    {team.description && (
+                      <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{team.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {team.kind === 'non_technical' && (
+                      <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                        non-tech
+                      </Badge>
+                    )}
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="pointer-events-auto h-6 w-6 p-0 text-muted-foreground"
+                        onClick={() => setManaging(team)}
+                        aria-label={`Manage ${team.name}`}
+                      >
+                        <Settings2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-1.5">
+                  {team.members.length === 0 ? (
+                    <span className="text-xs text-muted-foreground/60">no members</span>
+                  ) : (
+                    <>
+                      <div className="flex -space-x-1.5">
+                        {team.members.slice(0, 6).map((member) => (
+                          <span
+                            key={member.id}
+                            className="relative inline-flex"
+                            title={member.name + (member.isLead ? ' (lead)' : '')}
+                          >
+                            <Avatar className="h-6 w-6 border bg-background">
+                              <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
+                              <AvatarFallback className="text-[9px] font-medium">
+                                {initials(member.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.isLead && (
+                              <Crown className="absolute -right-0.5 -top-1 h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {team.members.length} member{team.members.length === 1 ? '' : 's'}
+                      </span>
+                    </>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  {team.kind === 'non_technical' && (
-                    <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                      non-tech
-                    </Badge>
-                  )}
-                  {canManage && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="relative z-10 h-6 w-6 p-0 text-muted-foreground"
-                      onClick={() => setManaging(team)}
-                      aria-label={`Manage ${team.name}`}
-                    >
-                      <Settings2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
-                </div>
-              </div>
-              <div className="relative mt-3 flex items-center gap-1.5">
-                {team.members.length === 0 ? (
-                  <span className="text-xs text-muted-foreground/60">no members</span>
-                ) : (
-                  <>
-                    <div className="flex -space-x-1.5">
-                      {team.members.slice(0, 6).map((member) => (
-                        <span
-                          key={member.id}
-                          className="relative inline-flex"
-                          title={member.name + (member.isLead ? ' (lead)' : '')}
-                        >
-                          <Avatar className="h-6 w-6 border bg-background">
-                            <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
-                            <AvatarFallback className="text-[9px] font-medium">{initials(member.name)}</AvatarFallback>
-                          </Avatar>
-                          {member.isLead && (
-                            <Crown className="absolute -right-0.5 -top-1 h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {team.members.length} member{team.members.length === 1 ? '' : 's'}
-                    </span>
-                  </>
-                )}
               </div>
             </div>
           ))}
