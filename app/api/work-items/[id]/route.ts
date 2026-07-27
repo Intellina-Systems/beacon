@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { type NextRequest } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db/client'
-import { cycles, members, workItems, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
+import { cycles, members, projects, workItems, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
 import { listEvents } from '@/lib/events/queries'
@@ -18,6 +18,7 @@ const patchSchema = z
     status: z.enum(WORK_ITEM_STATUSES).optional(),
     priority: z.number().int().min(0).max(4).optional(),
     assigneeMemberId: z.string().nullable().optional(),
+    projectId: z.string().optional(),
     parentId: z.string().nullable().optional(),
     labels: z.array(z.string()).max(20).nullable().optional(),
     dueDate: z.coerce.date().nullable().optional(),
@@ -106,7 +107,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const statusChanged = fields.status !== undefined && fields.status !== existing.status
   const assigneeChanged = fields.assigneeMemberId !== undefined && fields.assigneeMemberId !== existing.assigneeMemberId
   const estimateChanged = fields.estimate !== undefined && fields.estimate !== existing.estimate
-  const cycleChanged = fields.cycleId !== undefined && fields.cycleId !== existing.cycleId
+  const projectChanged = fields.projectId !== undefined && fields.projectId !== existing.projectId
 
   // Validate the new assignee belongs to this workspace
   let newAssignee: { id: string; name: string } | null = null
@@ -120,6 +121,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     newAssignee = row
   }
 
+  let newProject: { id: string; name: string } | null = null
+  if (projectChanged) {
+    const [row] = await db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(and(eq(projects.id, fields.projectId!), eq(projects.workspaceId, ctx.workspaceId)))
+      .limit(1)
+    if (!row) return Response.json({ error: 'Project not found in this workspace' }, { status: 400 })
+    newProject = row
+    // A cycle only ever holds items from its own project — moving projects
+    // without an explicit cycle drops the now-mismatched one.
+    if (fields.cycleId === undefined && existing.cycleId) fields.cycleId = null
+  }
+
+  const cycleChanged = fields.cycleId !== undefined && fields.cycleId !== existing.cycleId
+
   // A cycle only ever holds items from its own project
   let newCycle: { id: string; number: number } | null = null
   if (cycleChanged && fields.cycleId) {
@@ -130,7 +147,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         and(
           eq(cycles.id, fields.cycleId),
           eq(cycles.workspaceId, ctx.workspaceId),
-          eq(cycles.projectId, existing.projectId),
+          eq(cycles.projectId, newProject?.id ?? existing.projectId),
         ),
       )
       .limit(1)
@@ -202,6 +219,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       task: id,
       engineer: ctx.member.name,
       payload: { field: 'estimate', estimate: fields.estimate ?? null, previousEstimate: existing.estimate },
+    })
+  }
+  if (projectChanged && newProject) {
+    eventsToEmit.push({
+      type: 'task.updated',
+      source: 'manual',
+      summary: `${label} moved to project ${newProject.name} by ${ctx.member.name}`,
+      task: id,
+      engineer: ctx.member.name,
+      payload: { field: 'projectId', projectId: newProject.id, previousProjectId: existing.projectId },
     })
   }
   if (cycleChanged) {

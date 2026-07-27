@@ -23,12 +23,15 @@ import { BulkImportDialog } from '@/components/work-items/bulk-import-dialog'
 import { ManageTemplatesDialog } from '@/components/work-items/manage-templates-dialog'
 import { AssigneeFilter } from '@/components/work-items/assignee-filter'
 import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
+import { StatusFilter } from '@/components/work-items/status-filter'
 import { WorkItemsTable } from '@/components/work-items/work-items-table'
 import { BoardView } from '@/components/work-items/board-view'
+import { BoardColumnsProvider } from '@/components/work-items/board-columns-context'
+import { BoardColumnsButton } from '@/components/work-items/board-columns-button'
 import { SavedViewsBar } from '@/components/work-items/saved-views-bar'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
-import { COMPLETED_STATUSES, OPEN_STATUSES, STATUS_META, STATUS_TAB_ORDER } from '@/lib/work-items/constants'
+import { COMPLETED_STATUSES, OPEN_STATUSES, STATUS_META } from '@/lib/work-items/constants'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -166,6 +169,8 @@ export default async function WorkPage({
         title: workItems.title,
         status: workItems.status,
         priority: workItems.priority,
+        projectId: workItems.projectId,
+        assigneeMemberId: workItems.assigneeMemberId,
         assigneeName: members.name,
         projectName: projects.name,
         engineName: engines.name,
@@ -232,6 +237,7 @@ export default async function WorkPage({
     <PageShell
       title="Work"
       description="Status derived from the event stream — never hand-updated"
+      fixed
       actions={
         <>
           <ManageTemplatesDialog />
@@ -241,173 +247,145 @@ export default async function WorkPage({
         </>
       }
     >
-      <div className="mx-auto w-full max-w-6xl px-4 py-5 lg:px-6">
-        {projectList.length > 1 && (
-          <div className="mb-3 flex flex-wrap gap-1.5">
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+          {projectList.length > 1 && (
+            <OrgTagFilter
+              options={projectList}
+              current={project}
+              paramName="project"
+              allLabel="All projects"
+              className="w-40"
+            />
+          )}
+
+          <div className="flex h-7 items-center divide-x overflow-hidden rounded-md border text-xs font-medium">
             <Link
-              href={workHref({ ...filter, project: undefined }, 1)}
+              href={workHref({ ...filter, statuses: new Set() }, 1)}
               className={cn(
-                'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-                !project
-                  ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                  : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
+                'flex h-full items-center px-2.5 transition-colors',
+                statuses.size === 0
+                  ? 'bg-beacon/10 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
               )}
             >
-              All projects
+              All <span className="ml-1 tabular-nums opacity-70">{totalAll}</span>
             </Link>
-            {projectList.map((p) => (
-              <Link
-                key={p.id}
-                href={workHref({ ...filter, project: p.id }, 1)}
-                className={cn(
-                  'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-                  project === p.id
-                    ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                    : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
-                )}
-              >
-                {p.name}
-              </Link>
-            ))}
+            <Link
+              href={workHref({ ...filter, statuses: new Set(OPEN_STATUSES) }, 1)}
+              className={cn(
+                'flex h-full items-center px-2.5 transition-colors',
+                sameSet(statuses, OPEN_STATUSES)
+                  ? 'bg-beacon/10 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >
+              Open
+            </Link>
+            <Link
+              href={workHref({ ...filter, statuses: new Set(COMPLETED_STATUSES) }, 1)}
+              className={cn(
+                'flex h-full items-center px-2.5 transition-colors',
+                sameSet(statuses, COMPLETED_STATUSES)
+                  ? 'bg-beacon/10 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
+            >
+              Completed
+            </Link>
           </div>
-        )}
 
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <Link
-            href={workHref({ ...filter, statuses: new Set() }, 1)}
-            className={cn(
-              'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-              statuses.size === 0
-                ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
+          <StatusFilter current={statuses} counts={countByStatus} />
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {roster.length > 0 && <AssigneeFilter roster={roster} current={assignee} />}
+            {engineOptions.length > 0 && (
+              <OrgTagFilter options={engineOptions} current={engine} paramName="engine" allLabel="Any engine" />
             )}
-          >
-            All <span className="tabular-nums opacity-70">{totalAll}</span>
-          </Link>
-          <Link
-            href={workHref({ ...filter, statuses: new Set(OPEN_STATUSES) }, 1)}
-            className={cn(
-              'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-              sameSet(statuses, OPEN_STATUSES)
-                ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
+            {teamOptions.length > 0 && (
+              <OrgTagFilter options={teamOptions} current={orgTeam} paramName="team" allLabel="Any team" />
             )}
-          >
-            Open
-          </Link>
-          <Link
-            href={workHref({ ...filter, statuses: new Set(COMPLETED_STATUSES) }, 1)}
-            className={cn(
-              'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-              sameSet(statuses, COMPLETED_STATUSES)
-                ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
-            )}
-          >
-            Completed
-          </Link>
-          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-          {STATUS_TAB_ORDER.map((s) => {
-            const c = countByStatus.get(s) ?? 0
-            if (c === 0 && !statuses.has(s)) return null
-            const active = statuses.has(s)
-            const nextStatuses = new Set(statuses)
-            if (active) nextStatuses.delete(s)
-            else nextStatuses.add(s)
-            return (
+            <div className="flex h-7 items-center divide-x overflow-hidden rounded-md border">
               <Link
-                key={s}
-                href={workHref({ ...filter, statuses: nextStatuses }, 1)}
+                href={workHref({ ...filter, layout: 'list' }, 1)}
+                title="List view"
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-                  active
-                    ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                    : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
+                  'flex h-full w-7 items-center justify-center transition-colors',
+                  layout === 'list'
+                    ? 'bg-beacon/10 text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                 )}
-                title={active ? `Remove ${STATUS_META[s].label} from filter` : `Add ${STATUS_META[s].label} to filter`}
               >
-                <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[s].tone)} />
-                {STATUS_META[s].label} <span className="tabular-nums opacity-70">{c}</span>
+                <List className="h-3.5 w-3.5" />
               </Link>
-            )
-          })}
-          {roster.length > 0 && (
-            <>
-              <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-              <AssigneeFilter roster={roster} current={assignee} />
-            </>
-          )}
-          {engineOptions.length > 0 && (
-            <OrgTagFilter options={engineOptions} current={engine} paramName="engine" allLabel="Any engine" />
-          )}
-          {teamOptions.length > 0 && (
-            <OrgTagFilter options={teamOptions} current={orgTeam} paramName="team" allLabel="Any team" />
-          )}
-          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-          <Link
-            href={workHref({ ...filter, layout: 'list' }, 1)}
-            title="List view"
-            className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
-              layout === 'list'
-                ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
-            )}
-          >
-            <List className="h-3.5 w-3.5" />
-          </Link>
-          <Link
-            href={workHref({ ...filter, layout: 'board' }, 1)}
-            title="Board view"
-            className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-md border transition-colors',
-              layout === 'board'
-                ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
-            )}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" />
-          </Link>
+              <Link
+                href={workHref({ ...filter, layout: 'board' }, 1)}
+                title="Board view"
+                className={cn(
+                  'flex h-full w-7 items-center justify-center transition-colors',
+                  layout === 'board'
+                    ? 'bg-beacon/10 text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </div>
         </div>
 
-        <div className="mb-3">
-          <SavedViewsBar
-            views={savedViews}
-            activeViewId={activeView?.id ?? null}
-            currentFilters={currentFilterPayload}
-            currentLayout={layout}
-            currentMemberId={ctx.member.id}
-            canDeleteAny={isAdmin(ctx)}
-          />
-        </div>
+        <BoardColumnsProvider>
+          <div className="mb-3 flex shrink-0 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SavedViewsBar
+                views={savedViews}
+                activeViewId={activeView?.id ?? null}
+                currentFilters={currentFilterPayload}
+                currentLayout={layout}
+                currentMemberId={ctx.member.id}
+                canDeleteAny={isAdmin(ctx)}
+              />
+            </div>
+            {layout === 'board' && <BoardColumnsButton />}
+          </div>
 
-        {rows.length === 0 ? (
-          <div className="flex rounded-lg border border-dashed">
-            <EmptyState
-              title={emptyTitle}
-              hint={
-                <>
-                  Create one with the <span className="font-medium">Create</span> button above, add a signal source in{' '}
-                  <Link href="/integrations" className="underline underline-offset-2">
-                    Integrations
-                  </Link>
-                  , or POST to <code className="font-mono">/api/work-items</code>.
-                </>
-              }
+          {rows.length === 0 ? (
+            <div className="flex flex-1 rounded-lg border border-dashed">
+              <EmptyState
+                title={emptyTitle}
+                hint={
+                  <>
+                    Create one with the <span className="font-medium">Create</span> button above, add a signal source
+                    in{' '}
+                    <Link href="/integrations" className="underline underline-offset-2">
+                      Integrations
+                    </Link>
+                    , or POST to <code className="font-mono">/api/work-items</code>.
+                  </>
+                }
+              />
+            </div>
+          ) : layout === 'board' ? (
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <BoardView rows={rows} roster={fullRoster} currentMemberId={ctx.member.id} />
+            </div>
+          ) : (
+            <WorkItemsTable
+              rows={rows}
+              roster={fullRoster}
+              projects={projectList}
+              currentMemberId={ctx.member.id}
+              isTriageView={isTriageView}
             />
-          </div>
-        ) : layout === 'board' ? (
-          <BoardView rows={rows} roster={fullRoster} currentMemberId={ctx.member.id} />
-        ) : (
-          <WorkItemsTable rows={rows} roster={fullRoster} currentMemberId={ctx.member.id} isTriageView={isTriageView} />
-        )}
+          )}
+        </BoardColumnsProvider>
 
         <Pagination
           page={page}
           pageCount={pageCount}
           total={total}
           hrefFor={(p) => workHref(filter, p)}
-          className="mt-2"
+          className="mt-2 shrink-0"
         />
       </div>
     </PageShell>

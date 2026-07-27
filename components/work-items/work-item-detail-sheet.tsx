@@ -48,6 +48,7 @@ interface ItemDetail {
   estimate: number | null
   snoozedUntil: string | null
   externalUrl: string | null
+  projectId: string
   engineId: string | null
   teamId: string | null
 }
@@ -96,6 +97,7 @@ export function WorkItemDetailSheet({
   const [watchers, setWatchers] = useState<WatcherEntry[]>([])
   const [engineOptions, setEngineOptions] = useState<RosterOption[]>([])
   const [teamOptions, setTeamOptions] = useState<RosterOption[]>([])
+  const [projectOptions, setProjectOptions] = useState<RosterOption[]>([])
   const [loading, setLoading] = useState(false)
   const [editingDesc, setEditingDesc] = useState(false)
   const [descriptionDraft, setDescriptionDraft] = useState('')
@@ -107,12 +109,13 @@ export function WorkItemDetailSheet({
     if (!itemId) return
     setLoading(true)
     try {
-      const [itemRes, relationsRes, watchersRes, engineRes, teamRes] = await Promise.all([
+      const [itemRes, relationsRes, watchersRes, engineRes, teamRes, projectRes] = await Promise.all([
         fetch(`/api/work-items/${itemId}`),
         fetch(`/api/work-items/${itemId}/relations`),
         fetch(`/api/work-items/${itemId}/watchers`),
         fetch('/api/engines'),
         fetch('/api/teams'),
+        fetch('/api/projects'),
       ])
       if (!itemRes.ok) {
         toast.error('Failed to load work item')
@@ -124,6 +127,7 @@ export function WorkItemDetailSheet({
       const watchersData = await watchersRes.json()
       const engineData = await engineRes.json().catch(() => ({}))
       const teamData = await teamRes.json().catch(() => ({}))
+      const projectData = await projectRes.json().catch(() => ({}))
       setItem(itemData.item)
       setEvents(itemData.events ?? [])
       setDescriptionDraft(itemData.item.description ?? '')
@@ -134,6 +138,9 @@ export function WorkItemDetailSheet({
         (engineData.engines ?? []).map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })),
       )
       setTeamOptions((teamData.teams ?? []).map((f: { id: string; name: string }) => ({ id: f.id, name: f.name })))
+      setProjectOptions(
+        (projectData.projects ?? []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name })),
+      )
     } finally {
       setLoading(false)
     }
@@ -566,6 +573,24 @@ export function WorkItemDetailSheet({
                     </SelectContent>
                   </Select>
                 </div>
+
+                {projectOptions.length > 1 && (
+                  <div className="space-y-1.5">
+                    <Label className="micro-label">Project</Label>
+                    <Select value={item.projectId} onValueChange={(v) => patch({ projectId: v })}>
+                      <SelectTrigger className="h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projectOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {engineOptions.length > 0 && (
                   <div className="space-y-1.5">

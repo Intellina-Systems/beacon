@@ -124,6 +124,7 @@ export default async function CyclesPage({
             title: workItems.title,
             status: workItems.status,
             priority: workItems.priority,
+            projectId: workItems.projectId,
             assigneeName: members.name,
             projectName: projects.name,
             externalUrl: workItems.externalUrl,
@@ -269,7 +270,13 @@ export default async function CyclesPage({
                       />
                     </div>
                   ) : (
-                    <WorkItemsTable rows={items} roster={roster} currentMemberId={ctx.member.id} isTriageView={false} />
+                    <WorkItemsTable
+                      rows={items}
+                      roster={roster}
+                      projects={projectList}
+                      currentMemberId={ctx.member.id}
+                      isTriageView={false}
+                    />
                   )}
                 </>
               )}

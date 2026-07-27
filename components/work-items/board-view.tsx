@@ -6,13 +6,10 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { STATUS_META } from '@/lib/work-items/constants'
 import { Badge } from '@/components/ui/badge'
+import { BOARD_STATUSES, useBoardColumns } from './board-columns-context'
 import { WorkItemDetailSheet } from './work-item-detail-sheet'
 import type { WorkItemRow } from './work-items-table'
 import type { WorkItemStatus } from '@/lib/db/schema'
-
-// Triage is a separate queue (see /work?status=triage) and cancelled items
-// are noise on a planning board — both are left off the columns.
-const BOARD_STATUSES: WorkItemStatus[] = ['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done']
 
 interface RosterOption {
   id: string
@@ -34,6 +31,7 @@ export function BoardView({
   const [clickedId, setClickedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<WorkItemStatus | null>(null)
+  const { hiddenColumns } = useBoardColumns()
 
   // Deep-link: /work?item=<id> opens that item's detail sheet (derived, no effect).
   const itemParam = searchParams.get('item')
@@ -44,7 +42,7 @@ export function BoardView({
   // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors rows after router.refresh(), not derivable from render
   useEffect(() => setLocalRows(rows), [rows])
 
-  const columns = BOARD_STATUSES.map((status) => ({
+  const columns = BOARD_STATUSES.filter((status) => !hiddenColumns.has(status)).map((status) => ({
     status,
     items: localRows.filter((r) => r.status === status),
   }))
@@ -84,7 +82,7 @@ export function BoardView({
 
   return (
     <>
-      <div className="flex gap-3 overflow-x-auto pb-2">
+      <div className="flex h-full gap-3 overflow-x-auto pb-2">
         {columns.map((col) => (
           <div
             key={col.status}
@@ -99,16 +97,16 @@ export function BoardView({
               setDragOverStatus(null)
             }}
             className={cn(
-              'flex w-64 shrink-0 flex-col rounded-lg border bg-card transition-all duration-200',
+              'flex h-full w-64 shrink-0 flex-col rounded-lg border bg-card transition-all duration-200',
               dragOverStatus === col.status && 'border-beacon/40 bg-beacon/[0.04] ring-2 ring-beacon/40',
             )}
           >
-            <div className="flex items-center gap-1.5 border-b px-3 py-2">
+            <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
               <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[col.status].tone)} />
               <p className="text-xs font-medium">{STATUS_META[col.status].label}</p>
               <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{col.items.length}</span>
             </div>
-            <div className="min-h-16 flex-1 space-y-1.5 p-1.5">
+            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
               {col.items.map((item) => (
                 <div
                   key={item.id}
@@ -155,6 +153,11 @@ export function BoardView({
             </div>
           </div>
         ))}
+        {columns.length === 0 && (
+          <p className="px-1.5 py-6 text-center text-xs text-muted-foreground">
+            All columns are hidden — use Columns above to bring one back.
+          </p>
+        )}
       </div>
 
       <WorkItemDetailSheet

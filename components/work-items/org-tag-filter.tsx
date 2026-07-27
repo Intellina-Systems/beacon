@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
+import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Option {
@@ -9,9 +10,9 @@ interface Option {
 }
 
 /**
- * Generic Engine/Function filter — same URL-driven navigation pattern as
- * AssigneeFilter, parameterized so one component covers both dimensions
- * instead of duplicating near-identical selects.
+ * Generic Project/Engine/Function filter — same URL-driven navigation pattern
+ * as AssigneeFilter, parameterized so one component covers all three
+ * dimensions instead of duplicating near-identical selects.
  */
 export function OrgTagFilter({
   options,
@@ -19,12 +20,14 @@ export function OrgTagFilter({
   paramName,
   allLabel,
   basePath = '/work',
+  className,
 }: {
   options: Option[]
   current: string | undefined
-  paramName: 'engine' | 'team'
+  paramName: 'project' | 'engine' | 'team'
   allLabel: string
   basePath?: string
+  className?: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -40,7 +43,7 @@ export function OrgTagFilter({
 
   return (
     <Select value={current ?? 'all'} onValueChange={apply}>
-      <SelectTrigger size="sm" className="h-7 w-36 text-xs">
+      <SelectTrigger size="sm" className={cn('h-7 w-36 text-xs', className)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
