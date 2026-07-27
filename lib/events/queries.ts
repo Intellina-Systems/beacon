@@ -45,6 +45,19 @@ export async function countEvents(workspaceId: string, filters: EventFilters = {
   return row?.value ?? 0
 }
 
+// Per-source counts for the timeline filter bar — ignores `filters.source` so
+// every pill can show its own total regardless of which one is selected.
+export async function countEventsBySource(
+  workspaceId: string,
+  filters: Omit<EventFilters, 'source'> = {},
+): Promise<{ source: Event['source']; count: number }[]> {
+  return db
+    .select({ source: events.source, count: count() })
+    .from(events)
+    .where(and(...eventConditions(workspaceId, filters)))
+    .groupBy(events.source)
+}
+
 export async function listEvents(workspaceId: string, filters: EventFilters = {}) {
   const conditions = eventConditions(workspaceId, filters)
 
