@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -14,11 +14,9 @@ import {
   LayoutDashboard,
   ListTodo,
   Menu,
-  Moon,
   Network,
   RefreshCw,
   Sparkles,
-  Sun,
   Users,
   Workflow,
   X,
@@ -29,7 +27,6 @@ import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-d
 import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useTheme } from 'next-themes'
 import type { Session } from '@/lib/session/types'
 
 type Role = 'admin' | 'manager' | 'engineer'
@@ -65,29 +62,6 @@ const navSections = [
     ],
   },
 ]
-
-function ThemeCycleButton() {
-  const { resolvedTheme, setTheme } = useTheme()
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  )
-
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className="h-8 w-8 p-0 text-sidebar-foreground/70 hover:text-sidebar-foreground"
-      onClick={() => mounted && setTheme(resolvedTheme === 'light' ? 'dark' : 'light')}
-      title="Toggle theme"
-      disabled={!mounted}
-      aria-label="Toggle theme"
-    >
-      {mounted ? resolvedTheme === 'dark' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" /> : null}
-    </Button>
-  )
-}
 
 function BeaconMark({ compact = false }: { compact?: boolean }) {
   return (
@@ -166,30 +140,33 @@ export function BeaconLayout({
 
       {workspace && (
         <div className="shrink-0 border-b border-sidebar-border px-4 py-3">
-          <p className="micro-label mb-1">Workspace</p>
-          <div className="flex items-center gap-1.5">
-            <WorkspaceSwitcher
-              currentWorkspaceId={workspace.id}
-              currentWorkspaceName={workspace.name}
-              memberships={workspace.memberships}
-            />
-            {role === 'admin' && <RenameWorkspaceDialog currentName={workspace.name} />}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-beacon">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <WorkspaceSwitcher
+                currentWorkspaceId={workspace.id}
+                currentWorkspaceName={workspace.name}
+                memberships={workspace.memberships}
+              />
+              {role === 'admin' && <RenameWorkspaceDialog currentName={workspace.name} />}
+            </div>
+            <span className="shrink-0 rounded-full bg-beacon/10 px-2 py-0.5 font-mono text-[10px] font-medium text-beacon">
               {ROLE_LABEL[role]}
             </span>
-            {workspace.teams.map((team) => (
-              <span
-                key={team.id}
-                className="inline-flex items-center gap-1 rounded border border-sidebar-border bg-sidebar-accent/40 px-1.5 py-0.5 font-mono text-[10px] text-sidebar-foreground/70"
-                title={team.isLead ? `${team.name} — you lead this team` : team.name}
-              >
-                {team.isLead && <Crown className="h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />}
-                {team.name}
-              </span>
-            ))}
           </div>
+          {workspace.teams.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {workspace.teams.map((team) => (
+                <span
+                  key={team.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-sidebar-accent/50 px-2 py-0.5 font-mono text-[10px] text-sidebar-foreground/65"
+                  title={team.isLead ? `${team.name} — you lead this team` : team.name}
+                >
+                  {team.isLead && <Crown className="h-2.5 w-2.5 text-beacon" strokeWidth={2.5} />}
+                  {team.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -207,7 +184,7 @@ export function BeaconLayout({
                     onClick={() => setMobileOpen(false)}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-200',
+                      'relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
                       active
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                         : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
@@ -234,15 +211,12 @@ export function BeaconLayout({
         ))}
       </nav>
 
-      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-sidebar-border px-3 py-3">
-        <div className="min-w-0 flex-1">
-          <User
-            user={session?.user ?? null}
-            authProvider={session?.authProvider ?? null}
-            githubConnection={githubConnection}
-          />
-        </div>
-        <ThemeCycleButton />
+      <div className="shrink-0 border-t border-sidebar-border p-2">
+        <User
+          user={session?.user ?? null}
+          authProvider={session?.authProvider ?? null}
+          githubConnection={githubConnection}
+        />
       </div>
     </div>
   )

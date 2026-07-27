@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { getEnabledAuthProviders } from '@/lib/auth/providers'
+import { ChevronsUpDown } from 'lucide-react'
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -57,23 +58,25 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full"
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 focus:outline-none focus:ring-2 focus:ring-sidebar-ring"
         >
-          <Avatar className="h-8 w-8">
+          <Avatar className="h-8 w-8 shrink-0">
             <AvatarImage src={user?.avatar ? `${user.avatar}&s=72` : undefined} alt={user.username} />
             <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-sidebar-foreground">
+              {user.name ?? user.username}
+            </span>
+            <span className="block truncate text-xs text-sidebar-foreground/55">
+              {user.email ?? `@${user.username}`}
+            </span>
+          </span>
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40" />
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-52">
-        <div className="px-2 py-2">
-          <div className="text-sm font-medium">{user.name ?? user.username}</div>
-          {user.email && <div className="text-xs text-muted-foreground">{user.email}</div>}
-        </div>
-
-        <DropdownMenuSeparator />
-
+      <DropdownMenuContent align="end" className="w-56">
         <ThemeToggle />
 
         {authProvider === 'vercel' && hasGitHub && (
