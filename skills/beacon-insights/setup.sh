@@ -28,28 +28,32 @@ case "$API_KEY" in
   *) echo "Warning: that doesn't look like a Beacon API key (should start with 'bcn_'). Continuing anyway." >&2 ;;
 esac
 
-# --- 1. Persistent env vars into the LOGIN shell's profile ---------------------
-# Pick the profile from $SHELL (the login shell), NOT from whatever interpreter
-# is running this script — running via `bash setup.sh` under zsh must still write
-# to ~/.zshrc.
-case "${SHELL:-}" in
-  */zsh) PROFILE="$HOME/.zshrc" ;;
-  */bash) PROFILE="$HOME/.bashrc" ;;
-  *) PROFILE="$HOME/.profile" ;;
-esac
+# --- 1. Persistent env vars into every shell profile this user might load ------
+# $SHELL is unreliable here: it reflects the login shell in the passwd database,
+# but running via `bash setup.sh` from an interactive zsh session can make a
+# nested shell see the wrong value (that's exactly what happened on at least one
+# machine: a zsh login shell, but $SHELL resolved to bash inside the script, so
+# the key landed in ~/.bashrc and a zsh session never sourced it). Rather than
+# guess which shell is authoritative, write to both common profiles — each guard
+# is idempotent, so this is safe to re-run regardless of which shell is active.
+write_env_block() {
+  local profile="$1"
+  mkdir -p "$(dirname "$profile")"
+  if [ -f "$profile" ] && grep -q "BEACON_API_KEY" "$profile" 2>/dev/null; then
+    echo "Env vars already present in $profile - skipped."
+  else
+    {
+      echo ""
+      echo "# Beacon insights (added by skills/beacon-insights/setup.sh)"
+      echo "export BEACON_API_KEY=\"$API_KEY\""
+      echo "export BEACON_URL=\"$BEACON_URL\""
+    } >> "$profile"
+    echo "Added env vars to $profile."
+  fi
+}
 
-mkdir -p "$(dirname "$PROFILE")"
-if [ -f "$PROFILE" ] && grep -q "BEACON_API_KEY" "$PROFILE" 2>/dev/null; then
-  echo "Env vars already present in $PROFILE - skipped."
-else
-  {
-    echo ""
-    echo "# Beacon insights (added by skills/beacon-insights/setup.sh)"
-    echo "export BEACON_API_KEY=\"$API_KEY\""
-    echo "export BEACON_URL=\"$BEACON_URL\""
-  } >> "$PROFILE"
-  echo "Added env vars to $PROFILE."
-fi
+write_env_block "$HOME/.zshrc"
+write_env_block "$HOME/.bashrc"
 
 # --- 2. Skill discovery links --------------------------------------------------
 skill_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
