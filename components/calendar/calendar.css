@@ -1,0 +1,79 @@
+/* FullCalendar reskinned onto Beacon's shadcn tokens (light + dark). */
+@reference '../../app/globals.css';
+
+.beacon-calendar {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--background);
+  --fc-neutral-bg-color: var(--muted);
+  --fc-today-bg-color: color-mix(in oklch, var(--beacon) 8%, transparent);
+  --fc-now-indicator-color: var(--destructive);
+  --fc-event-border-color: transparent;
+  --fc-list-event-hover-bg-color: var(--accent);
+  color: var(--foreground);
+}
+
+.beacon-calendar .fc-scrollgrid {
+  @apply rounded-lg border-none;
+}
+
+.beacon-calendar .fc-theme-standard th {
+  @apply border-r-0 border-t-0;
+}
+
+.beacon-calendar .fc-col-header-cell-cushion {
+  @apply text-muted-foreground py-2 text-xs font-medium;
+}
+
+.beacon-calendar .fc-daygrid-day-number {
+  @apply text-foreground text-sm;
+}
+
+.beacon-calendar td.fc-daygrid-day.fc-day:hover {
+  @apply bg-accent/40;
+}
+
+.beacon-calendar .fc-timegrid-slot-label-cushion {
+  @apply text-muted-foreground text-xs font-normal;
+}
+
+.beacon-calendar .fc-timegrid-axis-cushion {
+  @apply text-muted-foreground text-xs;
+}
+
+.beacon-calendar .fc-event {
+  @apply cursor-pointer rounded-md border-none;
+}
+
+.beacon-calendar .fc-daygrid-event {
+  @apply mx-1 rounded-md;
+}
+
+.beacon-calendar .fc-timegrid-event {
+  @apply rounded-md px-1 shadow-none;
+}
+
+.beacon-calendar .fc-daygrid-event-harness,
+.beacon-calendar .fc-timegrid-event-harness {
+  @apply transition-opacity;
+}
+
+.beacon-calendar .fc-daygrid-event-harness:hover,
+.beacon-calendar .fc-timegrid-event-harness:hover {
+  @apply opacity-90;
+}
+
+.beacon-calendar .fc-list-event:hover td {
+  @apply bg-accent/50;
+}
+
+.beacon-calendar .fc-list-day-cushion {
+  @apply bg-muted;
+}
+
+.beacon-calendar .fc-highlight {
+  @apply bg-beacon/15;
+}
+
+.beacon-calendar .fc-non-business {
+  @apply bg-transparent;
+}

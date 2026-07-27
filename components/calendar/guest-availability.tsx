@@ -63,14 +63,16 @@ export function GuestAvailability({
             <p className="text-xs text-muted-foreground">No free slots in the next two weeks.</p>
           ) : (
             slots.map((s) => (
-              <button
+              <Button
                 key={s.start}
                 type="button"
+                size="sm"
+                variant="outline"
+                className="h-auto rounded-full px-2.5 py-1 text-xs font-normal text-muted-foreground hover:border-beacon/40 hover:text-foreground"
                 onClick={() => onPick(s.start, s.end)}
-                className="rounded-full border px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-beacon/40 hover:text-foreground"
               >
                 {DateTime.fromISO(s.start).setZone(timezone).toFormat('ccc d LLL, HH:mm')}
-              </button>
+              </Button>
             ))
           )}
         </div>

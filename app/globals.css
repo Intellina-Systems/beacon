@@ -63,6 +63,7 @@
    1 neutral ink · 2 blue (started/in-progress/info) · 3 violet (in-review)
    · 4 green (completed) · 5 amber (scope/warning) — CVD-validated per mode. */
 :root {
+  color-scheme: light;
   --radius: 0.5rem;
   --background: oklch(0.985 0.002 250);
   --foreground: oklch(0.21 0.012 260);
@@ -101,6 +102,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.165 0.008 260);
   --foreground: oklch(0.93 0.005 255);
   --card: oklch(0.205 0.008 260);

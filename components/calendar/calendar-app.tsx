@@ -6,28 +6,31 @@ import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import listPlugin from '@fullcalendar/list'
 import interactionPlugin from '@fullcalendar/interaction'
-import type { DateSelectArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core'
+import type { DateSelectArg, DatesSetArg, EventClickArg, EventDropArg, EventInput } from '@fullcalendar/core'
 import type { EventResizeDoneArg } from '@fullcalendar/interaction'
 import { DateTime } from 'luxon'
 import { CalendarPlus, Download, MoreHorizontal, Plus, Upload } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { CalendarToolbar } from './calendar-toolbar'
 import { EventDialog, type EventDialogInitial } from './event-dialog'
 import type { AttendeeValue, CalendarSummary, ReminderValue, RosterMember } from './types'
-
-// FullCalendar theming mapped onto Beacon's design tokens (works light + dark).
-const FC_THEME: React.CSSProperties = {
-  ['--fc-border-color' as string]: 'var(--border)',
-  ['--fc-page-bg-color' as string]: 'var(--background)',
-  ['--fc-neutral-bg-color' as string]: 'var(--muted)',
-  ['--fc-today-bg-color' as string]: 'color-mix(in oklch, var(--beacon) 8%, transparent)',
-  ['--fc-now-indicator-color' as string]: 'var(--destructive)',
-  ['--fc-event-border-color' as string]: 'transparent',
-  ['--fc-list-event-hover-bg-color' as string]: 'var(--accent)',
-  color: 'var(--foreground)',
-}
+import './calendar.css'
 
 export function CalendarApp({
   calendars: initialCalendars,
@@ -45,10 +48,20 @@ export function CalendarApp({
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create')
   const [dialogInitial, setDialogInitial] = useState<EventDialogInitial | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const [view, setView] = useState('timeGridWeek')
+  const [title, setTitle] = useState('')
 
   const activeCalendarIds = calendars.filter((c) => !hidden.has(c.id)).map((c) => c.id)
 
   const refetch = useCallback(() => calendarRef.current?.getApi().refetchEvents(), [])
+  const handleDatesSet = useCallback((arg: DatesSetArg) => {
+    setView(arg.view.type)
+    setTitle(arg.view.title)
+  }, [])
+  const goPrev = useCallback(() => calendarRef.current?.getApi().prev(), [])
+  const goNext = useCallback(() => calendarRef.current?.getApi().next(), [])
+  const goToday = useCallback(() => calendarRef.current?.getApi().today(), [])
+  const changeView = useCallback((v: string) => calendarRef.current?.getApi().changeView(v), [])
 
   const fetchEvents = useCallback(
     async (
@@ -179,36 +192,66 @@ export function CalendarApp({
     }
   }
 
-  async function createCalendar() {
-    const name = window.prompt('New calendar name')?.trim()
+  const [createCalendarOpen, setCreateCalendarOpen] = useState(false)
+  const [newCalendarName, setNewCalendarName] = useState('')
+  const [creatingCalendar, setCreatingCalendar] = useState(false)
+
+  async function submitCreateCalendar() {
+    const name = newCalendarName.trim()
     if (!name) return
-    const res = await fetch('/api/calendars', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, timezone: defaultTimezone }),
-    })
-    if (res.ok) {
-      const list = await (await fetch('/api/calendars')).json()
-      setCalendars(list.calendars)
-      toast.success('Calendar created')
+    setCreatingCalendar(true)
+    try {
+      const res = await fetch('/api/calendars', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, timezone: defaultTimezone }),
+      })
+      if (res.ok) {
+        const list = await (await fetch('/api/calendars')).json()
+        setCalendars(list.calendars)
+        toast.success('Calendar created')
+        setCreateCalendarOpen(false)
+        setNewCalendarName('')
+      } else {
+        toast.error('Could not create calendar')
+      }
+    } finally {
+      setCreatingCalendar(false)
     }
   }
 
-  async function shareCalendar(id: string) {
-    const email = window.prompt('Share with (teammate email)')?.trim()
-    if (!email) return
-    const member = roster.find((m) => m.email?.toLowerCase() === email.toLowerCase())
-    const res = await fetch(`/api/calendars/${id}/share`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(member ? { memberId: member.id, role: 'reader' } : { email, role: 'reader' }),
-    })
-    if (res.ok) toast.success('Calendar shared')
-    else toast.error('Could not share')
+  const [shareTargetId, setShareTargetId] = useState<string | null>(null)
+  const [shareEmail, setShareEmail] = useState('')
+  const [sharing, setSharing] = useState(false)
+
+  async function submitShare() {
+    const email = shareEmail.trim()
+    if (!email || !shareTargetId) return
+    setSharing(true)
+    try {
+      const member = roster.find((m) => m.email?.toLowerCase() === email.toLowerCase())
+      const res = await fetch(`/api/calendars/${shareTargetId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(member ? { memberId: member.id, role: 'reader' } : { email, role: 'reader' }),
+      })
+      if (res.ok) {
+        toast.success('Calendar shared')
+        setShareTargetId(null)
+        setShareEmail('')
+      } else {
+        toast.error('Could not share')
+      }
+    } finally {
+      setSharing(false)
+    }
   }
 
-  async function deleteCalendar(id: string) {
-    if (!window.confirm('Delete this calendar and all its events?')) return
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+
+  async function confirmDeleteCalendar() {
+    if (!deleteTargetId) return
+    const id = deleteTargetId
     const res = await fetch(`/api/calendars/${id}`, { method: 'DELETE' })
     if (res.ok) {
       setCalendars(calendars.filter((c) => c.id !== id))
@@ -218,6 +261,7 @@ export function CalendarApp({
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       toast.error(data?.error ?? 'Could not delete')
     }
+    setDeleteTargetId(null)
   }
 
   async function importIcs(file: File, calendarId: string) {
@@ -252,20 +296,21 @@ export function CalendarApp({
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <p className="micro-label">Calendars</p>
-            <button
-              onClick={createCalendar}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              onClick={() => setCreateCalendarOpen(true)}
               title="New calendar"
-              className="text-muted-foreground hover:text-foreground"
             >
               <CalendarPlus className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
           {calendars.map((c) => (
             <div key={c.id} className="group flex items-center gap-2 rounded px-1 py-1 text-sm hover:bg-accent/50">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={!hidden.has(c.id)}
-                onChange={() =>
+                onCheckedChange={() =>
                   setHidden((prev) => {
                     const next = new Set(prev)
                     if (next.has(c.id)) next.delete(c.id)
@@ -273,8 +318,8 @@ export function CalendarApp({
                     return next
                   })
                 }
-                style={{ accentColor: c.color }}
-                className="h-3.5 w-3.5"
+                className="data-[state=checked]:border-(--cal-color) data-[state=checked]:bg-(--cal-color)"
+                style={{ ['--cal-color' as string]: c.color }}
               />
               <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: c.color }} />
               <span className="flex-1 truncate">{c.name}</span>
@@ -300,9 +345,18 @@ export function CalendarApp({
                       Import .ics
                     </DropdownMenuItem>
                   )}
-                  {c.mine && <DropdownMenuItem onClick={() => shareCalendar(c.id)}>Share</DropdownMenuItem>}
+                  {c.mine && (
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setShareTargetId(c.id)
+                        setShareEmail('')
+                      }}
+                    >
+                      Share
+                    </DropdownMenuItem>
+                  )}
                   {c.mine && !c.isPrimary && (
-                    <DropdownMenuItem className="text-destructive" onClick={() => deleteCalendar(c.id)}>
+                    <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTargetId(c.id)}>
                       Delete
                     </DropdownMenuItem>
                   )}
@@ -325,31 +379,38 @@ export function CalendarApp({
       </aside>
 
       {/* Grid */}
-      <div className="min-w-0 flex-1 p-3" style={FC_THEME}>
-        <FullCalendar
-          ref={calendarRef}
-          plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-          initialView="timeGridWeek"
-          headerToolbar={{
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek',
-          }}
-          height="100%"
-          nowIndicator
-          selectable
-          selectMirror
-          editable
-          dayMaxEvents
-          weekNumbers={false}
-          slotMinTime="06:00:00"
-          scrollTime="08:00:00"
-          events={fetchEvents}
-          select={handleSelect}
-          eventClick={handleEventClick}
-          eventDrop={handleTimeChange}
-          eventResize={handleTimeChange}
+      <div className="flex min-w-0 flex-1 flex-col p-3">
+        <CalendarToolbar
+          title={title}
+          view={view}
+          onPrev={goPrev}
+          onNext={goNext}
+          onToday={goToday}
+          onViewChange={changeView}
         />
+        <div className="beacon-calendar min-h-0 flex-1">
+          <FullCalendar
+            ref={calendarRef}
+            plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
+            initialView="timeGridWeek"
+            headerToolbar={false}
+            height="100%"
+            nowIndicator
+            selectable
+            selectMirror
+            editable
+            dayMaxEvents
+            weekNumbers={false}
+            slotMinTime="06:00:00"
+            scrollTime="08:00:00"
+            events={fetchEvents}
+            datesSet={handleDatesSet}
+            select={handleSelect}
+            eventClick={handleEventClick}
+            eventDrop={handleTimeChange}
+            eventResize={handleTimeChange}
+          />
+        </div>
       </div>
 
       {dialogInitial && (
@@ -363,6 +424,81 @@ export function CalendarApp({
           onSaved={refetch}
         />
       )}
+
+      <Dialog open={createCalendarOpen} onOpenChange={setCreateCalendarOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New calendar</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="new-calendar-name">Name</Label>
+            <Input
+              id="new-calendar-name"
+              value={newCalendarName}
+              onChange={(e) => setNewCalendarName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitCreateCalendar()}
+              placeholder="e.g. Product launches"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCreateCalendarOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={submitCreateCalendar} disabled={creatingCalendar || !newCalendarName.trim()}>
+              {creatingCalendar ? 'Creating…' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={shareTargetId !== null} onOpenChange={(open) => !open && setShareTargetId(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Share calendar</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="share-email">Teammate email</Label>
+            <Input
+              id="share-email"
+              type="email"
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitShare()}
+              placeholder="teammate@company.com"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShareTargetId(null)}>
+              Cancel
+            </Button>
+            <Button onClick={submitShare} disabled={sharing || !shareEmail.trim()}>
+              {sharing ? 'Sharing…' : 'Share'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteTargetId !== null} onOpenChange={(open) => !open && setDeleteTargetId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this calendar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes the calendar and all of its events. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={confirmDeleteCalendar}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

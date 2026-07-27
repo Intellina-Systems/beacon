@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { DateTime } from 'luxon'
-import { Bell, Clock, MapPin, Repeat, Trash2, Users, Video, X } from 'lucide-react'
+import { Bell, CalendarDays, Clock, MapPin, Repeat, Trash2, Users, Video, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
@@ -86,6 +88,7 @@ export function EventDialog({
     initial.reminders ?? [{ method: 'popup', minutesBefore: 10 }],
   )
   const [guestInput, setGuestInput] = useState('')
+  const [guestPickerOpen, setGuestPickerOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [scopePrompt, setScopePrompt] = useState<null | 'edit' | 'delete'>(null)
 
@@ -119,22 +122,31 @@ export function EventDialog({
   const durationMin = Math.max(15, Math.round((new Date(endISO).getTime() - new Date(startISO).getTime()) / 60000))
   const guestMemberIds = guests.map((g) => g.memberId).filter((id): id is string => Boolean(id))
 
-  function addGuest() {
-    const val = guestInput.trim()
-    if (!val) return
-    const match = roster.find(
-      (m) => m.name.toLowerCase() === val.toLowerCase() || m.email?.toLowerCase() === val.toLowerCase(),
+  const isEmail = /^\S+@\S+\.\S+$/.test(guestInput.trim())
+  const availableRoster = useMemo(() => {
+    const query = guestInput.trim().toLowerCase()
+    return roster.filter(
+      (m) =>
+        !guests.some((g) => g.memberId === m.id) &&
+        (!query || m.name.toLowerCase().includes(query) || m.email?.toLowerCase().includes(query)),
     )
-    if (match) {
-      if (!guests.some((g) => g.memberId === match.id))
-        setGuests([...guests, { memberId: match.id, name: match.name, role: 'required' }])
-    } else if (/^\S+@\S+\.\S+$/.test(val)) {
-      if (!guests.some((g) => g.email === val)) setGuests([...guests, { email: val, name: val, role: 'required' }])
-    } else {
+  }, [roster, guests, guestInput])
+
+  function pickGuestMember(member: RosterMember) {
+    setGuests([...guests, { memberId: member.id, name: member.name, role: 'required' }])
+    setGuestInput('')
+    setGuestPickerOpen(false)
+  }
+
+  function addGuestEmail() {
+    const val = guestInput.trim()
+    if (!isEmail) {
       toast.error('Pick a teammate or enter a valid email')
       return
     }
+    if (!guests.some((g) => g.email === val)) setGuests([...guests, { email: val, name: val, role: 'required' }])
     setGuestInput('')
+    setGuestPickerOpen(false)
   }
 
   async function submit(scope: EditScope = 'all') {
@@ -239,7 +251,7 @@ export function EventDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{mode === 'create' ? 'New event' : readOnly ? 'Event' : 'Edit event'}</DialogTitle>
           </DialogHeader>
@@ -250,7 +262,6 @@ export function EventDialog({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Add title"
               disabled={readOnly}
-              className="border-0 border-b px-0 text-lg font-medium shadow-none focus-visible:ring-0"
               autoFocus
             />
 
@@ -261,15 +272,15 @@ export function EventDialog({
                 value={startLocal}
                 onChange={(e) => setStartLocal(e.target.value)}
                 disabled={readOnly}
-                className="h-8"
+                className="h-8 min-w-0 flex-1"
               />
-              <span className="text-muted-foreground">→</span>
+              <span className="shrink-0 text-muted-foreground">→</span>
               <Input
                 type={allDay ? 'date' : 'datetime-local'}
                 value={endLocal}
                 onChange={(e) => setEndLocal(e.target.value)}
                 disabled={readOnly}
-                className="h-8"
+                className="h-8 min-w-0 flex-1"
               />
             </div>
             <div className="flex items-center gap-2 pl-6">
@@ -290,7 +301,7 @@ export function EventDialog({
             </div>
 
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
               <Select value={calendarId} onValueChange={setCalendarId} disabled={readOnly}>
                 <SelectTrigger className="h-8">
                   <SelectValue placeholder="Calendar" />
@@ -306,57 +317,90 @@ export function EventDialog({
             </div>
 
             {!readOnly && (
-              <div className="space-y-2 pl-6">
-                <div className="flex gap-2">
-                  <Input
-                    value={guestInput}
-                    onChange={(e) => setGuestInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addGuest())}
-                    placeholder="Add guests (teammate or email)"
-                    list="calendar-roster"
-                    className="h-8"
-                  />
-                  <datalist id="calendar-roster">
-                    {roster.map((m) => (
-                      <option key={m.id} value={m.email ?? m.name}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </datalist>
-                  <Button type="button" size="sm" variant="outline" onClick={addGuest}>
-                    Add
-                  </Button>
+              <div className="flex items-start gap-2">
+                <Users className="mt-1.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex-1 space-y-2">
+                  <Popover open={guestPickerOpen} onOpenChange={setGuestPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Input
+                        value={guestInput}
+                        onChange={(e) => {
+                          setGuestInput(e.target.value)
+                          setGuestPickerOpen(true)
+                        }}
+                        onFocus={() => setGuestPickerOpen(true)}
+                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addGuestEmail())}
+                        placeholder="Add guests (teammate or email)"
+                        className="h-8"
+                      />
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-(--radix-popover-trigger-width) p-0"
+                      align="start"
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <Command shouldFilter={false}>
+                        <CommandList>
+                          <CommandEmpty>
+                            {isEmail ? (
+                              <Button type="button" variant="ghost" size="sm" onClick={addGuestEmail}>
+                                Add &ldquo;{guestInput.trim()}&rdquo;
+                              </Button>
+                            ) : (
+                              <span className="text-muted-foreground">No teammate found.</span>
+                            )}
+                          </CommandEmpty>
+                          {availableRoster.length > 0 && (
+                            <CommandGroup>
+                              {availableRoster.map((m) => (
+                                <CommandItem key={m.id} value={m.id} onSelect={() => pickGuestMember(m)}>
+                                  <span>{m.name}</span>
+                                  {m.email && <span className="text-muted-foreground">{m.email}</span>}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  {guests.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {guests.map((g, i) => (
+                        <span
+                          key={g.memberId ?? g.email ?? i}
+                          className="inline-flex items-center gap-1 rounded-full border bg-muted/40 py-0.5 pl-2 pr-1 text-xs"
+                        >
+                          {g.responseStatus ? (
+                            <span className="text-muted-foreground">{responseLabel[g.responseStatus] ?? '·'}</span>
+                          ) : null}
+                          {g.name ?? g.email}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground"
+                            onClick={() => setGuests(guests.filter((_, j) => j !== i))}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {guestMemberIds.length > 0 && (
+                    <GuestAvailability
+                      memberIds={guestMemberIds}
+                      fromISO={startISO}
+                      durationMin={durationMin}
+                      timezone={timezone}
+                      onPick={(s, e) => {
+                        setStartLocal(toLocalInput(s, timezone, allDay))
+                        setEndLocal(toLocalInput(e, timezone, allDay))
+                      }}
+                    />
+                  )}
                 </div>
-                {guests.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {guests.map((g, i) => (
-                      <span
-                        key={g.memberId ?? g.email ?? i}
-                        className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5 text-xs"
-                      >
-                        {g.responseStatus ? (
-                          <span className="text-muted-foreground">{responseLabel[g.responseStatus] ?? '·'}</span>
-                        ) : null}
-                        {g.name ?? g.email}
-                        <button type="button" onClick={() => setGuests(guests.filter((_, j) => j !== i))}>
-                          <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {guestMemberIds.length > 0 && (
-                  <GuestAvailability
-                    memberIds={guestMemberIds}
-                    fromISO={startISO}
-                    durationMin={durationMin}
-                    timezone={timezone}
-                    onPick={(s, e) => {
-                      setStartLocal(toLocalInput(s, timezone, allDay))
-                      setEndLocal(toLocalInput(e, timezone, allDay))
-                    }}
-                  />
-                )}
               </div>
             )}
 
@@ -405,9 +449,15 @@ export function EventDialog({
                           ))}
                         </SelectContent>
                       </Select>
-                      <button type="button" onClick={() => setReminders(reminders.filter((_, j) => j !== i))}>
-                        <X className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => setReminders(reminders.filter((_, j) => j !== i))}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   ))}
                   {reminders.length < 5 && (
