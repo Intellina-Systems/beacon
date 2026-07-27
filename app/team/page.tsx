@@ -73,7 +73,9 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                 <TableRow className="sticky top-0 z-10 bg-muted">
                   <TableHead className="micro-label px-4 py-2.5 font-medium">Member</TableHead>
                   <TableHead className="micro-label hidden w-40 px-4 py-2.5 font-medium sm:table-cell">Title</TableHead>
-                  <TableHead className="micro-label hidden w-28 px-4 py-2.5 font-medium sm:table-cell">Access</TableHead>
+                  <TableHead className="micro-label hidden w-28 px-4 py-2.5 font-medium sm:table-cell">
+                    Access
+                  </TableHead>
                   <TableHead className="micro-label hidden w-52 px-4 py-2.5 font-medium lg:table-cell">Email</TableHead>
                   <TableHead className="micro-label w-40 px-4 py-2.5 font-medium">Identities</TableHead>
                   <TableHead className="micro-label w-28 px-4 py-2.5 text-right font-medium">7d activity</TableHead>

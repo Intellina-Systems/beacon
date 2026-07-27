@@ -9,10 +9,19 @@ const HIDDEN_COLUMNS_STORAGE_KEY = 'beacon:work-board-hidden-columns'
 // are noise on a planning board — both are left off the columns.
 export const BOARD_STATUSES: WorkItemStatus[] = ['backlog', 'todo', 'in_progress', 'in_review', 'blocked', 'done']
 
+// First-time board view keeps the essentials in front — the rest are one
+// click away via the Columns button — so someone new to the board isn't
+// hit with six columns of clutter before they've had a chance to trim it.
+const DEFAULT_VISIBLE_STATUSES: WorkItemStatus[] = ['todo', 'in_progress', 'done']
+
 function readHiddenColumns(): Set<WorkItemStatus> {
   if (typeof window === 'undefined') return new Set()
+  const raw = window.localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY)
+  if (raw === null) {
+    return new Set(BOARD_STATUSES.filter((s) => !DEFAULT_VISIBLE_STATUSES.includes(s)))
+  }
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) ?? '[]')
+    const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return new Set()
     return new Set(parsed.filter((s): s is WorkItemStatus => BOARD_STATUSES.includes(s)))
   } catch {

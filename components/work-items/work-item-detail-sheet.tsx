@@ -300,6 +300,7 @@ export function WorkItemDetailSheet({
       <DrawerContent className="!w-full sm:!max-w-3xl">
         {loading || !item ? (
           <div className="flex h-full flex-col gap-4 p-6">
+            <DrawerTitle className="sr-only">Loading work item</DrawerTitle>
             <div className="flex items-center gap-2">
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-4 w-12" />

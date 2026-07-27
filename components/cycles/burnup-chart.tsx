@@ -146,9 +146,15 @@ export function BurnupChart({
             <TableHeader>
               <TableRow className="sticky top-0 bg-muted/60">
                 <TableHead className="px-2.5 py-1.5 h-auto font-medium text-muted-foreground">Date</TableHead>
-                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Scope</TableHead>
-                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Started</TableHead>
-                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Completed</TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">
+                  Scope
+                </TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">
+                  Started
+                </TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">
+                  Completed
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y">

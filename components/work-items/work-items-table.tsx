@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Ban, Check, Clock, ExternalLink, GripVertical, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Ban, Check, Clock, ExternalLink, GripVertical, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { relativeTime } from '@/lib/utils/relative-time'
@@ -26,6 +26,8 @@ import {
 import { WorkItemDetailSheet } from './work-item-detail-sheet'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
 import type { WorkItemStatus } from '@/lib/db/schema'
+
+type SortKey = 'title' | 'project' | 'status' | 'priority' | 'assignee' | 'activity'
 
 export interface WorkItemRow {
   id: string
@@ -70,12 +72,16 @@ export function WorkItemsTable({
   projects,
   currentMemberId,
   isTriageView,
+  sort,
+  dir,
 }: {
   rows: WorkItemRow[]
   roster: RosterOption[]
   projects: ProjectOption[]
   currentMemberId: string
   isTriageView: boolean
+  sort?: SortKey
+  dir?: 'asc' | 'desc'
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -178,6 +184,24 @@ export function WorkItemsTable({
     }
   }
 
+  // Clicking a sorted column cycles asc -> desc -> back to the default manual (rank) order.
+  function toggleSort(key: SortKey) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (sort === key && dir === 'asc') {
+      params.set('sort', key)
+      params.set('dir', 'desc')
+    } else if (sort === key && dir === 'desc') {
+      params.delete('sort')
+      params.delete('dir')
+    } else {
+      params.set('sort', key)
+      params.set('dir', 'asc')
+    }
+    params.delete('page')
+    const qs = params.toString()
+    router.push(qs ? `/work?${qs}` : '/work')
+  }
+
   function toggleSelected(id: string) {
     setSelected((prev) => {
       const next = new Set(prev)
@@ -224,6 +248,43 @@ export function WorkItemsTable({
 
   const quickEditTriggerClass =
     '-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
+
+  function SortHead({
+    sortKey,
+    className,
+    align = 'start',
+    children,
+  }: {
+    sortKey: SortKey
+    className?: string
+    align?: 'start' | 'end'
+    children: React.ReactNode
+  }) {
+    const active = sort === sortKey
+    return (
+      <TableHead className={className}>
+        <button
+          type="button"
+          onClick={() => toggleSort(sortKey)}
+          className={cn(
+            '-mx-1.5 flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground',
+            align === 'end' && 'ml-auto',
+          )}
+        >
+          {children}
+          {active ? (
+            dir === 'desc' ? (
+              <ArrowDown className="h-3 w-3" />
+            ) : (
+              <ArrowUp className="h-3 w-3" />
+            )
+          ) : (
+            <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
+          )}
+        </button>
+      </TableHead>
+    )
+  }
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -354,14 +415,28 @@ export function WorkItemsTable({
                 />
               </TableHead>
               <TableHead className="w-6 px-2 py-2.5" />
-              <TableHead className="micro-label px-4 py-2.5 font-medium">Item</TableHead>
-              <TableHead className="micro-label hidden w-32 px-4 py-2.5 font-medium lg:table-cell">Project</TableHead>
-              <TableHead className="micro-label w-32 px-4 py-2.5 font-medium">Status</TableHead>
-              <TableHead className="micro-label hidden w-24 px-4 py-2.5 font-medium sm:table-cell">Priority</TableHead>
-              <TableHead className="micro-label hidden w-40 px-4 py-2.5 font-medium md:table-cell">Assignee</TableHead>
-              <TableHead className="micro-label hidden w-32 px-4 py-2.5 text-right font-medium lg:table-cell">
+              <SortHead sortKey="title" className="micro-label px-4 py-2.5 font-medium">
+                Item
+              </SortHead>
+              <SortHead sortKey="project" className="micro-label hidden w-32 px-4 py-2.5 font-medium lg:table-cell">
+                Project
+              </SortHead>
+              <SortHead sortKey="status" className="micro-label w-32 px-4 py-2.5 font-medium">
+                Status
+              </SortHead>
+              <SortHead sortKey="priority" className="micro-label hidden w-24 px-4 py-2.5 font-medium sm:table-cell">
+                Priority
+              </SortHead>
+              <SortHead sortKey="assignee" className="micro-label hidden w-40 px-4 py-2.5 font-medium md:table-cell">
+                Assignee
+              </SortHead>
+              <SortHead
+                sortKey="activity"
+                align="end"
+                className="micro-label hidden w-32 px-4 py-2.5 text-right font-medium lg:table-cell"
+              >
                 Activity
-              </TableHead>
+              </SortHead>
               {isTriageView && <TableHead className="w-56 px-3 py-2.5" />}
               <TableHead className="w-10 px-2 py-2.5" />
             </TableRow>
@@ -370,10 +445,11 @@ export function WorkItemsTable({
             {localRows.map((item) => (
               <TableRow
                 key={item.id}
-                draggable
-                onDragStart={() => setDraggingId(item.id)}
-                onDragOver={(e) => e.preventDefault()}
+                draggable={!sort}
+                onDragStart={() => !sort && setDraggingId(item.id)}
+                onDragOver={(e) => !sort && e.preventDefault()}
                 onDrop={(e) => {
+                  if (sort) return
                   e.preventDefault()
                   if (draggingId && draggingId !== item.id) moveTo(draggingId, item.id)
                   setDraggingId(null)
@@ -393,7 +469,13 @@ export function WorkItemsTable({
                     aria-label={`Select ${item.title}`}
                   />
                 </TableCell>
-                <TableCell className="cursor-grab px-2 py-2.5 text-muted-foreground/40 active:cursor-grabbing">
+                <TableCell
+                  className={cn(
+                    'px-2 py-2.5 text-muted-foreground/40',
+                    sort ? 'cursor-not-allowed opacity-40' : 'cursor-grab active:cursor-grabbing',
+                  )}
+                  title={sort ? 'Clear sort to reorder manually' : undefined}
+                >
                   <GripVertical className="h-3.5 w-3.5" />
                 </TableCell>
                 <TableCell className="max-w-0 px-4 py-2.5">

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { LayoutGrid, List } from 'lucide-react'
-import { and, asc, count, eq, inArray, isNull, lte, ne, or } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   engines,
@@ -39,6 +39,10 @@ export const metadata = { title: 'Work' }
 
 const PAGE_SIZE = 50
 
+// Column keys the table header can sort by; falls back to manual rank order when unset.
+const SORT_KEYS = ['title', 'project', 'status', 'priority', 'assignee', 'activity'] as const
+type SortKey = (typeof SORT_KEYS)[number]
+
 interface FilterState {
   statuses: Set<WorkItemStatus>
   project?: string
@@ -46,6 +50,8 @@ interface FilterState {
   engine?: string
   orgTeam?: string
   layout?: ViewLayout
+  sort?: SortKey
+  dir?: 'asc' | 'desc'
 }
 
 function workHref(filter: FilterState, page: number) {
@@ -56,6 +62,10 @@ function workHref(filter: FilterState, page: number) {
   if (filter.engine) params.set('engine', filter.engine)
   if (filter.orgTeam) params.set('team', filter.orgTeam)
   if (filter.layout && filter.layout !== 'list') params.set('layout', filter.layout)
+  if (filter.sort) {
+    params.set('sort', filter.sort)
+    params.set('dir', filter.dir === 'desc' ? 'desc' : 'asc')
+  }
   if (page > 1) params.set('page', String(page))
   const qs = params.toString()
   return qs ? `/work?${qs}` : '/work'
@@ -76,6 +86,8 @@ export default async function WorkPage({
     engine?: string
     team?: string
     layout?: string
+    sort?: string
+    dir?: string
   }>
 }) {
   const ctx = await getWorkspaceContext()
@@ -90,12 +102,16 @@ export default async function WorkPage({
     engine: rawEngine,
     team: rawTeam,
     layout: rawLayout,
+    sort: rawSort,
+    dir: rawDir,
   } = await searchParams
   const statuses = new Set(
     (rawStatus?.split(',') ?? []).filter((s): s is WorkItemStatus => WORK_ITEM_STATUSES.includes(s as WorkItemStatus)),
   )
   const layout: ViewLayout = rawLayout === 'board' ? 'board' : 'list'
   const page = parsePage(rawPage)
+  const sort = SORT_KEYS.find((k) => k === rawSort)
+  const dir: 'asc' | 'desc' = rawDir === 'desc' ? 'desc' : 'asc'
 
   const [projectList, fullRoster, savedViews, engineOptions, teamOptions] = await Promise.all([
     db
@@ -160,6 +176,19 @@ export default async function WorkPage({
     visibility,
   )
 
+  const sortColumn: Record<SortKey, Parameters<typeof asc>[0]> = {
+    title: workItems.title,
+    project: projects.name,
+    status: workItems.status,
+    priority: workItems.priority,
+    assignee: members.name,
+    activity: sql`coalesce(${workItems.lastEventAt}, ${workItems.updatedAt})`,
+  }
+  // Manual drag order (rank) is the default; clicking a header switches to that column instead.
+  const orderBy = sort
+    ? [dir === 'desc' ? desc(sortColumn[sort]) : asc(sortColumn[sort]), asc(workItems.createdAt)]
+    : [asc(workItems.rank), asc(workItems.createdAt)]
+
   const [rows, statusCounts] = await Promise.all([
     db
       .select({
@@ -185,9 +214,7 @@ export default async function WorkPage({
       .leftJoin(engines, eq(engines.id, workItems.engineId))
       .leftJoin(teams, eq(teams.id, workItems.teamId))
       .where(where)
-      // Rank is the canonical manual order (drag-and-drop below writes it);
-      // createdAt breaks ties for items that predate ranking.
-      .orderBy(asc(workItems.rank), asc(workItems.createdAt))
+      .orderBy(...orderBy)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE),
     db
@@ -202,7 +229,16 @@ export default async function WorkPage({
   const total = statuses.size > 0 ? [...statuses].reduce((n, s) => n + (countByStatus.get(s) ?? 0), 0) : totalAll
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const filter: FilterState = { statuses, project, assignee, engine, orgTeam, layout }
+  const filter: FilterState = {
+    statuses,
+    project,
+    assignee,
+    engine,
+    orgTeam,
+    layout,
+    sort,
+    dir: sort ? dir : undefined,
+  }
   const isTriageView = statuses.size === 1 && statuses.has('triage')
 
   const currentFilterPayload = {
@@ -375,6 +411,8 @@ export default async function WorkPage({
               projects={projectList}
               currentMemberId={ctx.member.id}
               isTriageView={isTriageView}
+              sort={sort}
+              dir={dir}
             />
           )}
         </BoardColumnsProvider>

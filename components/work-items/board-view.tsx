@@ -3,8 +3,11 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { STATUS_META } from '@/lib/work-items/constants'
+import { relativeTime } from '@/lib/utils/relative-time'
+import { KIND_LABEL, PRIORITY_LABEL, STATUS_META } from '@/lib/work-items/constants'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { BOARD_STATUSES, useBoardColumns } from './board-columns-context'
 import { WorkItemDetailSheet } from './work-item-detail-sheet'
@@ -14,6 +17,11 @@ import type { WorkItemStatus } from '@/lib/db/schema'
 interface RosterOption {
   id: string
   name: string
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '')).toUpperCase()
 }
 
 export function BoardView({
@@ -82,7 +90,7 @@ export function BoardView({
 
   return (
     <>
-      <div className="flex h-full gap-3 overflow-x-auto pb-2">
+      <div className="flex h-full gap-4 overflow-x-auto pb-2">
         {columns.map((col) => (
           <div
             key={col.status}
@@ -97,56 +105,101 @@ export function BoardView({
               setDragOverStatus(null)
             }}
             className={cn(
-              'flex h-full w-64 shrink-0 flex-col rounded-lg border bg-card transition-all duration-200',
-              dragOverStatus === col.status && 'border-beacon/40 bg-beacon/[0.04] ring-2 ring-beacon/40',
+              'flex h-full min-w-80 flex-1 flex-col rounded-xl border bg-muted/30 transition-colors duration-200',
+              dragOverStatus === col.status && 'border-beacon/40 bg-beacon/[0.06] ring-2 ring-beacon/40',
             )}
           >
-            <div className="flex shrink-0 items-center gap-1.5 border-b px-3 py-2">
-              <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_META[col.status].tone)} />
-              <p className="text-xs font-medium">{STATUS_META[col.status].label}</p>
-              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{col.items.length}</span>
+            <div className="flex shrink-0 items-center gap-2 border-b px-3.5 py-3">
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', STATUS_META[col.status].tone)} />
+              <p className="text-sm font-semibold">{STATUS_META[col.status].label}</p>
+              <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                {col.items.length}
+              </span>
             </div>
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-1.5">
-              {col.items.map((item) => (
-                <div
-                  key={item.id}
-                  draggable
-                  onDragStart={() => setDraggingId(item.id)}
-                  onDragEnd={() => {
-                    setDraggingId(null)
-                    setDragOverStatus(null)
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (draggingId && draggingId !== item.id) moveTo(draggingId, col.status, item.id)
-                    setDraggingId(null)
-                    setDragOverStatus(null)
-                  }}
-                  onClick={() => setClickedId(item.id)}
-                  className={cn(
-                    'ease-out-soft cursor-pointer rounded-md border bg-background p-2 text-xs shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-beacon/40 hover:shadow-md',
-                    draggingId === item.id && 'scale-[0.97] opacity-40 shadow-none',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    {item.key && <span className="font-mono text-[10px] text-muted-foreground">{item.key}</span>}
-                    {item.priority != null && item.priority > 0 && item.priority <= 2 && (
-                      <Badge variant="destructive" className="px-1 py-0 text-[9px]">
-                        !
-                      </Badge>
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-2.5">
+              {col.items.map((item) => {
+                const activityDate = new Date(item.lastEventAt ?? item.updatedAt ?? Date.now())
+                return (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={() => setDraggingId(item.id)}
+                    onDragEnd={() => {
+                      setDraggingId(null)
+                      setDragOverStatus(null)
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      if (draggingId && draggingId !== item.id) moveTo(draggingId, col.status, item.id)
+                      setDraggingId(null)
+                      setDragOverStatus(null)
+                    }}
+                    onClick={() => setClickedId(item.id)}
+                    className={cn(
+                      'ease-out-soft cursor-pointer rounded-lg border bg-card p-3 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-beacon/40 hover:shadow-md',
+                      draggingId === item.id && 'scale-[0.97] opacity-40 shadow-none',
                     )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {item.key && <span className="font-mono text-[10.5px] text-muted-foreground">{item.key}</span>}
+                      {item.kind !== 'task' && (
+                        <Badge variant="secondary" className="px-1.5 py-0 text-[9px] uppercase">
+                          {KIND_LABEL[item.kind]}
+                        </Badge>
+                      )}
+                      {item.priority != null && item.priority > 0 && item.priority <= 2 && (
+                        <Badge variant="destructive" className="ml-auto px-1.5 py-0 text-[9px]">
+                          {PRIORITY_LABEL[item.priority]}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <p className="mt-2 line-clamp-2 text-[13px] font-medium leading-snug">{item.title}</p>
+
+                    {(item.projectName || item.engineName || item.teamName) && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {item.projectName && (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[9.5px] text-muted-foreground">
+                            {item.projectName}
+                          </Badge>
+                        )}
+                        {item.engineName && (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[9.5px] text-muted-foreground">
+                            {item.engineName}
+                          </Badge>
+                        )}
+                        {item.teamName && (
+                          <Badge variant="outline" className="px-1.5 py-0 text-[9.5px] text-muted-foreground">
+                            {item.teamName}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <Avatar className="h-5 w-5 border">
+                          <AvatarFallback className="text-[8px] font-medium">
+                            {item.assigneeName ? initials(item.assigneeName) : '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="truncate text-[10.5px] text-muted-foreground">
+                          {item.assigneeName ?? 'Unassigned'}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground/70">
+                        <Clock className="h-2.5 w-2.5" />
+                        {relativeTime(activityDate)}
+                      </span>
+                    </div>
                   </div>
-                  <p className="mt-1 line-clamp-2 font-medium">{item.title}</p>
-                  {item.assigneeName && (
-                    <p className="mt-1.5 truncate text-[10px] text-muted-foreground">{item.assigneeName}</p>
-                  )}
-                </div>
-              ))}
+                )
+              })}
               {col.items.length === 0 && (
                 <p className="px-1.5 py-3 text-center text-[10px] text-muted-foreground/60">No items</p>
               )}

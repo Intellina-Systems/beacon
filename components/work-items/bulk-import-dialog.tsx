@@ -19,6 +19,53 @@ interface Option {
   name: string
 }
 
+const DOTS = 'dots' as const
+
+function range(start: number, end: number): number[] {
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
+
+// Bounds the step indicator to a fixed number of slots regardless of task count:
+// boundaryCount dots at each end, siblingCount around the current one, ellipsis between.
+function getDotWindow(
+  current: number,
+  total: number,
+  siblingCount = 2,
+  boundaryCount = 2,
+): Array<number | typeof DOTS> {
+  const page = current + 1
+  if (total <= boundaryCount * 2 + siblingCount * 2 + 3) {
+    return Array.from({ length: total }, (_, i) => i)
+  }
+
+  const startPages = range(1, boundaryCount)
+  const endPages = range(Math.max(total - boundaryCount + 1, boundaryCount + 1), total)
+
+  const siblingsStart = Math.max(
+    Math.min(page - siblingCount, total - boundaryCount - siblingCount * 2 - 1),
+    boundaryCount + 2,
+  )
+  const siblingsEnd = Math.min(Math.max(page + siblingCount, boundaryCount + siblingCount * 2 + 2), endPages[0] - 2)
+
+  const items: Array<number | typeof DOTS> = [
+    ...startPages,
+    ...(siblingsStart > boundaryCount + 2
+      ? [DOTS]
+      : boundaryCount + 1 < total - boundaryCount
+        ? [boundaryCount + 1]
+        : []),
+    ...range(siblingsStart, siblingsEnd),
+    ...(siblingsEnd < total - boundaryCount - 1
+      ? [DOTS]
+      : total - boundaryCount > boundaryCount
+        ? [total - boundaryCount]
+        : []),
+    ...endPages,
+  ]
+
+  return items.map((item) => (item === DOTS ? DOTS : item - 1))
+}
+
 interface DraftTask {
   include: boolean
   title: string
@@ -182,23 +229,33 @@ export function BulkImportDialog({ defaultProjectId }: { defaultProjectId?: stri
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="space-y-1.5">
                 <p className="text-sm text-muted-foreground">
                   Task {current + 1} of {drafts.length} — review and adjust before creating.
                 </p>
-                <div className="flex gap-1">
-                  {drafts.map((d, i) => (
-                    <Button
-                      key={i}
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setCurrent(i)}
-                      title={d.title}
-                      className={`h-1.5 w-4 min-w-0 rounded-full p-0 hover:bg-transparent ${
-                        i === current ? 'bg-beacon' : d.include ? 'bg-muted-foreground/30' : 'bg-muted-foreground/10'
-                      }`}
-                    />
-                  ))}
+                <div className="flex items-center gap-1">
+                  {getDotWindow(current, drafts.length).map((slot, i) =>
+                    slot === DOTS ? (
+                      <span key={`dots-${i}`} className="px-0.5 text-xs leading-none text-muted-foreground">
+                        ···
+                      </span>
+                    ) : (
+                      <Button
+                        key={slot}
+                        type="button"
+                        variant="ghost"
+                        onClick={() => setCurrent(slot)}
+                        title={drafts[slot].title}
+                        className={`h-1.5 w-4 shrink-0 rounded-full p-0 hover:bg-transparent ${
+                          slot === current
+                            ? 'bg-beacon'
+                            : drafts[slot].include
+                              ? 'bg-muted-foreground/30'
+                              : 'bg-muted-foreground/10'
+                        }`}
+                      />
+                    ),
+                  )}
                 </div>
               </div>
 
