@@ -5,7 +5,7 @@ import { Activity, ArrowUpRight, Bot, GitMerge, Lightbulb, Users } from 'lucide-
 import { db } from '@/lib/db/client'
 import { insights, members, projects, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { visibleMemberIds } from '@/lib/auth/permissions'
+import { isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
 import { getActiveBlockers, getDailyActivity, getMemberActivity, getPulse, listEvents } from '@/lib/events/queries'
 import {
   getAssignedWorkItems,
@@ -388,15 +388,19 @@ export default async function PulsePage() {
           </div>
         </div>
 
-        {/* Your plan for today — the one manual signal Beacon asks for */}
-        <div className="shrink-0">
-          <DailyPlanCard
-            initialIntention={myPlan?.intention ?? null}
-            initialWorkItemIds={myPlan?.workItemIds ?? []}
-            options={planOptions}
-            meetingCount={myMeetingCount}
-          />
-        </div>
+        {/* Your plan for today — the one manual signal Beacon asks for.
+            Admins see the whole workspace's plans via TodaysPlansPanel and
+            don't file one themselves. */}
+        {!isAdmin(ctx) && (
+          <div className="shrink-0">
+            <DailyPlanCard
+              initialIntention={myPlan?.intention ?? null}
+              initialWorkItemIds={myPlan?.workItemIds ?? []}
+              options={planOptions}
+              meetingCount={myMeetingCount}
+            />
+          </div>
+        )}
       </div>
     </PageShell>
   )
