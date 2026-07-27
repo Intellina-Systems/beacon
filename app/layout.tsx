@@ -3,6 +3,7 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
+import { AccentThemeProvider } from '@/components/accent-theme-provider'
 import { BeaconLayout } from '@/components/beacon-layout'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/next'
@@ -65,31 +66,33 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {session?.user ? (
-            <BeaconLayout
-              session={session}
-              githubConnection={githubConnection}
-              role={ctx?.role ?? 'engineer'}
-              workspace={
-                ctx
-                  ? {
-                      id: ctx.workspaceId,
-                      name: ctx.workspaceName,
-                      memberName: ctx.member.name,
-                      teams: ctx.teams,
-                      memberships: ctx.memberships,
-                    }
-                  : null
-              }
-              unreadNotifications={unreadNotifications}
-              defaultSidebarOpen={defaultSidebarOpen}
-            >
-              {children}
-            </BeaconLayout>
-          ) : (
-            <main className="h-dvh overflow-y-auto">{children}</main>
-          )}
-          <Toaster />
+          <AccentThemeProvider>
+            {session?.user ? (
+              <BeaconLayout
+                session={session}
+                githubConnection={githubConnection}
+                role={ctx?.role ?? 'engineer'}
+                workspace={
+                  ctx
+                    ? {
+                        id: ctx.workspaceId,
+                        name: ctx.workspaceName,
+                        memberName: ctx.member.name,
+                        teams: ctx.teams,
+                        memberships: ctx.memberships,
+                      }
+                    : null
+                }
+                unreadNotifications={unreadNotifications}
+                defaultSidebarOpen={defaultSidebarOpen}
+              >
+                {children}
+              </BeaconLayout>
+            ) : (
+              <main className="h-dvh overflow-y-auto">{children}</main>
+            )}
+            <Toaster />
+          </AccentThemeProvider>
         </ThemeProvider>
         <Analytics />
         <SpeedInsights />

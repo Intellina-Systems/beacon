@@ -17,6 +17,7 @@ import { redirectToSignOut } from '@/lib/session/redirect-to-sign-out'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { AccentThemeToggle } from '@/components/accent-theme-toggle'
 import { getEnabledAuthProviders } from '@/lib/auth/providers'
 import { ChevronsUpDown, Crown, Pencil } from 'lucide-react'
 import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-dialog'
@@ -142,6 +143,7 @@ export function SignOut({ user, authProvider, githubConnection, role, workspace 
         )}
 
         <ThemeToggle />
+        <AccentThemeToggle />
 
         {authProvider === 'vercel' && hasGitHub && (
           <>
