@@ -122,129 +122,132 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           )}
         </>
       }
+      fixed
     >
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
-        <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-4">
-          <Avatar className="h-14 w-14 border">
-            <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
-            <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="flex items-center gap-2 truncate text-lg font-semibold tracking-tight">
-              {member.name}
-              {member.status !== 'profile' && (
-                <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-beacon">
-                  {member.accessRole}
-                </span>
-              )}
-              {member.status === 'invited' && (
-                <span className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                  invited
-                </span>
-              )}
-            </p>
-            <p className="truncate text-sm text-muted-foreground">
-              {[member.title, member.email].filter(Boolean).join(' · ') || 'No details yet'}
-            </p>
-            {memberTeams.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {memberTeams.map((team) => (
-                  <span
-                    key={team.name}
-                    className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                  >
-                    {team.name}
-                    {team.isLead ? ' · lead' : ''}
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pb-2">
+          <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-4">
+            <Avatar className="h-14 w-14 border">
+              <AvatarImage src={member.avatarUrl ?? undefined} alt="" />
+              <AvatarFallback className="text-sm font-medium">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 truncate text-lg font-semibold tracking-tight">
+                {member.name}
+                {member.status !== 'profile' && (
+                  <span className="rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-beacon">
+                    {member.accessRole}
                   </span>
+                )}
+                {member.status === 'invited' && (
+                  <span className="rounded border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                    invited
+                  </span>
+                )}
+              </p>
+              <p className="truncate text-sm text-muted-foreground">
+                {[member.title, member.email].filter(Boolean).join(' · ') || 'No details yet'}
+              </p>
+              {memberTeams.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {memberTeams.map((team) => (
+                    <span
+                      key={team.name}
+                      className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    >
+                      {team.name}
+                      {team.isLead ? ' · lead' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="ml-auto text-right">
+              <p className="text-2xl font-semibold tabular-nums tracking-tight">{weekActivity?.total ?? 0}</p>
+              <p className="micro-label">events · 7d</p>
+            </div>
+          </div>
+
+          {memberBlockers.length > 0 && (
+            <Panel className="border-destructive/40">
+              <PanelHeader
+                label={
+                  <span className="flex items-center gap-1.5 text-destructive">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Currently blocked
+                  </span>
+                }
+              />
+              <div className="space-y-2 px-4 py-3">
+                {memberBlockers.map((blocker) => (
+                  <p key={blocker.event.id} className="text-sm leading-snug">
+                    {blocker.event.summary}
+                  </p>
                 ))}
               </div>
-            )}
-          </div>
-          <div className="ml-auto text-right">
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">{weekActivity?.total ?? 0}</p>
-            <p className="micro-label">events · 7d</p>
-          </div>
-        </div>
+            </Panel>
+          )}
 
-        {memberBlockers.length > 0 && (
-          <Panel className="border-destructive/40">
-            <PanelHeader
-              label={
-                <span className="flex items-center gap-1.5 text-destructive">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Currently blocked
-                </span>
-              }
-            />
-            <div className="space-y-2 px-4 py-3">
-              {memberBlockers.map((blocker) => (
-                <p key={blocker.event.id} className="text-sm leading-snug">
-                  {blocker.event.summary}
-                </p>
-              ))}
-            </div>
-          </Panel>
-        )}
-
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          <Panel>
-            <PanelHeader label="Assigned work" meta={<span className="tabular-nums">{assignedItems.length}</span>} />
-            <div className="divide-y px-4">
-              {assignedItems.length === 0 ? (
-                <EmptyState title="No active assigned work" />
-              ) : (
-                assignedItems.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 py-2.5 text-sm">
-                    {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
-                    <span className="flex-1 truncate">{item.title}</span>
-                    <Badge
-                      variant={item.status === 'blocked' ? 'destructive' : 'outline'}
-                      className="shrink-0 px-1.5 py-0 font-mono text-[10px]"
-                    >
-                      {STATUS_LABEL[item.status] ?? item.status}
-                    </Badge>
-                    {item.externalUrl && (
-                      <a
-                        href={item.externalUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
-                        aria-label="Open in tracker"
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <Panel>
+              <PanelHeader label="Assigned work" meta={<span className="tabular-nums">{assignedItems.length}</span>} />
+              <div className="divide-y px-4">
+                {assignedItems.length === 0 ? (
+                  <EmptyState title="No active assigned work" />
+                ) : (
+                  assignedItems.map((item) => (
+                    <div key={item.id} className="flex items-center gap-2 py-2.5 text-sm">
+                      {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
+                      <span className="flex-1 truncate">{item.title}</span>
+                      <Badge
+                        variant={item.status === 'blocked' ? 'destructive' : 'outline'}
+                        className="shrink-0 px-1.5 py-0 font-mono text-[10px]"
                       >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </Panel>
+                        {STATUS_LABEL[item.status] ?? item.status}
+                      </Badge>
+                      {item.externalUrl && (
+                        <a
+                          href={item.externalUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label="Open in tracker"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </Panel>
 
-          <Panel>
-            <PanelHeader label="Recent activity · 30d" />
-            <div className="divide-y px-4">
-              {recentEvents.length === 0 ? (
-                <EmptyState
-                  title="No events attributed yet"
-                  hint={`Link identities below so signals resolve to ${member.name}.`}
-                />
-              ) : (
-                recentEvents.slice(0, 15).map((event) => <EventItem key={event.id} event={event} />)
-              )}
-            </div>
-          </Panel>
+            <Panel>
+              <PanelHeader label="Recent activity · 30d" />
+              <div className="divide-y px-4">
+                {recentEvents.length === 0 ? (
+                  <EmptyState
+                    title="No events attributed yet"
+                    hint={`Link identities below so signals resolve to ${member.name}.`}
+                  />
+                ) : (
+                  recentEvents.slice(0, 15).map((event) => <EventItem key={event.id} event={event} />)
+                )}
+              </div>
+            </Panel>
+          </div>
+
+          {isSelf && (
+            <GoogleCalendarCard
+              configured={isGoogleConfigured()}
+              connected={Boolean(calendarAccount)}
+              email={calendarAccount?.externalEmail ?? null}
+              lastSyncedAt={calendarAccount?.lastSyncedAt ?? null}
+            />
+          )}
+
+          <MemberConnections memberId={member.id} githubUsername={member.githubUsername} />
         </div>
-
-        {isSelf && (
-          <GoogleCalendarCard
-            configured={isGoogleConfigured()}
-            connected={Boolean(calendarAccount)}
-            email={calendarAccount?.externalEmail ?? null}
-            lastSyncedAt={calendarAccount?.lastSyncedAt ?? null}
-          />
-        )}
-
-        <MemberConnections memberId={member.id} githubUsername={member.githubUsername} />
       </div>
     </PageShell>
   )

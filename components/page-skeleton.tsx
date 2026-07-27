@@ -1,27 +1,19 @@
 import { PageShell } from '@/components/page-shell'
 import { Skeleton } from '@/components/ui/skeleton'
 
-/** Skeleton for list/table pages: filter chips + a stacked rows surface. */
-export function ListPageSkeleton({
-  title,
-  chips = 0,
-  maxWidth = 'max-w-6xl',
-}: {
-  title: string
-  chips?: number
-  maxWidth?: string
-}) {
+/** Skeleton for list/table pages: filter chips + a stacked rows surface, filling the viewport. */
+export function ListPageSkeleton({ title, chips = 0 }: { title: string; chips?: number }) {
   return (
-    <PageShell title={title}>
-      <div className={`mx-auto w-full ${maxWidth} px-4 py-5 lg:px-6`}>
+    <PageShell title={title} fixed>
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
         {chips > 0 && (
-          <div className="mb-5 flex gap-1.5">
+          <div className="mb-3 flex shrink-0 gap-1.5">
             {Array.from({ length: chips }).map((_, i) => (
               <Skeleton key={i} className="h-6 w-20 rounded-full" />
             ))}
           </div>
         )}
-        <div className="space-y-px overflow-hidden rounded-lg border bg-card p-4">
+        <div className="min-h-0 flex-1 space-y-px overflow-hidden rounded-lg border bg-card p-4">
           {Array.from({ length: 10 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 py-2.5">
               <Skeleton className="h-4 w-4 rounded-full" />

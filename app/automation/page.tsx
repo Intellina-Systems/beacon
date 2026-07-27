@@ -56,17 +56,18 @@ export default async function AutomationPage() {
       title="Automation"
       description="Trigger → condition → action rules evaluated on every event"
       actions={<CreateRuleDialog />}
+      fixed
     >
-      <div className="mx-auto w-full max-w-4xl px-4 py-5 lg:px-6">
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
         {rules.length === 0 ? (
-          <div className="flex rounded-lg border border-dashed">
+          <div className="flex flex-1 rounded-lg border border-dashed">
             <EmptyState
               title="No rules yet"
               hint='Create one to react to events automatically — e.g. "when a task is blocked, notify the assignee."'
             />
           </div>
         ) : (
-          <div className="divide-y overflow-hidden rounded-lg border bg-card">
+          <div className="min-h-0 flex-1 divide-y overflow-y-auto rounded-lg border bg-card">
             {rules.map((rule) => (
               <div key={rule.id} className="flex items-start justify-between gap-4 px-4 py-3">
                 <div className="min-w-0 flex-1">

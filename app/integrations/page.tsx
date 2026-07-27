@@ -53,37 +53,40 @@ export default async function IntegrationsPage() {
     <PageShell
       title="Integrations"
       description="Every tool is just a signal source — connect them and Beacon does the rest"
+      fixed
     >
-      <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-5 lg:px-6">
-        <ConnectionsCard githubConnected={github.connected} githubUsername={github.username} />
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pb-2">
+          <ConnectionsCard githubConnected={github.connected} githubUsername={github.username} />
 
-        <SourcesCard
-          sources={sources.map((source) => ({
-            id: source.id,
-            kind: source.kind,
-            identifier: source.identifier,
-            displayName: source.displayName,
-            enabled: source.enabled,
-            lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
-            lastSyncError: source.lastSyncError,
-            projectId: source.projectId,
-          }))}
-          projects={projectList}
-          githubConnected={github.connected}
-        />
+          <SourcesCard
+            sources={sources.map((source) => ({
+              id: source.id,
+              kind: source.kind,
+              identifier: source.identifier,
+              displayName: source.displayName,
+              enabled: source.enabled,
+              lastSyncedAt: source.lastSyncedAt?.toISOString() ?? null,
+              lastSyncError: source.lastSyncError,
+              projectId: source.projectId,
+            }))}
+            projects={projectList}
+            githubConnected={github.connected}
+          />
 
-        <ApiKeysCard
-          keys={keys.map((key) => ({
-            id: key.id,
-            name: key.name,
-            keyPrefix: key.keyPrefix,
-            lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
-            revokedAt: key.revokedAt?.toISOString() ?? null,
-            createdAt: key.createdAt.toISOString(),
-          }))}
-        />
+          <ApiKeysCard
+            keys={keys.map((key) => ({
+              id: key.id,
+              name: key.name,
+              keyPrefix: key.keyPrefix,
+              lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
+              revokedAt: key.revokedAt?.toISOString() ?? null,
+              createdAt: key.createdAt.toISOString(),
+            }))}
+          />
 
-        <AgentSetupCard />
+          <AgentSetupCard />
+        </div>
       </div>
     </PageShell>
   )

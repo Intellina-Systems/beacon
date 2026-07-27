@@ -29,9 +29,13 @@ export default async function AdminWorkspacesPage() {
     .orderBy(workspaces.createdAt)
 
   return (
-    <PageShell title="Workspaces" description={`${rows.length} workspace${rows.length === 1 ? '' : 's'} · all orgs`}>
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
-        <div className="overflow-x-auto rounded-lg border bg-card">
+    <PageShell
+      title="Workspaces"
+      description={`${rows.length} workspace${rows.length === 1 ? '' : 's'} · all orgs`}
+      fixed
+    >
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-card">
           <Table className="min-w-[520px]">
             <TableHeader>
               <TableRow className="bg-muted/40">

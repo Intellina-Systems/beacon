@@ -93,9 +93,9 @@ export default async function InboxPage({
   const TAB_LABEL: Record<Filter, string> = { active: 'Active', unread: 'Unread', all: 'All' }
 
   return (
-    <PageShell title="Inbox" description="Events on work items you watch">
-      <div className="mx-auto w-full max-w-3xl px-4 py-5 lg:px-6">
-        <div className="mb-5 flex items-center justify-between gap-3">
+    <PageShell title="Inbox" description="Events on work items you watch" fixed>
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((f) => (
               <Link
@@ -115,14 +115,16 @@ export default async function InboxPage({
           </div>
         </div>
 
-        <InboxList initialRows={rows} roster={roster} currentMemberId={ctx.member.id} />
+        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+          <InboxList initialRows={rows} roster={roster} currentMemberId={ctx.member.id} />
+        </div>
 
         <Pagination
           page={page}
           pageCount={pageCount}
           total={total}
           hrefFor={(p) => inboxHref(filter, p)}
-          className="mt-2"
+          className="mt-2 shrink-0"
         />
       </div>
     </PageShell>

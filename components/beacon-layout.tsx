@@ -141,7 +141,7 @@ export function BeaconLayout({
     .filter((section) => section.items.length > 0)
 
   return (
-    <SidebarProvider defaultOpen={defaultSidebarOpen}>
+    <SidebarProvider defaultOpen={defaultSidebarOpen} className="h-svh">
       <Sidebar collapsible="icon">
         <SidebarHeader className="h-14 shrink-0 flex-row items-center border-b border-sidebar-border px-4 py-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-[10px]">
           <BeaconTrigger />

@@ -70,9 +70,9 @@ export default async function CyclesPage({
 
   if (projectList.length === 0) {
     return (
-      <PageShell title="Cycles" description="Auto-repeating time-boxes for planned work">
-        <div className="mx-auto w-full max-w-4xl px-4 py-5 lg:px-6">
-          <div className="flex rounded-lg border border-dashed">
+      <PageShell title="Cycles" description="Auto-repeating time-boxes for planned work" fixed>
+        <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+          <div className="flex flex-1 rounded-lg border border-dashed">
             <EmptyState title="No projects yet" hint="Create a project on the Work page first." />
           </div>
         </div>
@@ -149,140 +149,144 @@ export default async function CyclesPage({
       title="Cycles"
       description="Auto-repeating time-boxes for planned work"
       actions={canManage && cycleList.length === 0 ? <CreateCycleDialog projectId={project.id} /> : undefined}
+      fixed
     >
-      <div className="mx-auto w-full max-w-5xl px-4 py-5 lg:px-6">
-        {projectList.length > 1 && (
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {projectList.map((p) => (
-              <Link
-                key={p.id}
-                href={cyclesHref(p.id)}
-                className={cn(
-                  'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
-                  project.id === p.id
-                    ? 'border-beacon/50 bg-beacon/10 text-foreground'
-                    : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
-                )}
-              >
-                {p.name}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <div className="mb-4 rounded-lg border bg-card px-4 py-3">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="micro-label">Project health</p>
-                {latestUpdate && (
-                  <Badge className={cn('text-[10px]', HEALTH_META[latestUpdate.health].tone)}>
-                    {HEALTH_META[latestUpdate.health].label}
-                  </Badge>
-                )}
-                {stale && (
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Update needed
-                  </Badge>
-                )}
-              </div>
-              {latestUpdate ? (
-                <>
-                  <p className="mt-1.5 text-sm leading-snug">{latestUpdate.body}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {latestUpdate.authorName ?? 'Someone'} · {relativeTime(latestUpdate.createdAt)}
-                  </p>
-                </>
-              ) : (
-                <p className="mt-1.5 text-sm text-muted-foreground">No update posted yet.</p>
-              )}
-            </div>
-            <PostUpdateDialog projectId={project.id} />
-          </div>
-        </div>
-
-        {cycleList.length === 0 ? (
-          <div className="flex rounded-lg border border-dashed">
-            <EmptyState
-              title="No cycles yet"
-              hint={
-                canManage
-                  ? 'Start the first cycle above — after that, new cycles are created automatically.'
-                  : 'An admin or manager can start this project’s first cycle.'
-              }
-            />
-          </div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-[160px_1fr]">
-            <div className="flex gap-1.5 overflow-x-auto lg:flex-col lg:overflow-visible">
-              {cycleList.map((c) => (
+      <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+          {projectList.length > 1 && (
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {projectList.map((p) => (
                 <Link
-                  key={c.id}
-                  href={cyclesHref(project.id, c.id)}
+                  key={p.id}
+                  href={cyclesHref(p.id)}
                   className={cn(
-                    'shrink-0 rounded-md border px-2.5 py-1.5 text-xs transition-colors lg:shrink',
-                    selectedCycle?.id === c.id
+                    'rounded-full border px-3 py-1 font-mono text-xs font-medium transition-colors',
+                    project.id === p.id
                       ? 'border-beacon/50 bg-beacon/10 text-foreground'
                       : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
                   )}
                 >
-                  <p className="font-medium">{c.name ?? `Cycle ${c.number}`}</p>
-                  <p className="text-[10px] opacity-70">{STATUS_LABEL[cycleStatus(c)]}</p>
+                  {p.name}
                 </Link>
               ))}
             </div>
+          )}
 
-            <div className="min-w-0 space-y-4">
-              {selectedCycle && status && (
-                <>
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="font-semibold">{selectedCycle.name ?? `Cycle ${selectedCycle.number}`}</h2>
-                        <Badge
-                          variant={status === 'active' ? 'default' : status === 'upcoming' ? 'secondary' : 'outline'}
-                          className="text-[10px]"
-                        >
-                          {STATUS_LABEL[status]}
-                        </Badge>
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {formatDate(selectedCycle.startsAt)} – {formatDate(selectedCycle.endsAt)} · {items.length} item
-                        {items.length === 1 ? '' : 's'}
-                      </p>
-                    </div>
-                    {canManage && status !== 'closed' && <CloseCycleButton cycleId={selectedCycle.id} />}
-                  </div>
-
-                  <div className="rounded-lg border bg-card p-4">
-                    <BurnupChart
-                      snapshots={snapshots}
-                      startsAt={selectedCycle.startsAt}
-                      endsAt={selectedCycle.endsAt}
-                    />
-                  </div>
-
-                  {items.length === 0 ? (
-                    <div className="flex rounded-lg border border-dashed">
-                      <EmptyState
-                        title="No items in this cycle"
-                        hint="Items join automatically once they're started, or add one from its detail panel on the Work page."
-                      />
-                    </div>
-                  ) : (
-                    <WorkItemsTable
-                      rows={items}
-                      roster={roster}
-                      projects={projectList}
-                      currentMemberId={ctx.member.id}
-                      isTriageView={false}
-                    />
+          <div className="mb-4 rounded-lg border bg-card px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="micro-label">Project health</p>
+                  {latestUpdate && (
+                    <Badge className={cn('text-[10px]', HEALTH_META[latestUpdate.health].tone)}>
+                      {HEALTH_META[latestUpdate.health].label}
+                    </Badge>
                   )}
-                </>
-              )}
+                  {stale && (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      Update needed
+                    </Badge>
+                  )}
+                </div>
+                {latestUpdate ? (
+                  <>
+                    <p className="mt-1.5 text-sm leading-snug">{latestUpdate.body}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {latestUpdate.authorName ?? 'Someone'} · {relativeTime(latestUpdate.createdAt)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1.5 text-sm text-muted-foreground">No update posted yet.</p>
+                )}
+              </div>
+              <PostUpdateDialog projectId={project.id} />
             </div>
           </div>
-        )}
+
+          {cycleList.length === 0 ? (
+            <div className="flex rounded-lg border border-dashed">
+              <EmptyState
+                title="No cycles yet"
+                hint={
+                  canManage
+                    ? 'Start the first cycle above — after that, new cycles are created automatically.'
+                    : 'An admin or manager can start this project’s first cycle.'
+                }
+              />
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-[160px_1fr]">
+              <div className="flex gap-1.5 overflow-x-auto lg:flex-col lg:overflow-visible">
+                {cycleList.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={cyclesHref(project.id, c.id)}
+                    className={cn(
+                      'shrink-0 rounded-md border px-2.5 py-1.5 text-xs transition-colors lg:shrink',
+                      selectedCycle?.id === c.id
+                        ? 'border-beacon/50 bg-beacon/10 text-foreground'
+                        : 'bg-card text-muted-foreground hover:border-beacon/30 hover:text-foreground',
+                    )}
+                  >
+                    <p className="font-medium">{c.name ?? `Cycle ${c.number}`}</p>
+                    <p className="text-[10px] opacity-70">{STATUS_LABEL[cycleStatus(c)]}</p>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="min-w-0 space-y-4">
+                {selectedCycle && status && (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="font-semibold">{selectedCycle.name ?? `Cycle ${selectedCycle.number}`}</h2>
+                          <Badge
+                            variant={status === 'active' ? 'default' : status === 'upcoming' ? 'secondary' : 'outline'}
+                            className="text-[10px]"
+                          >
+                            {STATUS_LABEL[status]}
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {formatDate(selectedCycle.startsAt)} – {formatDate(selectedCycle.endsAt)} · {items.length}{' '}
+                          item
+                          {items.length === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                      {canManage && status !== 'closed' && <CloseCycleButton cycleId={selectedCycle.id} />}
+                    </div>
+
+                    <div className="rounded-lg border bg-card p-4">
+                      <BurnupChart
+                        snapshots={snapshots}
+                        startsAt={selectedCycle.startsAt}
+                        endsAt={selectedCycle.endsAt}
+                      />
+                    </div>
+
+                    {items.length === 0 ? (
+                      <div className="flex rounded-lg border border-dashed">
+                        <EmptyState
+                          title="No items in this cycle"
+                          hint="Items join automatically once they're started, or add one from its detail panel on the Work page."
+                        />
+                      </div>
+                    ) : (
+                      <WorkItemsTable
+                        rows={items}
+                        roster={roster}
+                        projects={projectList}
+                        currentMemberId={ctx.member.id}
+                        isTriageView={false}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </PageShell>
   )
