@@ -12,13 +12,9 @@ import {
 } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { visibleMemberIds } from '@/lib/auth/permissions'
-import { generateId } from '@/lib/utils/id'
-import { getDefaultProjectId } from '@/lib/db/projects'
-import { ingestEvents } from '@/lib/events/ingest'
-import { allocateIssueKey, isUniqueViolation } from '@/lib/work-items/keys'
 import { rankAfter } from '@/lib/work-items/rank'
 import { maxRank } from '@/lib/work-items/ordering'
-import { addWatchers } from '@/lib/work-items/watchers'
+import { insertWorkItem } from '@/lib/work-items/create'
 
 export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getWorkspaceContext()
@@ -162,70 +158,21 @@ export async function POST(req: NextRequest): Promise<Response> {
     assignee = row
   }
 
-  const projectId = data.projectId ?? (await getDefaultProjectId(ctx.workspaceId))
   const rank = rankAfter(await maxRank(ctx.workspaceId))
   const { templateId: _templateId, ...itemFields } = data
 
-  // Allocate a key and insert; on a key collision (e.g. an externally synced
-  // item already owns "BEA-42") allocate the next number and retry.
-  let item: typeof workItems.$inferSelect | undefined
-  for (let attempt = 0; attempt < 5 && !item; attempt++) {
-    const key = await allocateIssueKey(ctx.workspaceId)
-    try {
-      const inserted = await db
-        .insert(workItems)
-        .values({
-          id: generateId(),
-          workspaceId: ctx.workspaceId,
-          ...itemFields,
-          key,
-          projectId,
-          rank,
-          statusChangedAt: new Date(),
-        })
-        .returning()
-      item = inserted[0]
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error
-    }
-  }
-  if (!item) {
+  let item: typeof workItems.$inferSelect
+  try {
+    item = await insertWorkItem({
+      workspaceId: ctx.workspaceId,
+      creator: { id: ctx.member.id, name: ctx.member.name },
+      assignee,
+      fields: itemFields,
+      rank,
+    })
+  } catch {
     return Response.json({ error: 'Could not allocate a unique issue key' }, { status: 500 })
   }
-
-  // Creator (and assignee, if any) start watching immediately so the events
-  // below fan out into their inboxes correctly from the first change.
-  await addWatchers(ctx.workspaceId, item.id, [
-    { memberId: ctx.member.id, reason: 'creator' },
-    ...(assignee ? [{ memberId: assignee.id, reason: 'assigned' as const }] : []),
-  ])
-
-  await ingestEvents(
-    [
-      {
-        type: 'task.created',
-        source: 'manual',
-        summary: `${ctx.member.name} created ${item.key}: ${item.title}`,
-        task: item.id,
-        engineer: ctx.member.name,
-        externalId: `workitem:${item.id}:created`,
-      },
-      ...(assignee
-        ? [
-            {
-              type: 'task.assigned',
-              source: 'manual' as const,
-              summary: `${item.key} assigned to ${assignee.name}`,
-              task: item.id,
-              engineer: assignee.name,
-              externalId: `workitem:${item.id}:assigned:${assignee.id}:0`,
-              payload: { assigneeMemberId: assignee.id, assignedByMemberId: ctx.member.id },
-            },
-          ]
-        : []),
-    ],
-    { workspaceId: ctx.workspaceId },
-  )
 
   return Response.json({ item }, { status: 201 })
 }

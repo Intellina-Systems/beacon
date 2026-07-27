@@ -19,6 +19,7 @@ import { canManageWorkspaceConfig, isAdmin, visibleMemberIds } from '@/lib/auth/
 import { listEngineOptions, listTeamOptions } from '@/lib/org/list'
 import { ManageProjectsDialog } from '@/components/projects/manage-projects-dialog'
 import { CreateWorkItemDialog } from '@/components/work-items/create-work-item-dialog'
+import { BulkImportDialog } from '@/components/work-items/bulk-import-dialog'
 import { ManageTemplatesDialog } from '@/components/work-items/manage-templates-dialog'
 import { AssigneeFilter } from '@/components/work-items/assignee-filter'
 import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
@@ -235,6 +236,7 @@ export default async function WorkPage({
         <>
           <ManageTemplatesDialog />
           {canManageWorkspaceConfig(ctx) && <ManageProjectsDialog canDelete={isAdmin(ctx)} />}
+          <BulkImportDialog defaultProjectId={project} />
           <CreateWorkItemDialog defaultProjectId={project} />
         </>
       }
