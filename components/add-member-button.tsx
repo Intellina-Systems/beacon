@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 
 type AccessRole = 'admin' | 'manager' | 'engineer'
 
@@ -246,18 +247,21 @@ export function AddMemberButton({ teams }: { teams: TeamOption[] }) {
                             {team.name}
                           </label>
                           {onTeam && (
-                            <button
+                            <Button
                               type="button"
+                              variant="outline"
+                              size="sm"
                               onClick={() => toggleLead(team.id)}
-                              className={
+                              className={cn(
+                                'h-auto gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium',
                                 isLead
-                                  ? 'flex items-center gap-1 rounded border border-beacon/40 bg-beacon/10 px-1.5 py-0.5 text-[10px] font-medium text-beacon'
-                                  : 'flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground'
-                              }
+                                  ? 'border-beacon/40 bg-beacon/10 text-beacon hover:bg-beacon/10'
+                                  : 'text-muted-foreground hover:text-foreground',
+                              )}
                             >
                               <Crown className="h-3 w-3" />
                               Lead
-                            </button>
+                            </Button>
                           )}
                         </div>
                       )

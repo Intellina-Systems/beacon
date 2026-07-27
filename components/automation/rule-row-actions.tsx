@@ -6,6 +6,17 @@ import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 export function RuleRowActions({ ruleId, enabled }: { ruleId: string; enabled: boolean }) {
   const router = useRouter()
@@ -27,7 +38,6 @@ export function RuleRowActions({ ruleId, enabled }: { ruleId: string; enabled: b
   }
 
   async function remove() {
-    if (!window.confirm('Delete this rule?')) return
     setBusy(true)
     try {
       const res = await fetch(`/api/automation-rules/${ruleId}`, { method: 'DELETE' })
@@ -41,9 +51,23 @@ export function RuleRowActions({ ruleId, enabled }: { ruleId: string; enabled: b
   return (
     <div className="flex items-center gap-2">
       <Switch checked={enabled} disabled={busy} onCheckedChange={toggle} />
-      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" disabled={busy} onClick={remove}>
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground" disabled={busy}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this rule?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={remove}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

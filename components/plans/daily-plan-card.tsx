@@ -125,21 +125,22 @@ export function DailyPlanCard({ initialIntention, initialWorkItemIds, options, m
                 {options.map((item) => {
                   const on = selected.has(item.id)
                   return (
-                    <button
+                    <Button
                       key={item.id}
                       type="button"
+                      variant="outline"
                       onClick={() => toggle(item.id)}
                       title={label(item)}
                       className={cn(
-                        'inline-flex max-w-[240px] items-center gap-1 truncate rounded-full border px-2.5 py-1 text-xs transition-colors',
+                        'h-auto max-w-[240px] rounded-full px-2.5 py-1 text-xs font-normal',
                         on
-                          ? 'border-beacon/40 bg-beacon/10 text-foreground'
+                          ? 'border-beacon/40 bg-beacon/10 text-foreground hover:bg-beacon/10'
                           : 'text-muted-foreground hover:border-foreground/30 hover:text-foreground',
                       )}
                     >
                       {on && <Check className="h-3 w-3 shrink-0" />}
                       <span className="truncate">{label(item)}</span>
-                    </button>
+                    </Button>
                   )
                 })}
               </div>

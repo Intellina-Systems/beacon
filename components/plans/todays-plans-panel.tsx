@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CheckCircle2, Circle } from 'lucide-react'
 import { Panel, PanelHeader, EmptyState } from '@/components/page-shell'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { PlanDetailDialog } from './plan-detail-dialog'
 
@@ -34,10 +35,11 @@ export function TodaysPlansPanel({ plans, className }: { plans: PlanRow[]; class
           <EmptyState title="No one to show" hint="Plans people set for the day appear here." />
         ) : (
           plans.map((p) => (
-            <button
+            <Button
               key={p.memberId}
+              variant="ghost"
               onClick={() => setOpenMemberId(p.memberId)}
-              className="-mx-0 flex w-full items-start gap-2.5 rounded-md px-2 py-2.5 text-left transition-colors hover:bg-accent/60"
+              className="h-auto w-full items-start justify-start gap-2.5 rounded-md px-2 py-2.5 text-left font-normal"
             >
               {p.planned ? (
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-beacon" />
@@ -59,7 +61,7 @@ export function TodaysPlansPanel({ plans, className }: { plans: PlanRow[]; class
                   {p.intention ?? 'No plan yet'}
                 </p>
               </div>
-            </button>
+            </Button>
           ))
         )}
       </div>

@@ -365,7 +365,7 @@ export function CalendarApp({
             </div>
           ))}
         </div>
-        <input
+        <Input
           ref={importInputRef}
           type="file"
           accept=".ics,text/calendar"

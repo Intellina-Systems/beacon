@@ -188,12 +188,13 @@ export function BulkImportDialog({ defaultProjectId }: { defaultProjectId?: stri
                 </p>
                 <div className="flex gap-1">
                   {drafts.map((d, i) => (
-                    <button
+                    <Button
                       key={i}
                       type="button"
+                      variant="ghost"
                       onClick={() => setCurrent(i)}
                       title={d.title}
-                      className={`h-1.5 w-4 rounded-full transition-colors ${
+                      className={`h-1.5 w-4 min-w-0 rounded-full p-0 hover:bg-transparent ${
                         i === current ? 'bg-beacon' : d.include ? 'bg-muted-foreground/30' : 'bg-muted-foreground/10'
                       }`}
                     />

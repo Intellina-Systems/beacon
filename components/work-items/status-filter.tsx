@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { STATUS_META, STATUS_TAB_ORDER } from '@/lib/work-items/constants'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -47,7 +48,10 @@ export function StatusFilter({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border bg-card px-2.5 text-xs font-medium text-foreground transition-colors hover:border-beacon/30">
+        <Button
+          variant="outline"
+          className="h-7 gap-1.5 whitespace-nowrap bg-card px-2.5 text-xs font-medium text-foreground hover:border-beacon/30"
+        >
           {current.size > 0 && (
             <span className="flex -space-x-1">
               {[...current].slice(0, 3).map((s) => (
@@ -56,7 +60,7 @@ export function StatusFilter({
             </span>
           )}
           {label}
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
         {visibleStatuses.map((s) => (

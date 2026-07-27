@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -88,20 +89,21 @@ export function PickWorkItemDialog({
           ) : (
             <div className="divide-y">
               {filtered.map((item) => (
-                <button
+                <Button
                   key={item.id}
                   type="button"
+                  variant="ghost"
                   onClick={() => {
                     onPick(item)
                     setQuery('')
                     onClose()
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                  className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-sm font-normal"
                 >
                   <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[item.status].tone)} />
                   {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
                   <span className="truncate">{item.title}</span>
-                </button>
+                </Button>
               ))}
             </div>
           )}

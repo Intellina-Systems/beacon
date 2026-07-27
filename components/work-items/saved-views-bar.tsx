@@ -106,15 +106,17 @@ export function SavedViewsBar({
               {view.name}
             </Link>
             {canDelete && (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon"
                 disabled={busyId === view.id}
                 onClick={() => deleteView(view.id)}
-                className="rounded-full p-0.5 text-muted-foreground/50 opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                className="h-4 w-4 rounded-full p-0.5 text-muted-foreground/50 opacity-0 hover:bg-transparent hover:text-destructive group-hover:opacity-100"
                 aria-label={`Delete view ${view.name}`}
               >
                 <X className="h-3 w-3" />
-              </button>
+              </Button>
             )}
           </span>
         )

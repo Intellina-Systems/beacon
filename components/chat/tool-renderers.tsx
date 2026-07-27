@@ -142,12 +142,13 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
     <>
       <div className="w-full space-y-2">
         {items.map((item) => (
-          <button
+          <Button
             key={item.id}
             type="button"
+            variant="outline"
             onClick={() => setSelectedItem(item)}
             className={cn(
-              'w-full rounded-lg border bg-card/80 px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70',
+              'h-auto w-full justify-start rounded-lg bg-card/80 px-3 py-2 text-left font-normal',
               PRIORITY_ACCENT[item.priorityLabel] ?? PRIORITY_ACCENT.none,
             )}
           >
@@ -201,7 +202,7 @@ export function WorkItemsDisplay({ output }: { output: { items: WorkItem[] } | u
                 </div>
               </div>
             </div>
-          </button>
+          </Button>
         ))}
       </div>
 

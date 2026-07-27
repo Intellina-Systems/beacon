@@ -8,6 +8,7 @@ import { isSuperAdminUser } from '@/lib/auth/permissions'
 import { PageShell } from '@/components/page-shell'
 import { DeleteWorkspaceDialog } from '@/components/admin/delete-workspace-dialog'
 import { AdminBreadcrumb } from '@/components/admin/breadcrumb'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Admin · Workspace' }
@@ -47,31 +48,31 @@ export default async function AdminWorkspaceDetailPage({ params }: { params: Pro
     >
       <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
         <div className="overflow-x-auto rounded-lg border bg-card">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="micro-label px-4 py-2.5 text-left font-medium">Project</th>
-                <th className="micro-label w-32 px-4 py-2.5 text-left font-medium">Status</th>
-                <th className="micro-label w-28 px-4 py-2.5 text-right font-medium">Work items</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <Table className="min-w-[520px]">
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="micro-label px-4 py-2.5 font-medium">Project</TableHead>
+                <TableHead className="micro-label w-32 px-4 py-2.5 font-medium">Status</TableHead>
+                <TableHead className="micro-label w-28 px-4 py-2.5 text-right font-medium">Work items</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y">
               {projectRows.map((project) => (
-                <tr key={project.id} className="relative transition-colors hover:bg-accent/40">
-                  <td className="px-4 py-2.5 font-medium">
+                <TableRow key={project.id} className="relative">
+                  <TableCell className="px-4 py-2.5 font-medium">
                     <Link
                       href={`/admin/workspaces/${id}/projects/${project.id}`}
                       className="after:absolute after:inset-0"
                     >
                       {project.name}
                     </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground capitalize">{project.status}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{project.itemCount}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-muted-foreground capitalize">{project.status}</TableCell>
+                  <TableCell className="px-4 py-2.5 text-right tabular-nums">{project.itemCount}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     </PageShell>

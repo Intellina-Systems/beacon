@@ -6,6 +6,7 @@ import { getServerSession } from '@/lib/session/get-server-session'
 import { isSuperAdminUser } from '@/lib/auth/permissions'
 import { PageShell } from '@/components/page-shell'
 import { AdminBreadcrumb } from '@/components/admin/breadcrumb'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { STATUS_META } from '@/lib/work-items/constants'
 
 export const dynamic = 'force-dynamic'
@@ -55,35 +56,35 @@ export default async function AdminProjectDetailPage({
     >
       <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-5 lg:px-6">
         <div className="overflow-x-auto rounded-lg border bg-card">
-          <table className="w-full min-w-[520px] text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40">
-                <th className="micro-label w-24 px-4 py-2.5 text-left font-medium">Key</th>
-                <th className="micro-label px-4 py-2.5 text-left font-medium">Title</th>
-                <th className="micro-label w-32 px-4 py-2.5 text-left font-medium">Status</th>
-                <th className="micro-label w-40 px-4 py-2.5 text-left font-medium">Assignee</th>
-                <th className="micro-label w-40 px-4 py-2.5 text-right font-medium">Updated</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <Table className="min-w-[520px]">
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead className="micro-label w-24 px-4 py-2.5 font-medium">Key</TableHead>
+                <TableHead className="micro-label px-4 py-2.5 font-medium">Title</TableHead>
+                <TableHead className="micro-label w-32 px-4 py-2.5 font-medium">Status</TableHead>
+                <TableHead className="micro-label w-40 px-4 py-2.5 font-medium">Assignee</TableHead>
+                <TableHead className="micro-label w-40 px-4 py-2.5 text-right font-medium">Updated</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y">
               {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="px-4 py-2.5 text-muted-foreground">{item.key ?? '—'}</td>
-                  <td className="px-4 py-2.5 font-medium">{item.title}</td>
-                  <td className="px-4 py-2.5">
+                <TableRow key={item.id}>
+                  <TableCell className="px-4 py-2.5 text-muted-foreground">{item.key ?? '—'}</TableCell>
+                  <TableCell className="px-4 py-2.5 font-medium">{item.title}</TableCell>
+                  <TableCell className="px-4 py-2.5">
                     <span className="inline-flex items-center gap-1.5">
                       <span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[item.status].tone}`} />
                       {STATUS_META[item.status].label}
                     </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{item.assigneeName ?? '—'}</td>
-                  <td className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
+                  </TableCell>
+                  <TableCell className="px-4 py-2.5 text-muted-foreground">{item.assigneeName ?? '—'}</TableCell>
+                  <TableCell className="px-4 py-2.5 text-right text-muted-foreground tabular-nums">
                     {item.updatedAt.toLocaleDateString()}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </div>
     </PageShell>

@@ -5,13 +5,23 @@ import { useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 export function DeleteDocButton({ docId }: { docId: string }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
 
   async function remove() {
-    if (!window.confirm('Delete this document? This cannot be undone.')) return
     setBusy(true)
     try {
       const res = await fetch(`/api/docs/${docId}`, { method: 'DELETE' })
@@ -28,15 +38,23 @@ export function DeleteDocButton({ docId }: { docId: string }) {
   }
 
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="text-muted-foreground hover:text-destructive"
-      disabled={busy}
-      onClick={remove}
-    >
-      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-      Delete
-    </Button>
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={busy}>
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+          Delete
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this document?</AlertDialogTitle>
+          <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={remove}>Delete</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { AddMemberButton } from '@/components/add-member-button'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 export const dynamic = 'force-dynamic'
@@ -67,24 +68,24 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
           </div>
         ) : (
           <div className="scrollbar-hide min-h-0 flex-1 overflow-auto rounded-lg border bg-card">
-            <table className="w-full min-w-[520px] text-sm">
-              <thead>
-                <tr className="sticky top-0 z-10 border-b bg-muted">
-                  <th className="micro-label px-4 py-2.5 text-left font-medium">Member</th>
-                  <th className="micro-label hidden w-40 px-4 py-2.5 text-left font-medium sm:table-cell">Title</th>
-                  <th className="micro-label hidden w-28 px-4 py-2.5 text-left font-medium sm:table-cell">Access</th>
-                  <th className="micro-label hidden w-52 px-4 py-2.5 text-left font-medium lg:table-cell">Email</th>
-                  <th className="micro-label w-40 px-4 py-2.5 text-left font-medium">Identities</th>
-                  <th className="micro-label w-28 px-4 py-2.5 text-right font-medium">7d activity</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+            <Table className="min-w-[520px]">
+              <TableHeader>
+                <TableRow className="sticky top-0 z-10 bg-muted">
+                  <TableHead className="micro-label px-4 py-2.5 font-medium">Member</TableHead>
+                  <TableHead className="micro-label hidden w-40 px-4 py-2.5 font-medium sm:table-cell">Title</TableHead>
+                  <TableHead className="micro-label hidden w-28 px-4 py-2.5 font-medium sm:table-cell">Access</TableHead>
+                  <TableHead className="micro-label hidden w-52 px-4 py-2.5 font-medium lg:table-cell">Email</TableHead>
+                  <TableHead className="micro-label w-40 px-4 py-2.5 font-medium">Identities</TableHead>
+                  <TableHead className="micro-label w-28 px-4 py-2.5 text-right font-medium">7d activity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y">
                 {pageMembers.map((member) => {
                   const canOpen = !detailVisible || detailVisible.includes(member.id)
                   const memberActivity = canOpen ? activity.get(member.id) : undefined
                   return (
-                    <tr key={member.id} className="relative transition-colors hover:bg-accent/40">
-                      <td className="px-4 py-2.5">
+                    <TableRow key={member.id} className="relative">
+                      <TableCell className="px-4 py-2.5">
                         {canOpen ? (
                           <Link
                             href={`/team/${member.id}`}
@@ -109,11 +110,11 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                             <span className="font-medium">{member.name}</span>
                           </span>
                         )}
-                      </td>
-                      <td className="hidden px-4 py-2.5 text-xs text-muted-foreground sm:table-cell">
+                      </TableCell>
+                      <TableCell className="hidden px-4 py-2.5 text-xs text-muted-foreground sm:table-cell">
                         {member.title ?? <span className="text-muted-foreground/50">—</span>}
-                      </td>
-                      <td className="hidden px-4 py-2.5 sm:table-cell">
+                      </TableCell>
+                      <TableCell className="hidden px-4 py-2.5 sm:table-cell">
                         {member.status === 'profile' ? (
                           <span className="text-xs text-muted-foreground/50">—</span>
                         ) : (
@@ -128,11 +129,11 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                             )}
                           </span>
                         )}
-                      </td>
-                      <td className="hidden truncate px-4 py-2.5 text-xs text-muted-foreground lg:table-cell">
+                      </TableCell>
+                      <TableCell className="hidden truncate px-4 py-2.5 text-xs text-muted-foreground lg:table-cell">
                         {member.email ?? <span className="text-muted-foreground/50">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5">
+                      </TableCell>
+                      <TableCell className="px-4 py-2.5">
                         <div className="flex flex-wrap gap-1">
                           {member.githubUsername && (
                             <span className="rounded border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
@@ -141,20 +142,20 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                           )}
                           {!member.githubUsername && <span className="text-xs text-muted-foreground/50">unlinked</span>}
                         </div>
-                      </td>
-                      <td
+                      </TableCell>
+                      <TableCell
                         className={cn(
                           'px-4 py-2.5 text-right font-mono text-xs tabular-nums',
                           memberActivity ? 'text-foreground/80' : 'text-muted-foreground/50',
                         )}
                       >
                         {canOpen ? (memberActivity ? `${memberActivity.total} ev` : 'quiet') : '—'}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
 

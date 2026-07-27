@@ -230,8 +230,9 @@ export function BeaconLayout({
           <div className="animate-in slide-in-from-left w-64 border-r shadow-xl duration-300 ease-out-soft">
             {sidebar}
           </div>
-          <button
-            className="animate-in fade-in flex-1 cursor-default bg-black/50 backdrop-blur-[2px] duration-300"
+          <Button
+            variant="ghost"
+            className="animate-in fade-in h-auto flex-1 cursor-default rounded-none bg-black/50 p-0 backdrop-blur-[2px] duration-300 hover:bg-black/50"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           />

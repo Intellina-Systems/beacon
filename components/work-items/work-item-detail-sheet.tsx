@@ -13,6 +13,17 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { relativeTime } from '@/lib/utils/relative-time'
 import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
@@ -259,7 +270,6 @@ export function WorkItemDetailSheet({
 
   async function handleDelete() {
     if (!itemId) return
-    if (!window.confirm('Delete this work item? This cannot be undone.')) return
     const res = await fetch(`/api/work-items/${itemId}`, { method: 'DELETE' })
     if (res.ok) {
       toast.success('Work item deleted')
@@ -319,15 +329,28 @@ export function WorkItemDetailSheet({
                     </a>
                   )}
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                  onClick={handleDelete}
-                  title="Delete"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this work item?</AlertDialogTitle>
+                      <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
               <DrawerTitle className="sr-only">{item.title}</DrawerTitle>
             </DrawerHeader>
@@ -424,12 +447,13 @@ export function WorkItemDetailSheet({
                       {item.description}
                     </Streamdown>
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
+                      className="h-auto p-0 text-sm font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
                       onClick={() => setEditingDesc(true)}
-                      className="text-sm text-muted-foreground transition-colors hover:text-foreground"
                     >
                       Add a description…
-                    </button>
+                    </Button>
                   )}
                 </section>
 
@@ -722,12 +746,14 @@ export function WorkItemDetailSheet({
                         <span className="min-w-0 truncate">
                           {w.name} <span className="text-muted-foreground">· {w.reason}</span>
                         </span>
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 shrink-0 p-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
                           onClick={() => removeWatcherEntry(w.memberId)}
-                          className="shrink-0 text-muted-foreground hover:text-foreground"
                         >
                           <X className="h-3 w-3" />
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -810,12 +836,14 @@ function RelationGroup({
               {entry.item.key && <span className="shrink-0 font-mono text-muted-foreground">{entry.item.key}</span>}
               <span className="truncate">{entry.item.title}</span>
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 shrink-0 p-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
               onClick={() => onRemove(entry.relationId)}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
             >
               <X className="h-3 w-3" />
-            </button>
+            </Button>
           </div>
         ))}
       </div>

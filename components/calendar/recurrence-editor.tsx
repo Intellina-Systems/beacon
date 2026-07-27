@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -105,17 +106,18 @@ export function RecurrenceEditor({
           {WEEKDAYS.map((day, i) => {
             const on = parsed.byday.includes(day)
             return (
-              <button
+              <Button
                 key={day}
                 type="button"
+                variant="ghost"
                 onClick={() => update({ byday: on ? parsed.byday.filter((d) => d !== day) : [...parsed.byday, day] })}
                 className={cn(
-                  'h-7 w-7 rounded-full text-xs font-medium transition-colors',
-                  on ? 'bg-beacon text-white' : 'bg-muted text-muted-foreground hover:bg-accent',
+                  'h-7 w-7 rounded-full p-0 text-xs font-medium',
+                  on ? 'bg-beacon text-white hover:bg-beacon hover:text-white' : 'bg-muted text-muted-foreground',
                 )}
               >
                 {WEEKDAY_LABELS[i]}
-              </button>
+              </Button>
             )
           })}
         </div>

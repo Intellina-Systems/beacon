@@ -197,11 +197,10 @@ export function KnowledgeForm() {
           </TabsContent>
 
           <TabsContent value="file" className="space-y-3 mt-4">
-            <input
+            <Input
               ref={fileInput}
               type="file"
               accept=".pdf,.docx,.xlsx,.xls,.csv"
-              className="text-sm"
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (file) void submitFile(file)

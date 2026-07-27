@@ -110,9 +110,10 @@ function ToolDebugEntry({
 
   return (
     <div className="rounded-lg border text-xs font-mono overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-muted/50 transition-colors"
+        className="h-auto w-full justify-between rounded-none px-3 py-2 font-normal hover:bg-muted/50"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-muted-foreground shrink-0">#{index + 1}</span>
@@ -121,7 +122,7 @@ function ToolDebugEntry({
           {state === 'output-available' && <span className="text-green-500 shrink-0">done</span>}
         </div>
         <ChevronDown className={cn('h-3 w-3 shrink-0 transition-transform ml-2', !expanded && '-rotate-90')} />
-      </button>
+      </Button>
 
       {expanded && (
         <div className="border-t divide-y">
@@ -369,13 +370,14 @@ function ChatConversation() {
             </div>
             <div className="flex max-w-sm flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((suggestion) => (
-                <button
+                <Button
                   key={suggestion.label}
+                  variant="outline"
                   onClick={() => sendMessage(suggestion.message, responseLevel)}
-                  className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+                  className="h-auto rounded-full px-3 py-1.5 text-xs font-normal"
                 >
                   {suggestion.label}
-                </button>
+                </Button>
               ))}
             </div>
           </div>

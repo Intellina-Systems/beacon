@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Table2, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 export interface CycleSnapshotPoint {
@@ -141,26 +142,26 @@ export function BurnupChart({
 
       {tableView ? (
         <div className="max-h-56 overflow-y-auto rounded-md border">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-muted/60">
-              <tr>
-                <th className="px-2.5 py-1.5 text-left font-medium text-muted-foreground">Date</th>
-                <th className="px-2.5 py-1.5 text-right font-medium text-muted-foreground">Scope</th>
-                <th className="px-2.5 py-1.5 text-right font-medium text-muted-foreground">Started</th>
-                <th className="px-2.5 py-1.5 text-right font-medium text-muted-foreground">Completed</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <Table className="text-xs">
+            <TableHeader>
+              <TableRow className="sticky top-0 bg-muted/60">
+                <TableHead className="px-2.5 py-1.5 h-auto font-medium text-muted-foreground">Date</TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Scope</TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Started</TableHead>
+                <TableHead className="px-2.5 py-1.5 h-auto text-right font-medium text-muted-foreground">Completed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="divide-y">
               {sorted.map((s) => (
-                <tr key={s.snapshotDate}>
-                  <td className="px-2.5 py-1.5 font-mono">{s.snapshotDate}</td>
-                  <td className="px-2.5 py-1.5 text-right tabular-nums">{s.scopePoints}</td>
-                  <td className="px-2.5 py-1.5 text-right tabular-nums">{s.startedPoints}</td>
-                  <td className="px-2.5 py-1.5 text-right tabular-nums">{s.completedPoints}</td>
-                </tr>
+                <TableRow key={s.snapshotDate}>
+                  <TableCell className="px-2.5 py-1.5 font-mono">{s.snapshotDate}</TableCell>
+                  <TableCell className="px-2.5 py-1.5 text-right tabular-nums">{s.scopePoints}</TableCell>
+                  <TableCell className="px-2.5 py-1.5 text-right tabular-nums">{s.startedPoints}</TableCell>
+                  <TableCell className="px-2.5 py-1.5 text-right tabular-nums">{s.completedPoints}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : (
         <div className="relative">

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
@@ -60,15 +61,15 @@ export function WorkspaceSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex min-w-0 items-center gap-1 text-left text-sm font-semibold text-sidebar-foreground transition-opacity hover:opacity-80"
+        <Button
+          variant="ghost"
+          className="h-auto min-w-0 justify-start gap-1 p-0 text-sm font-semibold text-sidebar-foreground hover:bg-transparent hover:opacity-80"
         >
           <span className="min-w-0 truncate" title={currentWorkspaceName}>
             {currentWorkspaceName}
           </span>
           <ChevronsUpDown className="h-3 w-3 shrink-0 text-sidebar-foreground/50" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
         {memberships.map((m) => (

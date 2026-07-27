@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { AlertTriangle, Bot, CircleCheck, GitCommit, GitMerge, GitPullRequest, Sparkles, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SignIn } from '@/components/auth/sign-in'
+import { Button } from '@/components/ui/button'
 
 type FeedItem = {
   id: number
@@ -263,18 +264,19 @@ export function Landing() {
           <Tile className="justify-between gap-10 p-7 sm:p-9 lg:col-span-4 lg:row-span-2">
             <div>
               <div className="mb-6 flex items-center gap-3 lg:mb-8">
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
                   onClick={handleLogoClick}
                   aria-label="Beacon"
-                  className="animate-beacon-pulse flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-beacon"
+                  className="animate-beacon-pulse h-8 w-8 shrink-0 rounded-md bg-beacon p-0 hover:bg-beacon"
                 >
                   <Zap
                     key={spinToken}
                     className={cn('h-4.5 w-4.5 text-beacon-foreground', spinToken > 0 && 'animate-logo-spin')}
                     strokeWidth={2.5}
                   />
-                </button>
+                </Button>
                 <span className="micro-label">Engineering intelligence layer</span>
               </div>
               <h1 className="font-mono text-4xl font-semibold leading-tight tracking-[0.12em] sm:text-5xl xl:text-6xl">

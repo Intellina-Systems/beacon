@@ -99,12 +99,13 @@ export function BlockersPanel({ blockers, className }: { blockers: BlockerRow[];
                       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                     </Link>
                   ) : (
-                    <button
+                    <Button
+                      variant="ghost"
                       onClick={() => setDetail(b)}
-                      className="-mx-2 flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/60"
+                      className="h-auto min-w-0 flex-1 justify-start gap-1 rounded-md px-2 py-1 text-left font-normal"
                     >
                       {rowContent}
-                    </button>
+                    </Button>
                   )}
                   <Button
                     size="sm"

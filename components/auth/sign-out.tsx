@@ -2,6 +2,7 @@
 
 import type { Session } from '@/lib/session/types'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,9 +57,9 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-sidebar-accent/60 focus:outline-none focus:ring-2 focus:ring-sidebar-ring"
+        <Button
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-1.5 text-left font-normal hover:bg-sidebar-accent/60 focus-visible:ring-sidebar-ring"
         >
           <Avatar className="h-8 w-8 shrink-0">
             <AvatarImage src={user?.avatar ? `${user.avatar}&s=72` : undefined} alt={user.username} />
@@ -73,7 +74,7 @@ export function SignOut({ user, authProvider, githubConnection }: SignOutProps) 
             </span>
           </span>
           <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="w-56">
