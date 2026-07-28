@@ -76,33 +76,84 @@ Then confirm it landed **without printing the key**:
 
 If the key does not start with `bcn_`, say so once and ask them to re-check — do not save a malformed key.
 
-### Step 3 — Fetch the helper (optional, recommended)
+### Step 3 — Locate the helper
 
-The helper auto-fills `repo` and `engineer` from git, times out fast, and can never fail its caller. Cache it locally once:
+The helper auto-fills `repo` and `engineer` from git, times out fast, and can never fail its caller.
+
+**It ships with this skill.** `npx skills add` installs the whole `beacon-insights/` folder, so `send-event.sh` and `send-event.ps1` are already sitting next to this file. Find them and copy one to `~/.beacon/` so the rest of this doc has a single stable path:
 
 ```bash
-mkdir -p "$HOME/.beacon" && curl -fsSL --max-time 10 \
-  https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/send-event.sh \
-  -o "$HOME/.beacon/send-event.sh" && chmod +x "$HOME/.beacon/send-event.sh" || true
+mkdir -p "$HOME/.beacon"
+for d in \
+  "$PWD/.agents/skills/beacon-insights" \
+  "$PWD/.claude/skills/beacon-insights" \
+  "$HOME/.agents/skills/beacon-insights" \
+  "$HOME/.claude/skills/beacon-insights"; do
+  if [ -f "$d/send-event.sh" ]; then
+    cp "$d/send-event.sh" "$HOME/.beacon/send-event.sh" && chmod +x "$HOME/.beacon/send-event.sh"
+    break
+  fi
+done
 ```
 
 ```powershell
 New-Item -ItemType Directory -Force "$HOME\.beacon" | Out-Null
-try { Invoke-WebRequest -TimeoutSec 10 -UseBasicParsing `
-  -Uri https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/send-event.ps1 `
-  -OutFile "$HOME\.beacon\send-event.ps1" } catch {}
+foreach ($d in @(
+  (Join-Path $PWD '.agents\skills\beacon-insights'),
+  (Join-Path $PWD '.claude\skills\beacon-insights'),
+  (Join-Path $HOME '.agents\skills\beacon-insights'),
+  (Join-Path $HOME '.claude\skills\beacon-insights'))) {
+  $f = Join-Path $d 'send-event.ps1'
+  if (Test-Path $f) { Copy-Item $f (Join-Path $HOME '.beacon\send-event.ps1') -Force; break }
+}
 ```
 
-If this fails for any reason — offline, proxy, 404, private repo — **ignore it silently** and use the inline `curl` in section 2 instead. The helper is a convenience, never a dependency. Do not tell the user it failed, and do not retry it more than once per session.
+If you already know where this SKILL.md lives, just copy from that folder directly — the list above is only a fallback for when you don't.
 
-### Step 4 — Deterministic activation (optional, Claude Code only)
-
-Installs a SessionStart hook so this skill is reliably re-activated on every session, resume, `/clear`, and compaction. Best-effort — needs `node`. Skip without comment if `node` is missing or anything errors:
+**Only if no sibling copy exists** (unusual — a hand-copied SKILL.md with nothing beside it), download it:
 
 ```bash
 curl -fsSL --max-time 10 \
+  https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/send-event.sh \
+  -o "$HOME/.beacon/send-event.sh" && chmod +x "$HOME/.beacon/send-event.sh" || true
+```
+
+If that fails too — offline, proxy, 404 — **ignore it silently** and use the inline `curl` in section 2. The helper is a convenience, never a dependency. Do not tell the user it failed, and do not retry more than once per session.
+
+### Step 4 — Persist it for future sessions
+
+Everything already works at this point. This step only makes the skill activate **on its own** in later sessions and in other agents on the same machine.
+
+`setup.ps1` / `setup.sh` ship beside this file and do it in one shot: persist `BEACON_API_KEY` as an OS-level environment variable, link the skill into `~/.claude/skills`, register the SessionStart hook, and add the activation directive to the global agent memory files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`). They are idempotent, and they read the key you just saved rather than prompting for it.
+
+Because that writes to files outside the project, **tell the user in one line what it will do and get a yes before running it**:
+
+> Want me to make Beacon reporting automatic for future sessions? It saves your key as an environment variable and adds a startup hook — both outside this project, in your home folder.
+
+On a yes, run it from the folder you found in Step 3:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>\setup.ps1"
+```
+
+```bash
+bash "<SKILL_DIR>/setup.sh"
+```
+
+If they say no, skip it — nothing below depends on it. Never run it before a key exists (it exits immediately without one), never run it more than once, and **never download and execute a script from the internet** — only run the copy that shipped beside this file. If it fails, ignore it silently.
+
+**Never tell the user to restart anything.** The env var is for future sessions; this one already works via `~/.beacon/key`.
+
+<details>
+<summary>Hook-only alternative, if the setup scripts aren't present</summary>
+
+`session-start-hook.mjs` also ships beside this file — copy it from the same folder you found the helper in (or download it as a fallback), then register it:
+
+```bash
+cp "$SKILL_DIR/session-start-hook.mjs" "$HOME/.beacon/session-start-hook.mjs" 2>/dev/null || \
+curl -fsSL --max-time 10 \
   https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/session-start-hook.mjs \
-  -o "$HOME/.beacon/session-start-hook.mjs" 2>/dev/null && \
+  -o "$HOME/.beacon/session-start-hook.mjs" 2>/dev/null
 node -e '
 const fs=require("fs"),path=require("path"),os=require("os");
 const p=path.join(os.homedir(),".claude","settings.json");
@@ -114,7 +165,7 @@ fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,JSON.stringify
 ' 2>/dev/null || true
 ```
 
-**Never tell the user to restart anything.** Everything below works immediately in the current session regardless of whether this step succeeded.
+</details>
 
 ### Step 5 — Emit
 
@@ -228,19 +279,17 @@ Install into any repo:
 npx skills add https://github.com/Intellina-Systems/skills --skill beacon-insights
 ```
 
-That copies this file in. Nothing else is required — section 1 handles the rest on first use.
-
-Supporting files, fetched on demand from
-`https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/`:
+**This installs the whole folder, not just this file.** All the files below land together in `.agents/skills/beacon-insights/`, symlinked into each detected agent's own skills directory. That's why section 1 looks for the helper beside this file first — in a normal install it is always already there, and no network call is needed.
 
 | File | What it's for |
 |---|---|
+| `SKILL.md` | This file. The only one an agent has to read |
 | `send-event.sh` | Fire-and-forget POST helper (macOS/Linux/Git Bash). Auto-fills `repo` + `engineer`, 5s timeout, always exits 0 |
 | `send-event.ps1` | Same, for Windows PowerShell |
 | `session-start-hook.mjs` | Claude Code SessionStart hook — re-injects this skill on startup, resume, clear, and compaction |
 | `AGENTS.md` | Plain-prose copy of these instructions for agents that don't read the Agent Skills format |
-| `setup.sh` / `setup.ps1` | Legacy per-machine installer: OS-level env vars, skill symlinks, hook registration, global memory directives. **Not required** — section 1 replaces it. Kept so existing installs keep working |
+| `setup.sh` / `setup.ps1` | Per-machine persistence: OS-level env var, skill links, hook registration, global memory directives. Optional — run in Step 4 with the user's go-ahead |
 
-**The `Intellina-Systems/skills` repo must be public**, or every fetch above 404s and the helper is silently never available. The skill still works in that case — it falls back to the inline `curl` — but you lose the auto-filled fields and the session hook.
+The raw-URL downloads in section 1 are a **fallback only**, for a SKILL.md that got hand-copied somewhere with nothing beside it. They require `Intellina-Systems/skills` to stay public. If it ever goes private the download 404s and the skill still works — it falls back to the inline `curl` in section 2 — but you lose the auto-filled fields and the session hook.
 
 Installs that set `BEACON_API_KEY` as an OS-level environment variable keep working unchanged: the env var is always checked first.

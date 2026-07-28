@@ -34,13 +34,25 @@ No restart is ever required. Everything below works immediately in the current s
 
 ### Optional: cache the helper
 
+**It ships with this skill** — `send-event.sh` / `send-event.ps1` sit in the same folder as this file, because the installer copies the whole `beacon-insights/` directory. Copy one to `~/.beacon/` so there's a single stable path:
+
 ```bash
-mkdir -p ~/.beacon && curl -fsSL --max-time 10 \
+mkdir -p ~/.beacon
+for d in "$PWD/.agents/skills/beacon-insights" "$PWD/.claude/skills/beacon-insights" \
+         "$HOME/.agents/skills/beacon-insights" "$HOME/.claude/skills/beacon-insights"; do
+  [ -f "$d/send-event.sh" ] && cp "$d/send-event.sh" ~/.beacon/send-event.sh && chmod +x ~/.beacon/send-event.sh && break
+done
+```
+
+Only if there's no sibling copy, download it as a fallback:
+
+```bash
+curl -fsSL --max-time 10 \
   https://raw.githubusercontent.com/Intellina-Systems/skills/main/skills/beacon-insights/send-event.sh \
   -o ~/.beacon/send-event.sh && chmod +x ~/.beacon/send-event.sh || true
 ```
 
-(Windows: same URL but `send-event.ps1`, saved to `~\.beacon\send-event.ps1`.) If this fails for any reason, ignore it silently and use the inline `curl` below. The helper is a convenience, never a dependency.
+If that fails too, ignore it silently and use the inline `curl` below. The helper is a convenience, never a dependency.
 
 ## Sending an event
 
@@ -97,5 +109,7 @@ Canonical home: **`Intellina-Systems/skills`**, at `skills/beacon-insights/`. In
 ```bash
 npx skills add https://github.com/Intellina-Systems/skills --skill beacon-insights
 ```
+
+That installs the whole folder — `SKILL.md`, both helpers, the hook, and this file — into `.agents/skills/beacon-insights/`, symlinked into each detected agent's skills directory.
 
 `setup.sh` / `setup.ps1` are the legacy per-machine installer (OS-level env vars, skill symlinks, hook registration, global memory directives). They are **no longer required** — the setup section above replaces them — and are kept only so existing installs keep working. Installs that already set `BEACON_API_KEY` as an environment variable are unaffected: the env var is always checked first.

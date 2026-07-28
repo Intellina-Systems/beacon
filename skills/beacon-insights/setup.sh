@@ -9,19 +9,36 @@
 #
 # Safe to re-run: every step is idempotent.
 #
-#   bash setup.sh            # prompts for the key
-#   bash setup.sh bcn_xxx    # non-interactive
+#   bash setup.sh            # uses a saved key, else prompts
+#   bash setup.sh bcn_xxx    # explicit
+#
+# The key is resolved in this order: $1, $BEACON_API_KEY, ~/.beacon/key. Only if
+# none of those exist does it prompt - and with no TTY (an agent's shell) it
+# exits quietly instead of hanging.
 
 set -euo pipefail
 
 BEACON_URL_DEFAULT="https://beacon-tool.vercel.app"
 
-if [ -z "${1:-}" ]; then
-  read -rp "Paste your Beacon API key (Beacon -> Settings -> API Keys, starts with bcn_): " API_KEY
-else
-  API_KEY="$1"
+API_KEY="${1:-${BEACON_API_KEY:-}}"
+if [ -z "$API_KEY" ] && [ -s "$HOME/.beacon/key" ]; then
+  API_KEY="$(cat "$HOME/.beacon/key")"
 fi
-BEACON_URL="${2:-$BEACON_URL_DEFAULT}"
+if [ -z "$API_KEY" ]; then
+  if [ -t 0 ]; then
+    read -rp "Paste your Beacon API key (Beacon -> Settings -> API Keys, starts with bcn_): " API_KEY
+  else
+    echo "No Beacon API key found and no TTY to prompt on - nothing to do."
+    exit 0
+  fi
+fi
+[ -z "$API_KEY" ] && exit 0
+
+BEACON_URL="${2:-${BEACON_URL:-}}"
+if [ -z "$BEACON_URL" ] && [ -s "$HOME/.beacon/url" ]; then
+  BEACON_URL="$(cat "$HOME/.beacon/url")"
+fi
+BEACON_URL="${BEACON_URL:-$BEACON_URL_DEFAULT}"
 
 case "$API_KEY" in
   bcn_*) ;;

@@ -9,20 +9,46 @@ One-time, per-machine setup for the beacon-insights skill (Windows). It:
 
 Safe to re-run: every step is idempotent.
 
-  powershell -ExecutionPolicy Bypass -File setup.ps1
+  powershell -ExecutionPolicy Bypass -File setup.ps1            # uses a saved key, else prompts
+  powershell -ExecutionPolicy Bypass -File setup.ps1 bcn_xxx    # explicit
+
+The key is resolved in this order: -ApiKey, $env:BEACON_API_KEY, ~/.beacon/key.
+Only if none of those exist does it prompt - and when there's no console to
+prompt on (an agent's shell), it exits quietly instead of hanging.
 #>
 
 param(
     [string]$ApiKey,
-    [string]$BeaconUrl = "https://beacon-tool.vercel.app"
+    [string]$BeaconUrl
 )
 
+$beaconDir = Join-Path $HOME '.beacon'
+
+if (-not $ApiKey) { $ApiKey = $env:BEACON_API_KEY }
 if (-not $ApiKey) {
-    $ApiKey = Read-Host "Paste your Beacon API key (Beacon -> Settings -> API Keys, starts with bcn_)"
+    $keyFile = Join-Path $beaconDir 'key'
+    if (Test-Path $keyFile) { $ApiKey = (Get-Content $keyFile -Raw).Trim() }
 }
+if (-not $ApiKey) {
+    if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        $ApiKey = Read-Host "Paste your Beacon API key (Beacon -> Settings -> API Keys, starts with bcn_)"
+    }
+    else {
+        Write-Host "No Beacon API key found and no console to prompt on - nothing to do."
+        exit 0
+    }
+}
+if (-not $ApiKey) { exit 0 }
 if (-not $ApiKey.StartsWith("bcn_")) {
     Write-Warning "That doesn't look like a Beacon API key (should start with 'bcn_'). Continuing anyway."
 }
+
+if (-not $BeaconUrl) { $BeaconUrl = $env:BEACON_URL }
+if (-not $BeaconUrl) {
+    $urlFile = Join-Path $beaconDir 'url'
+    if (Test-Path $urlFile) { $BeaconUrl = (Get-Content $urlFile -Raw).Trim() }
+}
+if (-not $BeaconUrl) { $BeaconUrl = "https://beacon-tool.vercel.app" }
 
 # --- 1. Persistent env vars (user-level) --------------------------------------
 [Environment]::SetEnvironmentVariable("BEACON_API_KEY", $ApiKey, "User")
