@@ -61,7 +61,7 @@ function workHref(filter: FilterState, page: number) {
   if (filter.assignee) params.set('assignee', filter.assignee)
   if (filter.engine) params.set('engine', filter.engine)
   if (filter.orgTeam) params.set('team', filter.orgTeam)
-  if (filter.layout && filter.layout !== 'list') params.set('layout', filter.layout)
+  if (filter.layout && filter.layout !== 'board') params.set('layout', filter.layout)
   if (filter.sort) {
     params.set('sort', filter.sort)
     params.set('dir', filter.dir === 'desc' ? 'desc' : 'asc')
@@ -108,7 +108,7 @@ export default async function WorkPage({
   const statuses = new Set(
     (rawStatus?.split(',') ?? []).filter((s): s is WorkItemStatus => WORK_ITEM_STATUSES.includes(s as WorkItemStatus)),
   )
-  const layout: ViewLayout = rawLayout === 'board' ? 'board' : 'list'
+  const layout: ViewLayout = rawLayout === 'list' ? 'list' : 'board'
   const page = parsePage(rawPage)
   const sort = SORT_KEYS.find((k) => k === rawSort)
   const dir: 'asc' | 'desc' = rawDir === 'desc' ? 'desc' : 'asc'
@@ -343,18 +343,6 @@ export default async function WorkPage({
             )}
             <div className="flex h-7 items-center divide-x overflow-hidden rounded-md border">
               <Link
-                href={workHref({ ...filter, layout: 'list' }, 1)}
-                title="List view"
-                className={cn(
-                  'flex h-full w-7 items-center justify-center transition-colors',
-                  layout === 'list'
-                    ? 'bg-beacon/10 text-foreground'
-                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                )}
-              >
-                <List className="h-3.5 w-3.5" />
-              </Link>
-              <Link
                 href={workHref({ ...filter, layout: 'board' }, 1)}
                 title="Board view"
                 className={cn(
@@ -365,6 +353,18 @@ export default async function WorkPage({
                 )}
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                href={workHref({ ...filter, layout: 'list' }, 1)}
+                title="List view"
+                className={cn(
+                  'flex h-full w-7 items-center justify-center transition-colors',
+                  layout === 'list'
+                    ? 'bg-beacon/10 text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                )}
+              >
+                <List className="h-3.5 w-3.5" />
               </Link>
             </div>
           </div>

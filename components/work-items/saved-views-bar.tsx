@@ -26,7 +26,7 @@ function viewHref(view: SavedView): string {
   if (f.statuses?.length) params.set('status', f.statuses.join(','))
   if (f.projectId) params.set('project', f.projectId)
   if (f.assignee) params.set('assignee', f.assignee)
-  if (view.layout !== 'list') params.set('layout', view.layout)
+  if (view.layout !== 'board') params.set('layout', view.layout)
   const qs = params.toString()
   return qs ? `/work?${qs}` : '/work'
 }

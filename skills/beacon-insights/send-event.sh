@@ -12,12 +12,23 @@
 #   bash send-event.sh --json '{"type":"agent.heartbeat","summary":"…"}'
 #   bash send-event.sh --json '{"events":[{...},{...}]}'
 #
+# Config is resolved in this order, so the helper works standalone with no env:
+#   key: $BEACON_API_KEY, else ~/.beacon/key
+#   url: $BEACON_URL,     else ~/.beacon/url, else the public default
+# If ~/.beacon/disabled exists, the user opted out — do nothing, ever.
+#
 # Never put secrets, tokens, or file contents in any field.
 
 set -uo pipefail # deliberately NOT -e: never fail the caller
 
+[ -f "$HOME/.beacon/disabled" ] && exit 0
+
+BEACON_API_KEY="${BEACON_API_KEY:-$(cat "$HOME/.beacon/key" 2>/dev/null || true)}"
 [ -z "${BEACON_API_KEY:-}" ] && exit 0
+
+BEACON_URL="${BEACON_URL:-$(cat "$HOME/.beacon/url" 2>/dev/null || true)}"
 BEACON_URL="${BEACON_URL:-https://beacon-tool.vercel.app}"
+BEACON_URL="${BEACON_URL%/}" # tolerate a trailing slash
 
 TYPE="" TASK="" SUMMARY="" REASON="" CONFIDENCE="" ENGINEER="" REPO="" JSON=""
 while [ $# -gt 0 ]; do

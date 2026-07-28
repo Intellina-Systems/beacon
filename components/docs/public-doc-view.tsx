@@ -4,13 +4,19 @@ import '@blocknote/core/fonts/inter.css'
 import '@blocknote/shadcn/style.css'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/shadcn'
-import type { PartialBlock } from '@blocknote/core'
+import { en } from '@blocknote/core/locales'
+import { locales as multiColumnLocales } from '@blocknote/xl-multi-column'
+import { publicDocSchema } from './doc-schema'
 
 // Read-only, no fetches, no save path — there is no session backing this
-// view, so nothing here should ever be able to write anything.
+// view, so nothing here should ever be able to write anything. Uses the static
+// schema so person/work-item mentions render as plain labels rather than
+// links and live lookups an anonymous reader can't follow.
 export function PublicDocView({ title, content }: { title: string; content: unknown[] }) {
   const editor = useCreateBlockNote({
-    initialContent: content.length > 0 ? (content as PartialBlock[]) : undefined,
+    schema: publicDocSchema,
+    dictionary: { ...en, multi_column: multiColumnLocales.en },
+    initialContent: content.length > 0 ? (content as (typeof publicDocSchema.PartialBlock)[]) : undefined,
   })
 
   return (

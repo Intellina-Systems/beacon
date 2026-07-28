@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils'
 import { relativeTime } from '@/lib/utils/relative-time'
 import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
+import { DocBacklinks } from './doc-backlinks'
 import type { WorkItemRelationType, WorkItemStatus } from '@/lib/db/schema'
 
 interface ActivityEvent {
@@ -510,6 +511,9 @@ export function WorkItemDetailSheet({
                     </div>
                   )}
                 </section>
+
+                {/* Docs that reference this item via a `#` mention */}
+                {itemId && <DocBacklinks workItemId={itemId} />}
 
                 {/* Activity — the real derived history from the event stream */}
                 <section className="space-y-3">

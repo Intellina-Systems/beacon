@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, desc, eq, ne } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { docCollaborators, docs, members, type DocPermission, type DocShareMode } from '@/lib/db/schema'
 import type { WorkspaceContext } from '@/lib/auth/workspace-context'
@@ -20,6 +20,53 @@ export interface SharedDocRow {
   createdAt: Date
   ownerName: string
   permission: DocPermission
+}
+
+export interface BacklinkDocRow {
+  id: string
+  title: string
+  updatedAt: Date
+  ownerName: string
+}
+
+/**
+ * Docs containing a `#work-item` chip pointing at this item — the reverse of
+ * the reference the writer created, so a work item can show the specs and
+ * notes written about it without anyone maintaining the link by hand.
+ *
+ * Matches on the block tree with a jsonpath scan rather than a text `LIKE`, so
+ * an id that happens to appear inside prose can't produce a false backlink.
+ * Visibility mirrors the docs list: yours, workspace-shared, or explicitly
+ * granted.
+ */
+export async function listDocsReferencingWorkItem(
+  ctx: WorkspaceContext,
+  workItemId: string,
+): Promise<BacklinkDocRow[]> {
+  const rows = await db
+    .selectDistinct({
+      id: docs.id,
+      title: docs.title,
+      updatedAt: docs.updatedAt,
+      ownerName: members.name,
+    })
+    .from(docs)
+    .innerJoin(members, eq(docs.ownerMemberId, members.id))
+    .leftJoin(docCollaborators, and(eq(docCollaborators.docId, docs.id), eq(docCollaborators.memberId, ctx.member.id)))
+    .where(
+      and(
+        eq(docs.workspaceId, ctx.workspaceId),
+        or(
+          eq(docs.ownerMemberId, ctx.member.id),
+          eq(docs.shareMode, 'workspace'),
+          isNotNull(docCollaborators.memberId),
+        ),
+        sql`jsonb_path_exists(${docs.content}, '$.**.props.itemId ? (@ == $id)', jsonb_build_object('id', ${workItemId}::text))`,
+      ),
+    )
+    .orderBy(desc(docs.updatedAt))
+
+  return rows
 }
 
 export async function listMyDocs(ctx: WorkspaceContext): Promise<MyDocRow[]> {
