@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { AlertTriangle, Bot, CircleCheck, GitCommit, GitMerge, GitPullRequest, Sparkles, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { SignIn } from '@/components/auth/sign-in'
 import { Button } from '@/components/ui/button'
 
 type FeedItem = {
@@ -287,7 +286,6 @@ export function Landing() {
                 one stream.
               </p>
             </div>
-            <SignIn />
           </Tile>
 
           {/* Live pulse — mini chart */}
