@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { FileText } from 'lucide-react'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 interface BacklinkDoc {
   id: string
@@ -52,7 +52,9 @@ export function DocBacklinks({ workItemId }: { workItemId: string }) {
             <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 truncate text-sm">{doc.title || 'Untitled'}</span>
             <span className="shrink-0 text-xs text-muted-foreground">{doc.ownerName}</span>
-            <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(new Date(doc.updatedAt))}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              <RelativeTime date={doc.updatedAt} />
+            </span>
           </Link>
         ))}
       </div>

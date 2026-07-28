@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
+import { AccessLinkCard } from '@/components/invites/access-link-card'
 import { EventItem } from '@/components/events/event-item'
 import { EditMemberDialog } from '@/components/members/edit-member-dialog'
 import { MemberConnections } from '@/components/members/member-connections'
@@ -236,6 +237,10 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               </div>
             </Panel>
           </div>
+
+          {isAdmin(ctx) && (
+            <AccessLinkCard memberId={member.id} memberName={member.name} hasAccount={Boolean(member.authUserId)} />
+          )}
 
           {isSelf && (
             <GoogleCalendarCard

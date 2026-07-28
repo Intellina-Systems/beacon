@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { cycles, members, projects, workItems, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { canRouteWorkItems, checkWorkItemDelegation, forbidden } from '@/lib/auth/permissions'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
 import { listEvents } from '@/lib/events/queries'
 import { rankForMove } from '@/lib/work-items/ordering'
@@ -95,6 +96,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       assigneeMemberId: workItems.assigneeMemberId,
       estimate: workItems.estimate,
       cycleId: workItems.cycleId,
+      engineId: workItems.engineId,
+      teamId: workItems.teamId,
     })
     .from(workItems)
     .where(and(eq(workItems.id, id), eq(workItems.workspaceId, ctx.workspaceId)))
@@ -104,10 +107,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { moveAfterId, moveBeforeId, ...fields } = parsed.data
 
+  // Org routing (which engine/team owns this) stays an admin/manager call —
+  // a lead delegates inside their team rather than moving work across the org.
+  const routingChanged =
+    (fields.engineId !== undefined && fields.engineId !== existing.engineId) ||
+    (fields.teamId !== undefined && fields.teamId !== existing.teamId)
+  if (routingChanged && !canRouteWorkItems(ctx)) {
+    return forbidden('Only an admin or manager can move work between teams or engines')
+  }
+
   const statusChanged = fields.status !== undefined && fields.status !== existing.status
   const assigneeChanged = fields.assigneeMemberId !== undefined && fields.assigneeMemberId !== existing.assigneeMemberId
   const estimateChanged = fields.estimate !== undefined && fields.estimate !== existing.estimate
   const projectChanged = fields.projectId !== undefined && fields.projectId !== existing.projectId
+
+  // Delegation guard: leads may assign within the teams they lead; everyone
+  // else may only claim an unassigned item or drop their own.
+  if (assigneeChanged) {
+    const denied = await checkWorkItemDelegation(
+      ctx,
+      { teamId: existing.teamId, assigneeMemberId: existing.assigneeMemberId },
+      fields.assigneeMemberId ?? null,
+    )
+    if (denied) return forbidden(denied)
+  }
 
   // Validate the new assignee belongs to this workspace
   let newAssignee: { id: string; name: string } | null = null

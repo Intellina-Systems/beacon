@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
 import type { ProjectOption, RosterOption, WorkItemRow } from '@/lib/work-items/types'
 import { QuickEditCell } from './quick-edit-cell'
@@ -176,7 +176,7 @@ function WorkItemTableRowImpl({
         />
       </TableCell>
       <TableCell className="hidden whitespace-nowrap px-4 py-2.5 text-right font-mono text-xs text-muted-foreground lg:table-cell">
-        {relativeTime(new Date(item.lastEventAt ?? item.updatedAt ?? UNKNOWN_ACTIVITY_DATE))}
+        <RelativeTime date={item.lastEventAt ?? item.updatedAt ?? UNKNOWN_ACTIVITY_DATE} />
       </TableCell>
       {isTriageView && (
         <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>

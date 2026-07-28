@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 interface KeyRow {
   id: string
@@ -101,7 +101,7 @@ export function ApiKeysCard({ keys }: { keys: KeyRow[] }) {
                     {key.keyPrefix}…
                     <span className="font-sans">
                       {' · '}
-                      {key.lastUsedAt ? `used ${relativeTime(new Date(key.lastUsedAt))}` : 'never used'}
+                      {key.lastUsedAt ? <RelativeTime date={key.lastUsedAt} prefix="used " /> : 'never used'}
                     </span>
                   </p>
                 </div>

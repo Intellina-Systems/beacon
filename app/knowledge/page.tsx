@@ -9,7 +9,7 @@ import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-she
 import { KnowledgeForm } from '@/components/knowledge/knowledge-form'
 import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
 import { Pagination, parsePage } from '@/components/ui/pagination'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Knowledge' }
@@ -145,7 +145,7 @@ export default async function KnowledgePage({
                         {document.sourceType}
                       </Badge>
                       <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                        {relativeTime(document.createdAt)}
+                        <RelativeTime date={document.createdAt} />
                       </span>
                     </div>
                     {document.summary && (

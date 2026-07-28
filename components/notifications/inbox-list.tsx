@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/page-shell'
 import { WorkItemDetailSheet } from '@/components/work-items/work-item-detail-sheet'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { cn } from '@/lib/utils'
 
 interface NotificationRow {
@@ -130,7 +130,9 @@ export function InboxList({
                   {row.workItemKey && <span className="font-mono">{row.workItemKey}</span>}
                   <span className="uppercase tracking-wide">{row.eventSource}</span>
                   <span>·</span>
-                  <span>{relativeTime(new Date(row.occurredAt))}</span>
+                  <span>
+                    <RelativeTime date={row.occurredAt} />
+                  </span>
                 </div>
                 <p className={cn('mt-0.5 truncate text-sm', unread ? 'font-medium' : 'text-muted-foreground')}>
                   {row.eventSummary}

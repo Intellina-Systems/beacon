@@ -259,6 +259,118 @@ export async function getMemberActivity(workspaceId: string, sinceDays = 7, visi
   return byMember
 }
 
+export interface LiveActor {
+  memberId: string | null
+  /** Roster name when resolved, otherwise the raw actor label from the source. */
+  name: string
+  /**
+   * Every raw actor label this person's events arrived under (github login,
+   * agent alias, short handle). Without these the same human shows up as
+   * "satya" in one section and "Satyanarayana J" in another, and the model
+   * treats them as two different people.
+   */
+  aliases: string[]
+  eventCount: number
+  lastAt: Date
+  lastSummary: string
+  lastType: string
+  repos: string[]
+  sources: string[]
+  /** True when an agent.* event arrived and no agent.completed followed it. */
+  agentRunning: boolean
+}
+
+// Who is actually doing something in the recent window, derived from the event
+// stream rather than work-item status. Work items only move when someone
+// remembers to move them; events land continuously, so this is what answers
+// "what is everyone doing right now" — including agent sessions that never
+// have an issue attached.
+export async function getLiveActivity(
+  workspaceId: string,
+  hoursBack = 12,
+  visibleMemberIds?: string[] | null,
+): Promise<LiveActor[]> {
+  const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000)
+
+  const rows = await db
+    .select({
+      memberId: events.memberId,
+      actorLabel: events.actorLabel,
+      memberName: members.name,
+      type: events.type,
+      source: events.source,
+      summary: events.summary,
+      repo: events.repo,
+      occurredAt: events.occurredAt,
+    })
+    .from(events)
+    .leftJoin(members, eq(members.id, events.memberId))
+    .where(
+      and(
+        eq(events.workspaceId, workspaceId),
+        gte(events.occurredAt, since),
+        visibleMemberIds
+          ? or(
+              inArray(events.memberId, visibleMemberIds.length ? visibleMemberIds : ['__none__']),
+              isNull(events.memberId),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(events.occurredAt))
+    .limit(600)
+
+  const byActor = new Map<string, LiveActor & { sawCompleted: boolean; sawAgentStart: boolean }>()
+
+  for (const row of rows) {
+    const name = row.memberName ?? row.actorLabel
+    // Unattributed events (webhooks with no resolvable actor) aren't useful for
+    // a "who is doing what" answer — they'd render as a nameless bullet.
+    if (!name) continue
+    const key = row.memberId ?? `label:${name}`
+
+    let entry = byActor.get(key)
+    if (!entry) {
+      // Rows arrive newest-first, so the first one seen is the latest.
+      entry = {
+        memberId: row.memberId,
+        name,
+        aliases: [],
+        eventCount: 0,
+        lastAt: row.occurredAt,
+        lastSummary: row.summary,
+        lastType: row.type,
+        repos: [],
+        sources: [],
+        agentRunning: false,
+        sawCompleted: false,
+        sawAgentStart: false,
+      }
+      byActor.set(key, entry)
+    }
+
+    entry.eventCount += 1
+    if (row.repo && !entry.repos.includes(row.repo)) entry.repos.push(row.repo)
+    if (!entry.sources.includes(row.source)) entry.sources.push(row.source)
+    // Track the raw label separately from the resolved name so the prompt can
+    // publish both and the model can map either back to one person.
+    if (row.actorLabel && row.actorLabel !== entry.name && !entry.aliases.includes(row.actorLabel)) {
+      entry.aliases.push(row.actorLabel)
+    }
+
+    if (row.type.startsWith('agent.')) {
+      // Walking newest → oldest: a completion seen before any start means the
+      // most recent agent run finished.
+      if (row.type === 'agent.completed') entry.sawCompleted = true
+      else if (!entry.sawCompleted) entry.sawAgentStart = true
+    }
+  }
+
+  return [...byActor.values()]
+    .map(({ sawCompleted, sawAgentStart, ...actor }) => ({ ...actor, agentRunning: sawAgentStart && !sawCompleted }))
+    .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime())
+}
+
 // Daily event counts for sparkline-style charts.
 export async function getDailyActivity(workspaceId: string, sinceDays = 14, visibleMemberIds?: string[] | null) {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)

@@ -15,7 +15,7 @@ import { CreateCycleDialog } from '@/components/cycles/create-cycle-dialog'
 import { CloseCycleButton } from '@/components/cycles/close-cycle-button'
 import { PostUpdateDialog } from '@/components/projects/post-update-dialog'
 import { Badge } from '@/components/ui/badge'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { cn } from '@/lib/utils'
 
 const HEALTH_META: Record<string, { label: string; tone: string }> = {
@@ -192,7 +192,7 @@ export default async function CyclesPage({
                   <>
                     <p className="mt-1.5 text-sm leading-snug">{latestUpdate.body}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {latestUpdate.authorName ?? 'Someone'} · {relativeTime(latestUpdate.createdAt)}
+                      {latestUpdate.authorName ?? 'Someone'} · <RelativeTime date={latestUpdate.createdAt} />
                     </p>
                   </>
                 ) : (

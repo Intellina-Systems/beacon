@@ -13,10 +13,8 @@ import {
   ListTodo,
   Network,
   PanelLeftIcon,
-  RefreshCw,
   Sparkles,
   Users,
-  Workflow,
   Zap,
 } from 'lucide-react'
 import { User } from '@/components/auth/user'
@@ -43,33 +41,28 @@ import type { Session } from '@/lib/session/types'
 type Role = 'admin' | 'manager' | 'engineer'
 
 // roles: which access roles see the item; omitted = everyone
+//
+// One unlabelled group: the section headings (Monitor / Intelligence /
+// Configure) are hidden, so ordering here is exactly what the sidebar shows.
+// The first five are the lead-with items; everything else follows.
+//
+// Cycles (/cycles) and Automation (/automation) are hidden from nav for now —
+// the routes still exist and remain reachable by URL.
 const navSections = [
   {
-    label: 'Monitor',
+    label: 'Navigation',
     items: [
       { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager', 'engineer'] as Role[] },
+      { href: '/chat', label: 'Ask Beacon', icon: Sparkles },
+      { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
+      { href: '/inbox', label: 'Inbox', icon: Inbox },
+      { href: '/calendar', label: 'Calendar', icon: CalendarDays },
       { href: '/timeline', label: 'Timeline', icon: Activity },
       { href: '/work', label: 'Work', icon: ListTodo },
-      { href: '/cycles', label: 'Cycles', icon: RefreshCw },
-      { href: '/calendar', label: 'Calendar', icon: CalendarDays },
-      { href: '/inbox', label: 'Inbox', icon: Inbox },
       { href: '/docs', label: 'Docs', icon: FileText },
       { href: '/team', label: 'People', icon: Users },
       { href: '/org', label: 'Org', icon: Network },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
-      { href: '/chat', label: 'Ask Beacon', icon: Sparkles },
-      { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
-    ],
-  },
-  {
-    label: 'Configure',
-    items: [
       { href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin'] as Role[] },
-      { href: '/automation', label: 'Automation', icon: Workflow, roles: ['admin', 'manager'] as Role[] },
     ],
   },
 ]
@@ -150,9 +143,10 @@ export function BeaconLayout({
         <SidebarContent className="px-2 py-3">
           {visibleSections.map((section) => (
             <SidebarGroup key={section.label} className="p-0 py-2">
-              <SidebarGroupLabel className="micro-label px-3 text-sidebar-foreground/70">
-                {section.label}
-              </SidebarGroupLabel>
+              {/* Heading kept for screen readers only — the sidebar reads as one
+                  flat list now that the Monitor/Intelligence/Configure grouping
+                  is gone. */}
+              <SidebarGroupLabel className="sr-only">{section.label}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {section.items.map(({ href, label, icon: Icon }) => {

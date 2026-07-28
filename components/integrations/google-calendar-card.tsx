@@ -6,7 +6,7 @@ import { CalendarDays, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Panel, PanelHeader } from '@/components/page-shell'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 interface GoogleCalendarCardProps {
   configured: boolean
@@ -72,7 +72,7 @@ export function GoogleCalendarCard({ configured, connected, email, lastSyncedAt 
             <div className="min-w-0 text-sm">
               <p className="truncate">{email ?? 'Google account'}</p>
               <p className="text-xs text-muted-foreground">
-                {lastSyncedAt ? `Last synced ${relativeTime(new Date(lastSyncedAt))}` : 'Not synced yet'}
+                {lastSyncedAt ? <RelativeTime date={lastSyncedAt} prefix="Last synced " /> : 'Not synced yet'}
               </p>
             </div>
             <div className="flex items-center gap-2">

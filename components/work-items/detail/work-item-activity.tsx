@@ -1,5 +1,5 @@
 import { Label } from '@/components/ui/label'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import type { ActivityEvent } from '@/lib/work-items/types'
 
 export function WorkItemActivity({ events }: { events: ActivityEvent[] }) {
@@ -19,7 +19,9 @@ export function WorkItemActivity({ events }: { events: ActivityEvent[] }) {
                 {(e.memberName ?? e.actorLabel) && (
                   <span className="font-medium text-foreground/70">{e.memberName ?? e.actorLabel}</span>
                 )}
-                <span className="font-mono text-[11px]">{relativeTime(new Date(e.occurredAt))}</span>
+                <span className="font-mono text-[11px]">
+                  <RelativeTime date={e.occurredAt} />
+                </span>
               </div>
             </div>
           ))}

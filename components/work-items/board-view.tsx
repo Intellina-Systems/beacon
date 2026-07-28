@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { KIND_LABEL, PRIORITY_LABEL, STATUS_META } from '@/lib/work-items/constants'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -194,7 +194,7 @@ export function BoardView({
                       </span>
                       <span className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground/70">
                         <Clock className="h-2.5 w-2.5" />
-                        {relativeTime(activityDate)}
+                        <RelativeTime date={activityDate} />
                       </span>
                     </div>
                   </div>

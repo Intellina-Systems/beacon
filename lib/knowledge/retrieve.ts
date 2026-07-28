@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, sql, type SQL } from 'drizzle-orm'
 import { cosineDistance } from 'drizzle-orm/sql/functions'
 import { db } from '@/lib/db/client'
 import { knowledgeDocuments, knowledgeSignals } from '@/lib/db/schema'
@@ -12,15 +12,32 @@ export type KnowledgeSignalContextRow = {
   confidence: number
 }
 
+// Org scope for retrieval. Omit both to search the whole workspace (the
+// default chat behaviour); pass one to answer from a single team's or
+// engine's documents, which is what the per-team SOP view does.
+export interface KnowledgeScope {
+  engineId?: string | null
+  teamId?: string | null
+}
+
+function scopeFilters(scope: KnowledgeScope | undefined): SQL[] {
+  const filters: SQL[] = []
+  if (scope?.engineId) filters.push(eq(knowledgeDocuments.engineId, scope.engineId))
+  if (scope?.teamId) filters.push(eq(knowledgeDocuments.teamId, scope.teamId))
+  return filters
+}
+
 export async function retrieveKnowledgeContext(input: {
   workspaceId: string
   query: string
   maxDocuments?: number
   maxSignals?: number
+  scope?: KnowledgeScope
 }) {
   const maxDocuments = input.maxDocuments ?? 5
   const maxSignals = input.maxSignals ?? 20
   const queryText = input.query.trim()
+  const scoped = scopeFilters(input.scope)
 
   const [signals, documents] = await Promise.all([
     db
@@ -51,6 +68,7 @@ export async function retrieveKnowledgeContext(input: {
               and(
                 eq(knowledgeDocuments.workspaceId, input.workspaceId),
                 sql`${knowledgeDocuments.embedding} is not null`,
+                ...scoped,
               ),
             )
             .orderBy(cosineDistance(knowledgeDocuments.embedding, embedding))
@@ -66,7 +84,7 @@ export async function retrieveKnowledgeContext(input: {
             similarity: sql<number>`0`,
           })
           .from(knowledgeDocuments)
-          .where(eq(knowledgeDocuments.workspaceId, input.workspaceId))
+          .where(and(eq(knowledgeDocuments.workspaceId, input.workspaceId), ...scoped))
           .orderBy(desc(knowledgeDocuments.createdAt))
           .limit(maxDocuments),
   ])

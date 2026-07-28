@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { Zap } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { members, workspaces } from '@/lib/db/schema'
-import { findClaimableInvite } from '@/lib/invites'
+import { findInviteByToken } from '@/lib/invites'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { AcceptInviteButton } from '@/components/invites/accept-invite-button'
 import { Button } from '@/components/ui/button'
@@ -27,15 +27,22 @@ function JoinShell({ children }: { children: React.ReactNode }) {
 
 export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
-  const invite = await findClaimableInvite(token)
+  // Accepts already-claimed links too: after the first use this becomes the
+  // member's standing way back in, which is the only sign-in entry point now
+  // that the landing page has none.
+  const invite = await findInviteByToken(token)
 
-  if (!invite) {
+  const expiredBeforeFirstUse = invite && !invite.acceptedAt && invite.expiresAt.getTime() < Date.now()
+
+  if (!invite || expiredBeforeFirstUse) {
     return (
       <JoinShell>
         <div>
-          <h1 className="text-lg font-semibold tracking-tight">Invite not valid</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Link not valid</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            This invite link is invalid, expired, or already used. Ask a workspace admin for a new one.
+            {expiredBeforeFirstUse
+              ? 'This invite expired before it was used. Ask a workspace admin for a new one.'
+              : 'This link is invalid or has been revoked. Ask a workspace admin for a new one.'}
           </p>
         </div>
         <Button asChild variant="outline" className="w-full">
@@ -44,6 +51,8 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
       </JoinShell>
     )
   }
+
+  const returning = Boolean(invite.acceptedAt)
 
   const [[workspace], [invitedMember], [inviter]] = await Promise.all([
     db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.id, invite.workspaceId)).limit(1),
@@ -64,24 +73,39 @@ export default async function JoinPage({ params }: { params: Promise<{ token: st
       .from(members)
       .where(and(eq(members.workspaceId, invite.workspaceId), eq(members.authUserId, session.user.id)))
       .limit(1)
+    // Already signed in and already a member — nothing to accept, just go in.
     if (alreadyMember) redirect('/')
   }
 
   return (
     <JoinShell>
       <div>
-        <h1 className="text-lg font-semibold tracking-tight">Join {workspace?.name ?? 'this workspace'}</h1>
+        <h1 className="text-lg font-semibold tracking-tight">
+          {returning ? `Sign in to ${workspace?.name ?? 'Beacon'}` : `Join ${workspace?.name ?? 'this workspace'}`}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {inviter?.name ? `${inviter.name} invited` : 'You have been invited as'}{' '}
-          <span className="font-medium text-foreground">{invitedMember?.name}</span> to join as{' '}
-          <span className="font-medium text-foreground">{invitedMember?.accessRole}</span> on Beacon.
+          {returning ? (
+            <>
+              Continue as <span className="font-medium text-foreground">{invitedMember?.name}</span> (
+              {invitedMember?.accessRole}). You&apos;ll be asked to sign in with the GitHub account already linked to
+              this member.
+            </>
+          ) : (
+            <>
+              {inviter?.name ? `${inviter.name} invited` : 'You have been invited as'}{' '}
+              <span className="font-medium text-foreground">{invitedMember?.name}</span> to join as{' '}
+              <span className="font-medium text-foreground">{invitedMember?.accessRole}</span> on Beacon.
+            </>
+          )}
         </p>
       </div>
       {session?.user ? (
         <AcceptInviteButton token={token} />
       ) : (
         <Button asChild className="w-full">
-          <a href={`/api/invites/start?token=${encodeURIComponent(token)}`}>Sign in with GitHub to join</a>
+          <a href={`/api/invites/start?token=${encodeURIComponent(token)}`}>
+            {returning ? 'Sign in with GitHub' : 'Sign in with GitHub to join'}
+          </a>
         </Button>
       )}
     </JoinShell>

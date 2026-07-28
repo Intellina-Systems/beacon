@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { z } from 'zod'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
@@ -12,17 +13,22 @@ export async function GET(): Promise<Response> {
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
   if (!isAdmin(ctx)) return forbidden()
 
+  const invitedBy = alias(members, 'invited_by')
+
   const rows = await db
     .select({
       id: invites.id,
       memberId: invites.memberId,
       memberName: members.name,
+      memberRole: members.accessRole,
       email: invites.email,
+      invitedByName: invitedBy.name,
       expiresAt: invites.expiresAt,
       createdAt: invites.createdAt,
     })
     .from(invites)
     .innerJoin(members, eq(members.id, invites.memberId))
+    .leftJoin(invitedBy, eq(invitedBy.id, invites.invitedByMemberId))
     .where(and(eq(invites.workspaceId, ctx.workspaceId), isNull(invites.acceptedAt), isNull(invites.revokedAt)))
     .orderBy(desc(invites.createdAt))
 

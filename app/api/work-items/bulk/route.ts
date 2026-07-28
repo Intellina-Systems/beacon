@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { members, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { canRouteWorkItems, checkWorkItemDelegation, forbidden } from '@/lib/auth/permissions'
 import { rankAfter } from '@/lib/work-items/rank'
 import { maxRank } from '@/lib/work-items/ordering'
 import { insertWorkItem } from '@/lib/work-items/create'
@@ -32,6 +33,22 @@ export async function POST(req: NextRequest): Promise<Response> {
   const parsed = requestSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     return Response.json({ error: 'Invalid work items', issues: parsed.error.issues }, { status: 400 })
+  }
+
+  // Same guards as PATCH, so bulk create can't be used to route work across
+  // the org or hand it to someone outside the teams you lead.
+  if (!canRouteWorkItems(ctx)) {
+    if (parsed.data.items.some((i) => i.engineId || i.teamId)) {
+      return forbidden('Only an admin or manager can file work against a team or engine')
+    }
+    for (const item of parsed.data.items) {
+      const denied = await checkWorkItemDelegation(
+        ctx,
+        { teamId: item.teamId ?? null, assigneeMemberId: null },
+        item.assigneeMemberId ?? null,
+      )
+      if (denied) return forbidden(denied)
+    }
   }
 
   // Validate every assignee up front so a bad id fails the whole batch

@@ -66,6 +66,44 @@ export async function detailVisibleMemberIds(ctx: WorkspaceContext): Promise<str
   return [...ids]
 }
 
+// Which team/engine owns a work item is org routing — an admin/manager call.
+// A lead delegates *within* the team they lead; they don't move work across it.
+export function canRouteWorkItems(ctx: WorkspaceContext): boolean {
+  return ctx.role === 'admin' || ctx.role === 'manager'
+}
+
+// Guards a change of assignee on a work item. Returns null when the change is
+// allowed, or a human-readable reason when it isn't.
+//
+// - admin / manager: unrestricted.
+// - lead of the item's team: may assign to anyone on the teams they lead.
+// - everyone else: may claim an unassigned item, or drop one they hold. They
+//   cannot hand work to a third party.
+export async function checkWorkItemDelegation(
+  ctx: WorkspaceContext,
+  item: { teamId: string | null; assigneeMemberId: string | null },
+  nextAssigneeId: string | null,
+): Promise<string | null> {
+  if (canRouteWorkItems(ctx)) return null
+
+  const leadsThisItem = item.teamId !== null && leadTeamIds(ctx).includes(item.teamId)
+
+  if (!leadsThisItem) {
+    const claiming = nextAssigneeId === ctx.member.id && item.assigneeMemberId === null
+    const dropping = nextAssigneeId === null && item.assigneeMemberId === ctx.member.id
+    if (claiming || dropping) return null
+    return "Only a lead of this item's team can reassign it"
+  }
+
+  if (nextAssigneeId) {
+    const allowed = await detailVisibleMemberIds(ctx)
+    if (allowed && !allowed.includes(nextAssigneeId)) {
+      return 'You can only assign work to members of the teams you lead'
+    }
+  }
+  return null
+}
+
 export function forbidden(message = 'Forbidden'): Response {
   return Response.json({ error: message }, { status: 403 })
 }

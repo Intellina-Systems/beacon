@@ -1,5 +1,5 @@
 import { type NextRequest } from 'next/server'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import { z } from 'zod'
@@ -189,17 +189,24 @@ async function parseKnowledgeRequest(req: NextRequest): Promise<ParsedKnowledgeR
   return parsed.success ? { input: parsed.data, sourceUrl: null, engineId, teamId } : null
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Optional org scope, so a team or engine page can list just its own SOPs.
+  const engineId = req.nextUrl.searchParams.get('engineId')
+  const teamId = req.nextUrl.searchParams.get('teamId')
+  const docFilters: SQL[] = [eq(knowledgeDocuments.workspaceId, ctx.workspaceId)]
+  if (engineId) docFilters.push(eq(knowledgeDocuments.engineId, engineId))
+  if (teamId) docFilters.push(eq(knowledgeDocuments.teamId, teamId))
+
   const [documents, signals] = await Promise.all([
     db
       .select()
       .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.workspaceId, ctx.workspaceId))
+      .where(and(...docFilters))
       .orderBy(desc(knowledgeDocuments.createdAt))
       .limit(50),
     db

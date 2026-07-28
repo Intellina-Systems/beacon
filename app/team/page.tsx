@@ -9,6 +9,7 @@ import { getMemberActivity } from '@/lib/events/queries'
 import { listTeamOptions } from '@/lib/org/list'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { AddMemberButton } from '@/components/add-member-button'
+import { PendingInvitesButton } from '@/components/invites/pending-invites-button'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -55,7 +56,14 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     <PageShell
       title="People"
       description={`${total} member${total === 1 ? '' : 's'}`}
-      actions={isAdmin(ctx) ? <AddMemberButton teams={teamOptions} /> : undefined}
+      actions={
+        isAdmin(ctx) ? (
+          <div className="flex items-center gap-2">
+            <PendingInvitesButton />
+            <AddMemberButton teams={teamOptions} />
+          </div>
+        ) : undefined
+      }
       fixed
     >
       <div className="flex h-full w-full flex-col gap-3 px-4 py-5 lg:px-6">

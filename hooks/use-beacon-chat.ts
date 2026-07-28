@@ -113,7 +113,13 @@ class BeaconChat extends AbstractChat<UIMessage> {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useBeaconChat() {
+/** Restricts knowledge retrieval to one team's or engine's documents. */
+export interface ChatScope {
+  engineId?: string | null
+  teamId?: string | null
+}
+
+export function useBeaconChat(scope?: ChatScope) {
   const [store] = useState(() => createReactiveChatState())
   const [chat] = useState(() => new BeaconChat(store.state))
   const { subscribe, getSnapshot } = store
@@ -121,11 +127,19 @@ export function useBeaconChat() {
   // Subscribe so React re-renders whenever state changes
   useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
+  // Depend on the ids, not the object, so a fresh literal each render doesn't
+  // rebuild sendMessage on every pass.
+  const engineId = scope?.engineId ?? null
+  const teamId = scope?.teamId ?? null
+
   const sendMessage = useCallback(
     (text: string, responseLevel?: ResponseLevel) => {
-      void chat.sendMessage({ text }, responseLevel ? { body: { responseLevel } } : undefined)
+      const body: Record<string, unknown> = {}
+      if (responseLevel) body.responseLevel = responseLevel
+      if (engineId || teamId) body.scope = { engineId, teamId }
+      void chat.sendMessage({ text }, Object.keys(body).length > 0 ? { body } : undefined)
     },
-    [chat],
+    [chat, engineId, teamId],
   )
 
   const stop = useCallback(() => {

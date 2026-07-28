@@ -6,7 +6,7 @@ import { listMyDocs, listSharedDocs } from '@/lib/docs/list'
 import { PageShell, EmptyState } from '@/components/page-shell'
 import { NewDocButton } from '@/components/docs/new-doc-button'
 import { Badge } from '@/components/ui/badge'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Docs' }
@@ -56,7 +56,9 @@ export default async function DocsPage() {
                         Private
                       </Badge>
                     )}
-                    <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      <RelativeTime date={doc.updatedAt} />
+                    </span>
                   </Link>
                 ))}
               </div>
@@ -86,7 +88,9 @@ export default async function DocsPage() {
                     <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
                       {doc.permission === 'edit' ? 'Can edit' : 'Can view'}
                     </Badge>
-                    <span className="shrink-0 text-xs text-muted-foreground">{relativeTime(doc.updatedAt)}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      <RelativeTime date={doc.updatedAt} />
+                    </span>
                   </Link>
                 ))}
               </div>

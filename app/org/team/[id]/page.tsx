@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
+import { OrgDocumentsPanel } from '@/components/knowledge/org-documents-panel'
 import { OpenWorkList } from '@/components/work-items/open-work-list'
 
 export const dynamic = 'force-dynamic'
@@ -112,7 +113,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2">
+        <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
           <Panel>
             <PanelHeader label="Members" meta={<span className="tabular-nums">{teamMemberRows.length}</span>} />
             <div className="min-h-0 flex-1 divide-y overflow-y-auto px-4">
@@ -157,6 +158,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
               emptyLabel="No open work tagged to this team"
             />
           </Panel>
+
+          <OrgDocumentsPanel teamId={team.id} scopeLabel={team.name} />
         </div>
       </div>
     </PageShell>

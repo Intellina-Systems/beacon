@@ -16,7 +16,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { cn } from '@/lib/utils'
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -84,7 +84,9 @@ export function EventItem({ event }: { event: EventItemData }) {
           {(event.memberName ?? event.actorLabel) && (
             <span className="font-medium text-foreground/70">{event.memberName ?? event.actorLabel}</span>
           )}
-          <span className="font-mono text-[11px]">{relativeTime(event.occurredAt)}</span>
+          <span className="font-mono text-[11px]">
+            <RelativeTime date={event.occurredAt} />
+          </span>
         </div>
       </div>
     </>

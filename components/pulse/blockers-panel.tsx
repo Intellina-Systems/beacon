@@ -85,7 +85,9 @@ export function BlockersPanel({ blockers, className }: { blockers: BlockerRow[];
               const rowContent = (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm leading-snug">{b.summary}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{meta(b)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground" suppressHydrationWarning>
+                    {meta(b)}
+                  </p>
                 </div>
               )
               return (
@@ -141,7 +143,9 @@ export function BlockersPanel({ blockers, className }: { blockers: BlockerRow[];
                   <p className="whitespace-pre-wrap text-sm text-muted-foreground">{detail.reason}</p>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">{meta(detail)}</p>
+              <p className="text-xs text-muted-foreground" suppressHydrationWarning>
+                {meta(detail)}
+              </p>
               <div className="flex justify-end">
                 <Button size="sm" disabled={busy !== null} onClick={() => resolve(detail)}>
                   <Check className="mr-1.5 h-3.5 w-3.5" />

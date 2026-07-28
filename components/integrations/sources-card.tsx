@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 
 interface SourceRow {
   id: string
@@ -114,9 +114,11 @@ export function SourcesCard({
                   <p className="truncate font-medium">{source.displayName}</p>
                   <p className="text-xs text-muted-foreground">
                     {KIND_LABEL[source.kind] ?? source.kind}
-                    {source.lastSyncedAt
-                      ? ` · synced ${relativeTime(new Date(source.lastSyncedAt))}`
-                      : ' · never synced'}
+                    {source.lastSyncedAt ? (
+                      <RelativeTime date={source.lastSyncedAt} prefix=" · synced " />
+                    ) : (
+                      ' · never synced'
+                    )}
                   </p>
                   {source.lastSyncError && <p className="text-xs text-red-500 truncate">{source.lastSyncError}</p>}
                 </div>

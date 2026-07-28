@@ -22,7 +22,7 @@ import { TodaysPlansPanel } from '@/components/plans/todays-plans-panel'
 import { BlockersPanel, type BlockerRow } from '@/components/pulse/blockers-panel'
 import { EventItem } from '@/components/events/event-item'
 import { InsightActions } from '@/components/insights/insight-actions'
-import { relativeTime } from '@/lib/utils/relative-time'
+import { RelativeTime } from '@/components/ui/relative-time'
 import { cn } from '@/lib/utils'
 
 const SEVERITY_DOT: Record<string, string> = {
@@ -376,7 +376,7 @@ export default async function PulsePage() {
                         <p className="text-sm leading-snug">{insight.title}</p>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">{insight.detail}</p>
                         <p className="mt-0.5 font-mono text-[10px] text-muted-foreground/70">
-                          {relativeTime(insight.createdAt)}
+                          <RelativeTime date={insight.createdAt} />
                         </p>
                       </div>
                       <InsightActions insightId={insight.id} />
