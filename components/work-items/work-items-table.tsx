@@ -2,60 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ArrowDown, ArrowUp, ArrowUpDown, Ban, Check, Clock, ExternalLink, GripVertical, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
-import { relativeTime } from '@/lib/utils/relative-time'
-import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { Table, TableBody, TableHeader, TableRow, TableHead } from '@/components/ui/table'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { BulkActionBar } from './table/bulk-action-bar'
+import { SortHead } from './table/sort-head'
+import { WorkItemTableRow } from './table/work-item-table-row'
+import type { SortKey } from './table/types'
 import { WorkItemDetailSheet } from './work-item-detail-sheet'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
-import type { WorkItemStatus } from '@/lib/db/schema'
+import type { ProjectOption, RosterOption, WorkItemRow } from '@/lib/work-items/types'
 
-type SortKey = 'title' | 'project' | 'status' | 'priority' | 'assignee' | 'activity'
-
-export interface WorkItemRow {
-  id: string
-  kind: 'epic' | 'feature' | 'task'
-  key: string | null
-  title: string
-  status: WorkItemStatus
-  priority: number | null
-  projectId: string
-  assigneeMemberId?: string | null
-  assigneeName: string | null
-  projectName: string | null
-  engineName?: string | null
-  teamName?: string | null
-  externalUrl: string | null
-  lastEventAt: string | Date | null
-  updatedAt: string | Date | null
-}
-
-interface RosterOption {
-  id: string
-  name: string
-}
-
-interface ProjectOption {
-  id: string
-  name: string
-}
+export type { WorkItemRow } from '@/lib/work-items/types'
 
 async function patchItem(id: string, body: Record<string, unknown>): Promise<boolean> {
   const res = await fetch(`/api/work-items/${id}`, {
@@ -246,156 +204,17 @@ export function WorkItemsTable({
     }
   }
 
-  const quickEditTriggerClass =
-    '-mx-1.5 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50'
-
-  function SortHead({
-    sortKey,
-    className,
-    align = 'start',
-    children,
-  }: {
-    sortKey: SortKey
-    className?: string
-    align?: 'start' | 'end'
-    children: React.ReactNode
-  }) {
-    const active = sort === sortKey
-    return (
-      <TableHead className={className}>
-        <button
-          type="button"
-          onClick={() => toggleSort(sortKey)}
-          className={cn(
-            '-mx-1.5 flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground',
-            align === 'end' && 'ml-auto',
-          )}
-        >
-          {children}
-          {active ? (
-            dir === 'desc' ? (
-              <ArrowDown className="h-3 w-3" />
-            ) : (
-              <ArrowUp className="h-3 w-3" />
-            )
-          ) : (
-            <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-          )}
-        </button>
-      </TableHead>
-    )
-  }
-
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <div
-        aria-hidden={selected.size === 0}
-        className={cn(
-          'absolute inset-x-0 bottom-3 z-20 flex justify-center px-3 transition-all duration-200 ease-out',
-          selected.size > 0
-            ? 'pointer-events-auto translate-y-0 opacity-100'
-            : 'pointer-events-none translate-y-2 opacity-0',
-        )}
-      >
-        <div className="flex max-w-full flex-wrap items-center gap-1.5 rounded-full border bg-card/95 px-3 py-2 shadow-lg backdrop-blur-sm">
-          <span className="pl-1 text-xs font-medium">{selected.size} selected</span>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-xs text-muted-foreground"
-            onClick={() => setSelected(new Set())}
-          >
-            Clear
-          </Button>
-          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={bulkBusy}>
-                Status
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {EDITABLE_STATUSES.map((s) => (
-                <DropdownMenuItem key={s} onSelect={() => bulkPatch({ status: s })}>
-                  <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[s].tone)} />
-                  {STATUS_META[s].label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={bulkBusy}>
-                Priority
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {PRIORITY_ORDER.map((p) => (
-                <DropdownMenuItem key={p} onSelect={() => bulkPatch({ priority: p })}>
-                  {PRIORITY_LABEL[p]}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={bulkBusy}>
-                Assignee
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => bulkPatch({ assigneeMemberId: null })}>Unassigned</DropdownMenuItem>
-              {roster.map((m) => (
-                <DropdownMenuItem key={m.id} onSelect={() => bulkPatch({ assigneeMemberId: m.id })}>
-                  {m.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {projects.length > 1 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={bulkBusy}>
-                  Project
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {projects.map((p) => (
-                  <DropdownMenuItem key={p.id} onSelect={() => bulkPatch({ projectId: p.id })}>
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          <span className="mx-1 h-4 w-px shrink-0 bg-border" />
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                disabled={bulkBusy}
-              >
-                <Trash2 className="mr-1 h-3.5 w-3.5" />
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Delete {selected.size} item{selected.size > 1 ? 's' : ''}?
-                </AlertDialogTitle>
-                <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={bulkDelete}>Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      </div>
+      <BulkActionBar
+        selectedCount={selected.size}
+        roster={roster}
+        projects={projects}
+        busy={bulkBusy}
+        onClear={() => setSelected(new Set())}
+        onBulkPatch={bulkPatch}
+        onBulkDelete={bulkDelete}
+      />
 
       <div className="min-h-0 flex-1 overflow-auto rounded-lg border bg-card shadow-xs">
         <Table className="min-w-[680px]">
@@ -415,23 +234,56 @@ export function WorkItemsTable({
                 />
               </TableHead>
               <TableHead className="w-6 px-2 py-2.5" />
-              <SortHead sortKey="title" className="micro-label px-4 py-2.5 font-medium">
+              <SortHead
+                sortKey="title"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
+                className="micro-label px-4 py-2.5 font-medium"
+              >
                 Item
               </SortHead>
-              <SortHead sortKey="project" className="micro-label hidden w-32 px-4 py-2.5 font-medium lg:table-cell">
+              <SortHead
+                sortKey="project"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
+                className="micro-label hidden w-32 px-4 py-2.5 font-medium lg:table-cell"
+              >
                 Project
               </SortHead>
-              <SortHead sortKey="status" className="micro-label w-32 px-4 py-2.5 font-medium">
+              <SortHead
+                sortKey="status"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
+                className="micro-label w-32 px-4 py-2.5 font-medium"
+              >
                 Status
               </SortHead>
-              <SortHead sortKey="priority" className="micro-label hidden w-24 px-4 py-2.5 font-medium sm:table-cell">
+              <SortHead
+                sortKey="priority"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
+                className="micro-label hidden w-24 px-4 py-2.5 font-medium sm:table-cell"
+              >
                 Priority
               </SortHead>
-              <SortHead sortKey="assignee" className="micro-label hidden w-40 px-4 py-2.5 font-medium md:table-cell">
+              <SortHead
+                sortKey="assignee"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
+                className="micro-label hidden w-40 px-4 py-2.5 font-medium md:table-cell"
+              >
                 Assignee
               </SortHead>
               <SortHead
                 sortKey="activity"
+                sort={sort}
+                dir={dir}
+                onToggle={toggleSort}
                 align="end"
                 className="micro-label hidden w-32 px-4 py-2.5 text-right font-medium lg:table-cell"
               >
@@ -443,236 +295,29 @@ export function WorkItemsTable({
           </TableHeader>
           <TableBody className="divide-y">
             {localRows.map((item) => (
-              <TableRow
+              <WorkItemTableRow
                 key={item.id}
-                draggable={!sort}
-                onDragStart={() => !sort && setDraggingId(item.id)}
-                onDragOver={(e) => !sort && e.preventDefault()}
-                onDrop={(e) => {
-                  if (sort) return
-                  e.preventDefault()
-                  if (draggingId && draggingId !== item.id) moveTo(draggingId, item.id)
+                item={item}
+                roster={roster}
+                projects={projects}
+                isTriageView={isTriageView}
+                sorted={!!sort}
+                selected={selected.has(item.id)}
+                dragging={draggingId === item.id}
+                busy={busyId === item.id}
+                onToggleSelected={toggleSelected}
+                onClick={setClickedId}
+                onDragStart={setDraggingId}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(_e, overId) => {
+                  if (draggingId && draggingId !== overId) moveTo(draggingId, overId)
                   setDraggingId(null)
                 }}
                 onDragEnd={() => setDraggingId(null)}
-                onClick={() => setClickedId(item.id)}
-                className={cn(
-                  'cursor-pointer',
-                  draggingId === item.id && 'opacity-40',
-                  selected.has(item.id) && 'bg-beacon/[0.04]',
-                )}
-              >
-                <TableCell className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={selected.has(item.id)}
-                    onCheckedChange={() => toggleSelected(item.id)}
-                    aria-label={`Select ${item.title}`}
-                  />
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'px-2 py-2.5 text-muted-foreground/40',
-                    sort ? 'cursor-not-allowed opacity-40' : 'cursor-grab active:cursor-grabbing',
-                  )}
-                  title={sort ? 'Clear sort to reorder manually' : undefined}
-                >
-                  <GripVertical className="h-3.5 w-3.5" />
-                </TableCell>
-                <TableCell className="max-w-0 px-4 py-2.5">
-                  <div className="flex items-center gap-2.5">
-                    {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
-                    <span className="truncate font-medium">{item.title}</span>
-                    {item.kind !== 'task' && (
-                      <Badge variant="secondary" className="shrink-0 px-1.5 py-0 font-mono text-[10px] uppercase">
-                        {KIND_LABEL[item.kind]}
-                      </Badge>
-                    )}
-                    {item.engineName && (
-                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
-                        {item.engineName}
-                      </Badge>
-                    )}
-                    {item.teamName && (
-                      <Badge variant="outline" className="shrink-0 px-1.5 py-0 text-[10px] text-muted-foreground">
-                        {item.teamName}
-                      </Badge>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="hidden px-4 py-2.5 lg:table-cell" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        disabled={busyId === item.id}
-                        className={cn(
-                          'block h-auto max-w-full truncate font-mono text-[11px] font-normal text-muted-foreground hover:bg-accent',
-                          quickEditTriggerClass,
-                        )}
-                      >
-                        {item.projectName ?? '—'}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {projects.map((p) => (
-                        <DropdownMenuItem key={p.id} onSelect={() => quickPatch(item.id, { projectId: p.id })}>
-                          {p.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-                <TableCell className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                  {item.status === 'triage' ? (
-                    <span className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[item.status].tone)} />
-                      {STATUS_META[item.status].label}
-                    </span>
-                  ) : (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          disabled={busyId === item.id}
-                          className={cn(
-                            'flex h-auto items-center gap-1.5 whitespace-nowrap text-xs font-normal text-muted-foreground hover:bg-accent',
-                            quickEditTriggerClass,
-                          )}
-                        >
-                          <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[item.status].tone)} />
-                          {STATUS_META[item.status].label}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        {EDITABLE_STATUSES.map((s) => (
-                          <DropdownMenuItem key={s} onSelect={() => quickPatch(item.id, { status: s })}>
-                            <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[s].tone)} />
-                            {STATUS_META[s].label}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </TableCell>
-                <TableCell className="hidden px-4 py-2.5 sm:table-cell" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        disabled={busyId === item.id}
-                        className={cn(
-                          'h-auto text-xs font-normal hover:bg-accent',
-                          item.priority != null && item.priority > 0 && item.priority <= 2
-                            ? 'font-medium text-destructive'
-                            : 'text-muted-foreground',
-                          quickEditTriggerClass,
-                        )}
-                      >
-                        {PRIORITY_LABEL[item.priority ?? 0]}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {PRIORITY_ORDER.map((p) => (
-                        <DropdownMenuItem key={p} onSelect={() => quickPatch(item.id, { priority: p })}>
-                          {PRIORITY_LABEL[p]}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-                <TableCell className="hidden px-4 py-2.5 md:table-cell" onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        disabled={busyId === item.id}
-                        className={cn(
-                          'block h-auto max-w-full truncate text-xs font-normal text-muted-foreground hover:bg-accent',
-                          quickEditTriggerClass,
-                        )}
-                      >
-                        {item.assigneeName ?? <span className="text-muted-foreground/50">Unassigned</span>}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem onSelect={() => quickPatch(item.id, { assigneeMemberId: null })}>
-                        Unassigned
-                      </DropdownMenuItem>
-                      {roster.map((m) => (
-                        <DropdownMenuItem key={m.id} onSelect={() => quickPatch(item.id, { assigneeMemberId: m.id })}>
-                          {m.name}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-                <TableCell className="hidden whitespace-nowrap px-4 py-2.5 text-right font-mono text-xs text-muted-foreground lg:table-cell">
-                  {relativeTime(new Date(item.lastEventAt ?? item.updatedAt ?? Date.now()))}
-                </TableCell>
-                {isTriageView && (
-                  <TableCell className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-[11px]"
-                        disabled={busyId === item.id}
-                        onClick={() => triageAction(item.id, { action: 'accept' })}
-                      >
-                        <Check className="mr-1 h-3 w-3" />
-                        Accept
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2 text-[11px]"
-                        disabled={busyId === item.id}
-                        onClick={() => triageAction(item.id, { action: 'decline' })}
-                      >
-                        <Ban className="mr-1 h-3 w-3" />
-                        Decline
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 w-6 p-0"
-                        disabled={busyId === item.id}
-                        title="Snooze 1 day"
-                        onClick={() =>
-                          triageAction(item.id, {
-                            action: 'snooze',
-                            until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                          })
-                        }
-                      >
-                        <Clock className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-1.5 text-[11px] text-muted-foreground"
-                        disabled={busyId === item.id}
-                        onClick={() => setDuplicatePickerFor(item.id)}
-                      >
-                        Dup
-                      </Button>
-                    </div>
-                  </TableCell>
-                )}
-                <TableCell className="px-2 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-                  {item.externalUrl && (
-                    <a
-                      href={item.externalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex text-muted-foreground transition-colors hover:text-foreground"
-                      aria-label="Open in tracker"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  )}
-                </TableCell>
-              </TableRow>
+                onQuickPatch={quickPatch}
+                onTriageAction={triageAction}
+                onMarkDuplicate={setDuplicatePickerFor}
+              />
             ))}
           </TableBody>
         </Table>

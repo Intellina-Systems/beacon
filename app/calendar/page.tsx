@@ -5,7 +5,7 @@ import { members } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { ensurePrimaryCalendar, getVisibleCalendars } from '@/lib/calendar/queries'
 import { PageShell } from '@/components/page-shell'
-import { CalendarApp } from '@/components/calendar/calendar-app'
+import { CalendarAppLoader } from '@/components/calendar/calendar-app-loader'
 import { TimezoneCapture } from '@/components/calendar/timezone-capture'
 import type { CalendarSummary, RosterMember } from '@/components/calendar/types'
 
@@ -43,7 +43,7 @@ export default async function CalendarPage() {
   return (
     <PageShell title="Calendar" description={`${ctx.workspaceName} · your schedule`} fixed>
       <TimezoneCapture hasTimezone={Boolean(ctx.member.timezone)} />
-      <CalendarApp calendars={calendars} roster={roster as RosterMember[]} defaultTimezone={defaultTimezone} />
+      <CalendarAppLoader calendars={calendars} roster={roster as RosterMember[]} defaultTimezone={defaultTimezone} />
     </PageShell>
   )
 }
