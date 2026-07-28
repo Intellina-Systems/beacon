@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { LayoutGrid, List } from 'lucide-react'
-import { and, asc, count, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   engines,
@@ -24,6 +24,7 @@ import { ManageTemplatesDialog } from '@/components/work-items/manage-templates-
 import { AssigneeFilter } from '@/components/work-items/assignee-filter'
 import { OrgTagFilter } from '@/components/work-items/org-tag-filter'
 import { StatusFilter } from '@/components/work-items/status-filter'
+import { WorkSearchInput } from '@/components/work-items/work-search-input'
 import { WorkItemsTable } from '@/components/work-items/work-items-table'
 import { BoardView } from '@/components/work-items/board-view'
 import { BoardColumnsProvider } from '@/components/work-items/board-columns-context'
@@ -52,6 +53,7 @@ interface FilterState {
   layout?: ViewLayout
   sort?: SortKey
   dir?: 'asc' | 'desc'
+  q?: string
 }
 
 function workHref(filter: FilterState, page: number) {
@@ -61,6 +63,7 @@ function workHref(filter: FilterState, page: number) {
   if (filter.assignee) params.set('assignee', filter.assignee)
   if (filter.engine) params.set('engine', filter.engine)
   if (filter.orgTeam) params.set('team', filter.orgTeam)
+  if (filter.q) params.set('q', filter.q)
   if (filter.layout && filter.layout !== 'board') params.set('layout', filter.layout)
   if (filter.sort) {
     params.set('sort', filter.sort)
@@ -88,6 +91,7 @@ export default async function WorkPage({
     layout?: string
     sort?: string
     dir?: string
+    q?: string
   }>
 }) {
   const ctx = await getWorkspaceContext()
@@ -104,6 +108,7 @@ export default async function WorkPage({
     layout: rawLayout,
     sort: rawSort,
     dir: rawDir,
+    q: rawQ,
   } = await searchParams
   const statuses = new Set(
     (rawStatus?.split(',') ?? []).filter((s): s is WorkItemStatus => WORK_ITEM_STATUSES.includes(s as WorkItemStatus)),
@@ -112,6 +117,7 @@ export default async function WorkPage({
   const page = parsePage(rawPage)
   const sort = SORT_KEYS.find((k) => k === rawSort)
   const dir: 'asc' | 'desc' = rawDir === 'desc' ? 'desc' : 'asc'
+  const q = rawQ?.trim() || undefined
 
   const [projectList, fullRoster, savedViews, engineOptions, teamOptions] = await Promise.all([
     db
@@ -156,6 +162,8 @@ export default async function WorkPage({
   const snoozeFilter = statuses.has('triage')
     ? or(isNull(workItems.snoozedUntil), lte(workItems.snoozedUntil, new Date()))
     : undefined
+  const searchFilter = q ? or(ilike(workItems.title, `%${q}%`), ilike(workItems.key, `%${q}%`)) : undefined
+
   const where = and(
     eq(workItems.workspaceId, workspaceId),
     statuses.size > 0 ? inArray(workItems.status, [...statuses]) : undefined,
@@ -165,6 +173,7 @@ export default async function WorkPage({
     assigneeFilter,
     visibility,
     snoozeFilter,
+    searchFilter,
   )
 
   const countsWhere = and(
@@ -174,6 +183,7 @@ export default async function WorkPage({
     orgTeam ? eq(workItems.teamId, orgTeam) : undefined,
     assigneeFilter,
     visibility,
+    searchFilter,
   )
 
   const sortColumn: Record<SortKey, Parameters<typeof asc>[0]> = {
@@ -238,6 +248,7 @@ export default async function WorkPage({
     layout,
     sort,
     dir: sort ? dir : undefined,
+    q,
   }
   const isTriageView = statuses.size === 1 && statuses.has('triage')
 
@@ -262,8 +273,9 @@ export default async function WorkPage({
       )
     }) ?? null
 
-  const emptyTitle =
-    statuses.size === 1
+  const emptyTitle = q
+    ? 'No matching work items'
+    : statuses.size === 1
       ? `No ${STATUS_META[[...statuses][0]].label.toLowerCase()} items`
       : statuses.size > 0 || assignee
         ? 'No matching work items'
@@ -285,6 +297,8 @@ export default async function WorkPage({
     >
       <div className="flex h-full min-h-0 w-full flex-col px-4 py-4 lg:px-6">
         <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+          <WorkSearchInput current={q} />
+
           {projectList.length > 1 && (
             <OrgTagFilter
               options={projectList}
