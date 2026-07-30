@@ -2,7 +2,7 @@ import { type NextRequest } from 'next/server'
 import crypto from 'crypto'
 import { consumeAuthorizationCode } from '@/lib/oauth/codes'
 import { createGrant, rotateRefreshToken } from '@/lib/oauth/grants'
-import { getClientByPublicId } from '@/lib/oauth/clients'
+import { getClientByPublicId, isSameRedirectUri } from '@/lib/oauth/clients'
 import { issueMcpAccessToken } from '@/lib/mcp/tokens'
 
 // Matches lib/mcp/tokens.ts's ACCESS_TOKEN_TTL ('1h') — kept as a literal
@@ -50,12 +50,14 @@ export async function POST(req: NextRequest): Promise<Response> {
     const row = await consumeAuthorizationCode(code)
     if (!row) return tokenError('invalid_grant', 'Unknown, expired, or already-used code')
 
-    // redirect_uri must match exactly what was validated when the code was
-    // issued — the classic authorization-code-injection check (RFC 6819
-    // §4.4.1.13): without it, an attacker who intercepts a code for one
-    // redirect_uri could redeem it against a different one they control.
+    // redirect_uri must match what was validated when the code was issued —
+    // the classic authorization-code-injection check (RFC 6819 §4.4.1.13):
+    // without it, an attacker who intercepts a code for one redirect_uri
+    // could redeem it against a different one they control. Compared via
+    // isSameRedirectUri, not a byte-exact check, for the same loopback
+    // port-agnostic reason app/oauth/authorize uses it (see lib/oauth/clients.ts).
     const client = await getClientByPublicId(clientId)
-    if (!client || client.id !== row.clientId || row.redirectUri !== redirectUri) {
+    if (!client || client.id !== row.clientId || !isSameRedirectUri(row.redirectUri, redirectUri)) {
       return tokenError('invalid_grant', 'client_id or redirect_uri does not match the authorization request')
     }
     if (!verifyPkce(codeVerifier, row.codeChallenge)) {

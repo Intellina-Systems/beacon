@@ -1,8 +1,10 @@
+import Link from 'next/link'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { STATUS_META } from '@/lib/work-items/constants'
+import { workItemHref } from '@/lib/work-items/href'
 import type { RelationEntry, RelationsView } from '@/lib/work-items/types'
 import type { WorkItemRelationType } from '@/lib/db/schema'
 
@@ -25,11 +27,11 @@ function RelationGroup({
             key={entry.relationId}
             className="flex items-center justify-between gap-2 rounded border bg-card px-2 py-1"
           >
-            <span className="flex min-w-0 items-center gap-1.5">
+            <Link href={workItemHref(entry.item)} className="flex min-w-0 items-center gap-1.5 hover:underline">
               <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_META[entry.item.status].tone)} />
               {entry.item.key && <span className="shrink-0 font-mono text-muted-foreground">{entry.item.key}</span>}
               <span className="truncate">{entry.item.title}</span>
-            </span>
+            </Link>
             <Button
               variant="ghost"
               size="icon"

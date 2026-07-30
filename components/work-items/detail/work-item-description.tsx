@@ -65,13 +65,17 @@ export function WorkItemDescription({
   }
 
   return (
-    <div className="group relative">
+    // pt-7 reserves real space for the Edit button above the text — anchoring
+    // it with a negative offset instead put it right on top of the first
+    // line on any description long enough to wrap, since the button floats
+    // relative to the whole block, not the first line specifically.
+    <div className="group relative pt-7">
       <MarkdownBody>{description}</MarkdownBody>
       <Button
         size="sm"
         variant="outline"
         onClick={onStartEdit}
-        className="absolute -top-1 right-0 h-7 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+        className="absolute top-0 right-0 h-7 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
       >
         <Pencil className="mr-1 h-3 w-3" />
         Edit

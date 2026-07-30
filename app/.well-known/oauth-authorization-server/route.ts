@@ -20,6 +20,13 @@ export function GET(req: NextRequest): Response {
     code_challenge_methods_supported: ['S256'],
     // Public/PKCE-only clients in v1 — see lib/oauth/clients.ts.
     token_endpoint_auth_methods_supported: ['none'],
+    // Deliberately no client_id_metadata_document_supported: true — Claude
+    // only tries CIMD when that flag AND token_endpoint_auth_methods_supported
+    // containing "none" are both present; missing either makes it fall back
+    // to registration_endpoint (DCR), which is the only registration path
+    // this server implements (lib/oauth/clients.ts:registerClient). Adding
+    // that flag without actually serving CIMD documents would break clients
+    // that pick it, so leave it absent rather than false.
   }
   return Response.json(metadata, { headers: CORS_HEADERS })
 }

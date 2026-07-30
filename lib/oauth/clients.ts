@@ -13,9 +13,16 @@ const generateClientId = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 
 
 export class ClientRegistrationError extends Error {}
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
+
+function isLoopbackHost(hostname: string): boolean {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase())
+}
+
 // A registered redirect target must be HTTPS, or the loopback exception CLI
-// tools (Claude Code, local MCP inspectors) rely on — http://localhost or
-// http://127.0.0.1 at any port — never a plain http:// URL to a real host.
+// tools (Claude Code, local MCP inspectors) rely on — http://localhost,
+// http://127.0.0.1, or http://[::1] at any port — never a plain http:// URL
+// to a real host.
 function isAllowedRedirectUri(uri: string): boolean {
   let url: URL
   try {
@@ -24,7 +31,31 @@ function isAllowedRedirectUri(uri: string): boolean {
     return false
   }
   if (url.protocol === 'https:') return true
-  return url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+  return url.protocol === 'http:' && isLoopbackHost(url.hostname)
+}
+
+// RFC 8252 §7.3 requires matching a loopback redirect_uri with the port
+// ignored — a native app binds an ephemeral port at runtime, so the port it
+// registered with and the port it actually redirects to can differ between
+// calls, or between separate instances of the same client (a terminal
+// session and a VS Code session each pick their own). Anthropic's docs
+// confirm Claude Code relies on exactly this: it declares both
+// http://localhost/callback and http://127.0.0.1/callback in its client
+// metadata and expects an authorization server to treat the two hostnames as
+// interchangeable, port ignored, when matching. A byte-exact comparison here
+// would spuriously reject a real Claude Code client on every call whose
+// ephemeral port doesn't happen to match its registration.
+export function isSameRedirectUri(a: string, b: string): boolean {
+  let ua: URL, ub: URL
+  try {
+    ua = new URL(a)
+    ub = new URL(b)
+  } catch {
+    return false
+  }
+  if (ua.protocol !== ub.protocol || ua.pathname !== ub.pathname || ua.search !== ub.search) return false
+  if (isLoopbackHost(ua.hostname) && isLoopbackHost(ub.hostname)) return true
+  return ua.hostname === ub.hostname && ua.port === ub.port
 }
 
 // RFC 7591 Dynamic Client Registration. Deliberately unauthenticated — any

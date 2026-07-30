@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { getClientByPublicId } from './clients'
+import { getClientByPublicId, isSameRedirectUri } from './clients'
 import type { McpOauthClient } from '@/lib/db/schema'
 
 export interface ParsedAuthorizeRequest {
@@ -26,10 +26,12 @@ export async function validateAuthorizeRequest(params: URLSearchParams): Promise
   const client = await getClientByPublicId(clientId)
   if (!client) return { ok: false, error: 'Unknown client_id — this app has not registered with Beacon' }
 
-  // Byte-exact match against the client's registration, not a prefix or host
-  // match — the classic open-redirect-via-authorize hole.
+  // Matched against the client's registration via isSameRedirectUri — exact
+  // for a real host (the open-redirect-via-authorize guard), port-agnostic
+  // and localhost/127.0.0.1-interchangeable for loopback (what a native
+  // client's ephemeral callback port requires; see lib/oauth/clients.ts).
   const redirectUri = params.get('redirect_uri')
-  if (!redirectUri || !client.redirectUris.includes(redirectUri)) {
+  if (!redirectUri || !client.redirectUris.some((registered) => isSameRedirectUri(registered, redirectUri))) {
     return { ok: false, error: "redirect_uri does not match this client's registration" }
   }
 
