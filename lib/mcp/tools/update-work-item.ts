@@ -14,7 +14,13 @@ const inputSchema = z.object({
   priority: z.number().int().min(0).max(4).optional(),
   assigneeMemberId: z.string().nullable().optional().describe('A member id from list_members, or null to unassign'),
   labels: z.array(z.string()).max(20).nullable().optional(),
-  dueDate: z.coerce.date().nullable().optional(),
+  // A plain string, not z.date()/z.coerce.date() — a raw Date type has no
+  // JSON Schema representation, and the MCP SDK converts every tool's
+  // inputSchema to JSON Schema for tools/list. Using it here broke that
+  // call for the whole server, not just this one tool ("Date cannot be
+  // represented in JSON Schema"), so no tools listed at all. Converted to a
+  // real Date below, right before it reaches updateWorkItem().
+  dueDate: z.string().nullable().optional().describe('ISO 8601 date, e.g. "2026-08-15", or null to clear the due date'),
   estimate: z.number().min(0).max(1000).nullable().optional(),
   projectId: z.string().optional().describe('A project id from list_projects'),
 })
@@ -52,11 +58,27 @@ export function registerUpdateWorkItemTool(server: McpServer) {
         .limit(1)
       if (!row) return toolError(`No work item found matching "${input.idOrKey}"`)
 
-      const { idOrKey: _idOrKey, ...fields } = input
-      if (Object.keys(fields).length === 0) return toolError('No fields to update were given')
+      const { idOrKey: _idOrKey, dueDate, ...rest } = input
+      if (Object.keys(rest).length === 0 && dueDate === undefined) {
+        return toolError('No fields to update were given')
+      }
+
+      let parsedDueDate: Date | null | undefined
+      if (dueDate !== undefined) {
+        if (dueDate === null) {
+          parsedDueDate = null
+        } else {
+          const parsed = new Date(dueDate)
+          if (Number.isNaN(parsed.getTime())) return toolError(`"${dueDate}" is not a valid date`)
+          parsedDueDate = parsed
+        }
+      }
 
       try {
-        const { item } = await updateWorkItem(workspaceCtx, row.id, fields)
+        const { item } = await updateWorkItem(workspaceCtx, row.id, {
+          ...rest,
+          ...(dueDate !== undefined ? { dueDate: parsedDueDate } : {}),
+        })
         return {
           content: [
             {
