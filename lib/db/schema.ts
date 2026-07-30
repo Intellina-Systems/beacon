@@ -1008,6 +1008,111 @@ export type ApiKey = typeof apiKeys.$inferSelect
 export type InsertApiKey = typeof apiKeys.$inferInsert
 
 // ---------------------------------------------------------------------------
+// MCP OAuth — Beacon acting as an OAuth 2.1 authorization server for remote
+// MCP clients (Claude, Cursor, ChatGPT…), so a connection can be authorized
+// by browser instead of a pasted bcn_ key. Every existing OAuth flow in this
+// codebase (GitHub, Vercel, Google Calendar) is Beacon as a *client*
+// authenticating outward; these three tables are the only place Beacon
+// issues credentials to someone else. All hash-only, like api_keys/invites
+// above — nothing here is ever decrypted, only compared. Access tokens
+// themselves are NOT a table: they're short-lived JWEs (lib/mcp/tokens.ts)
+// carrying a grantId, verified by decrypting and checking this grant
+// hasn't been revoked — no separate hash-compare table for them.
+// ---------------------------------------------------------------------------
+
+// A registered MCP client app (Claude Code, Cursor…). Global, not
+// workspace-scoped — Dynamic Client Registration (RFC 7591) happens before
+// anyone has authenticated or picked a workspace, exactly like registering a
+// GitHub OAuth App. Registering grants zero data access by itself; real
+// access only ever follows a member completing browser consent at
+// /oauth/authorize. v1 is public/PKCE-only clients — no secret.
+export const mcpOauthClients = pgTable('mcp_oauth_clients', {
+  id: text('id').primaryKey(),
+  clientId: text('client_id').notNull().unique(),
+  clientName: text('client_name').notNull(),
+  redirectUris: jsonb('redirect_uris').$type<string[]>().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+})
+
+export type McpOauthClient = typeof mcpOauthClients.$inferSelect
+export type InsertMcpOauthClient = typeof mcpOauthClients.$inferInsert
+
+// A single-use, ~60s-lived authorization code, exchanged for tokens at
+// /api/oauth/token. `consumedAt` gives the same atomic single-use pattern
+// invites.ts:claimInvite() uses (UPDATE ... WHERE consumedAt IS NULL
+// RETURNING), closing the race where two token requests race the same code.
+export const mcpAuthorizationCodes = pgTable(
+  'mcp_authorization_codes',
+  {
+    id: text('id').primaryKey(),
+    codeHash: text('code_hash').notNull(),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => mcpOauthClients.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    redirectUri: text('redirect_uri').notNull(),
+    codeChallenge: text('code_challenge').notNull(),
+    // Always 'S256' — OAuth 2.1 makes PKCE mandatory for public clients and
+    // this server never accepts the plain method. Kept as a column (not a
+    // hardcoded assumption downstream) so the token endpoint's comparison
+    // stays honest about what it's actually checking.
+    codeChallengeMethod: text('code_challenge_method').notNull(),
+    scope: text('scope').notNull(),
+    expiresAt: timestamp('expires_at').notNull(),
+    consumedAt: timestamp('consumed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    codeHashIdx: uniqueIndex('mcp_authorization_codes_hash_idx').on(table.codeHash),
+  }),
+)
+
+export type McpAuthorizationCode = typeof mcpAuthorizationCodes.$inferSelect
+export type InsertMcpAuthorizationCode = typeof mcpAuthorizationCodes.$inferInsert
+
+// The durable "this client can act as this member in this workspace" record
+// — one row per active connection, what the UI lists and revokes. No access
+// token lives here (see note above); `refreshTokenHash` is rotated on every
+// refresh, with reuse of an already-rotated token revoking the whole grant
+// (theft detection) rather than just failing the one request. Deleting the
+// member cascades here so a removed member's grants can't outlive them —
+// belt-and-braces alongside the JWE verification path already refusing a
+// deactivated (not just deleted) member via getWorkspaceContextForMember.
+export const mcpOauthGrants = pgTable(
+  'mcp_oauth_grants',
+  {
+    id: text('id').primaryKey(),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => mcpOauthClients.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    scope: text('scope').notNull(),
+    refreshTokenHash: text('refresh_token_hash').notNull(),
+    lastUsedAt: timestamp('last_used_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    revokedAt: timestamp('revoked_at'),
+  },
+  (table) => ({
+    refreshTokenHashIdx: uniqueIndex('mcp_oauth_grants_refresh_hash_idx').on(table.refreshTokenHash),
+    memberIdx: index('mcp_oauth_grants_member_idx').on(table.memberId),
+    workspaceIdx: index('mcp_oauth_grants_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type McpOauthGrant = typeof mcpOauthGrants.$inferSelect
+export type InsertMcpOauthGrant = typeof mcpOauthGrants.$inferInsert
+
+// ---------------------------------------------------------------------------
 // Knowledge
 // ---------------------------------------------------------------------------
 

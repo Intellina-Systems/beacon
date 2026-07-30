@@ -10,7 +10,10 @@ import { ConnectionsCard } from '@/components/integrations/connections-card'
 import { SourcesCard } from '@/components/integrations/sources-card'
 import { ApiKeysCard } from '@/components/integrations/api-keys-card'
 import { AgentSetupCard } from '@/components/integrations/agent-setup-card'
+import { McpConnectorCard } from '@/components/integrations/mcp-connector-card'
+import { McpGrantsAdminTable } from '@/components/integrations/mcp-grants-admin-table'
 import { PageShell } from '@/components/page-shell'
+import { listGrantsForWorkspace } from '@/lib/oauth/grants'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Integrations' }
@@ -23,7 +26,7 @@ export default async function IntegrationsPage() {
   if (!isAdmin(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
 
-  const [github, sources, projectList, keys] = await Promise.all([
+  const [github, sources, projectList, keys, mcpGrants] = await Promise.all([
     getServerGitHubConnection(session.user.id),
     db
       .select()
@@ -47,6 +50,7 @@ export default async function IntegrationsPage() {
       .from(apiKeys)
       .where(eq(apiKeys.workspaceId, workspaceId))
       .orderBy(desc(apiKeys.createdAt)),
+    listGrantsForWorkspace(workspaceId),
   ])
 
   return (
@@ -82,6 +86,19 @@ export default async function IntegrationsPage() {
               lastUsedAt: key.lastUsedAt?.toISOString() ?? null,
               revokedAt: key.revokedAt?.toISOString() ?? null,
               createdAt: key.createdAt.toISOString(),
+            }))}
+          />
+
+          <McpConnectorCard />
+
+          <McpGrantsAdminTable
+            grants={mcpGrants.map((g) => ({
+              id: g.id,
+              clientName: g.clientName,
+              memberName: g.memberName,
+              scope: g.scope,
+              lastUsedAt: g.lastUsedAt?.toISOString() ?? null,
+              createdAt: g.createdAt.toISOString(),
             }))}
           />
 

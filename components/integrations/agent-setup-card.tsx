@@ -18,7 +18,7 @@ const EXAMPLE = `curl -X POST https://beacon-tool.vercel.app/api/events \\
     "confidence": 0.92
   }'`
 
-function CopyableSnippet({ text }: { text: string }) {
+export function CopyableSnippet({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
   function copy() {

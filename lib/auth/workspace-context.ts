@@ -134,3 +134,30 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | nu
     memberships,
   }
 })
+
+// Same shape as getWorkspaceContext, but resolved from a member id directly
+// instead of the session cookie — for callers authenticated by something
+// other than a browser session (an MCP grant tied to a specific member, for
+// instance). Returns null for a member who no longer exists or has been
+// deactivated, so a bearer credential minted for that member stops resolving
+// to a context — and therefore stops passing any permission check — the
+// moment an admin removes them, not only once the credential's TTL expires.
+export async function getWorkspaceContextForMember(memberId: string): Promise<WorkspaceContext | null> {
+  const [row] = await db
+    .select({ member: members, workspaceName: workspaces.name })
+    .from(members)
+    .innerJoin(workspaces, eq(members.workspaceId, workspaces.id))
+    .where(eq(members.id, memberId))
+    .limit(1)
+  if (!row || row.member.status !== 'active') return null
+
+  const { member, workspaceName } = row
+  return {
+    workspaceId: member.workspaceId,
+    workspaceName,
+    member,
+    role: member.accessRole,
+    teams: await loadTeams(member.id),
+    memberships: [{ workspaceId: member.workspaceId, workspaceName }],
+  }
+}

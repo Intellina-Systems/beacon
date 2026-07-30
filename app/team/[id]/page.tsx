@@ -17,6 +17,8 @@ import { EventItem } from '@/components/events/event-item'
 import { EditMemberDialog } from '@/components/members/edit-member-dialog'
 import { MemberConnections } from '@/components/members/member-connections'
 import { GoogleCalendarCard } from '@/components/integrations/google-calendar-card'
+import { McpConnectionsCard } from '@/components/integrations/mcp-connections-card'
+import { listGrantsForMember } from '@/lib/oauth/grants'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,6 +89,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
           .limit(1)
       )[0] ?? null)
     : null
+  const mcpConnections = isSelf ? await listGrantsForMember(member.id) : []
 
   const memberBlockers = allBlockers.filter((blocker) => blocker.member?.id === member.id)
   const weekActivity = activityByMember.get(member.id)
@@ -248,6 +251,18 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               connected={Boolean(calendarAccount)}
               email={calendarAccount?.externalEmail ?? null}
               lastSyncedAt={calendarAccount?.lastSyncedAt ?? null}
+            />
+          )}
+
+          {isSelf && (
+            <McpConnectionsCard
+              connections={mcpConnections.map((g) => ({
+                id: g.id,
+                clientName: g.clientName,
+                scope: g.scope,
+                lastUsedAt: g.lastUsedAt?.toISOString() ?? null,
+                createdAt: g.createdAt.toISOString(),
+              }))}
             />
           )}
 
