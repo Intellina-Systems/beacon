@@ -6,6 +6,7 @@ import { eq, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { createGitHubSession, saveSession } from '@/lib/session/create-github'
 import { claimInvite } from '@/lib/invites'
+import { decideSignIn, hasActiveMembership, isUnclaimedInstall } from '@/lib/auth/sign-in-eligibility'
 import { encrypt } from '@/lib/crypto'
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -76,6 +77,23 @@ export async function GET(req: NextRequest): Promise<Response> {
     const githubUser = (await userResponse.json()) as { login: string; id: number }
 
     if (isSignInFlow) {
+      const inviteToken = cookieStore.get('beacon_invite_token')?.value ?? null
+
+      // Invite-only: decide before a session or a `users` row exists, so a
+      // stranger who reaches this URL leaves no trace and gets no cookie.
+      const decision = await decideSignIn({
+        provider: 'github',
+        externalId: `${githubUser.id}`,
+        inviteToken,
+      })
+      if (!decision.allowed) {
+        cookieStore.delete('beacon_invite_token')
+        cookieStore.delete(`github_auth_state`)
+        cookieStore.delete(`github_auth_redirect_to`)
+        cookieStore.delete(`github_auth_mode`)
+        return Response.redirect(new URL(`/?error=${decision.reason}`, req.nextUrl.origin))
+      }
+
       const session = await createGitHubSession(tokenData.access_token, tokenData.scope)
       if (!session) {
         return new Response('Failed to create session', { status: 500 })
@@ -84,11 +102,20 @@ export async function GET(req: NextRequest): Promise<Response> {
       // Invitee flow: claim the stashed invite before anything can bootstrap a
       // solo workspace for this brand-new user.
       let redirectTo = storedRedirectTo
-      const inviteToken = cookieStore.get('beacon_invite_token')?.value
       if (inviteToken) {
         const claim = await claimInvite(inviteToken, session.user.id)
         if (claim.ok) redirectTo = '/'
         cookieStore.delete('beacon_invite_token')
+      }
+
+      // The invite only bought passage through the gate. If the claim did not
+      // land — a leaked link that belongs to someone else, say — this account
+      // still has no access, so no cookie is written.
+      if (!(await hasActiveMembership(session.user.id)) && !(await isUnclaimedInstall())) {
+        cookieStore.delete(`github_auth_state`)
+        cookieStore.delete(`github_auth_redirect_to`)
+        cookieStore.delete(`github_auth_mode`)
+        return Response.redirect(new URL('/?error=not_invited', req.nextUrl.origin))
       }
 
       const response = new Response(null, { status: 302, headers: { Location: redirectTo } })

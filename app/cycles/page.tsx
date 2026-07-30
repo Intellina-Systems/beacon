@@ -273,13 +273,7 @@ export default async function CyclesPage({
                         />
                       </div>
                     ) : (
-                      <WorkItemsTable
-                        rows={items}
-                        roster={roster}
-                        projects={projectList}
-                        currentMemberId={ctx.member.id}
-                        isTriageView={false}
-                      />
+                      <WorkItemsTable rows={items} roster={roster} projects={projectList} isTriageView={false} />
                     )}
                   </>
                 )}

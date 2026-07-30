@@ -116,7 +116,7 @@ export default async function InboxPage({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-          <InboxList initialRows={rows} roster={roster} currentMemberId={ctx.member.id} />
+          <InboxList initialRows={rows} />
         </div>
 
         <Pagination

@@ -111,6 +111,14 @@ export const getWorkspaceContext = cache(async (): Promise<WorkspaceContext | nu
       .map((row) => ({ workspaceId: row.member.workspaceId, workspaceName: row.workspaceName }))
       .sort((a, b) => a.workspaceName.localeCompare(b.workspaceName))
   } else {
+    // No membership. Bootstrapping a workspace here used to be unconditional,
+    // which meant anyone who authenticated became the owner of a brand-new
+    // tenant — the reason sign-in is now gated in the OAuth callbacks. Keep it
+    // only for a genuinely empty install, so the first arrival can found the
+    // workspace and everyone after them must be invited into one.
+    const [anyWorkspace] = await db.select({ id: workspaces.id }).from(workspaces).limit(1)
+    if (anyWorkspace) return null
+
     const bootstrapped = await bootstrapWorkspace(session.user)
     member = bootstrapped.member
     workspaceName = bootstrapped.workspaceName

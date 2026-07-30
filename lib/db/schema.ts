@@ -679,6 +679,73 @@ export const workItemWatchers = pgTable(
 export type WorkItemWatcher = typeof workItemWatchers.$inferSelect
 export type InsertWorkItemWatcher = typeof workItemWatchers.$inferInsert
 
+// Human discussion on a work item. Comments are mutable prose (people edit
+// typos), so unlike status they are NOT derived from the event stream — but
+// posting one still emits a `task.commented` event so the stream, the inbox,
+// and every projection over it stay complete.
+export const workItemComments = pgTable(
+  'work_item_comments',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    workItemId: text('work_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    authorMemberId: text('author_member_id').references(() => members.id, { onDelete: 'set null' }),
+    // Markdown, including inline `![shot](/api/attachments/<id>)` embeds
+    body: text('body').notNull(),
+    editedAt: timestamp('edited_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    itemCreatedIdx: index('work_item_comments_item_created_idx').on(table.workItemId, table.createdAt),
+    authorIdx: index('work_item_comments_author_idx').on(table.authorMemberId),
+  }),
+)
+
+export type WorkItemComment = typeof workItemComments.$inferSelect
+export type InsertWorkItemComment = typeof workItemComments.$inferInsert
+
+// Files pinned to a work item — screenshots pasted into a description or
+// comment, plus plain file uploads. Bytes live in Postgres (base64) because
+// the deployment has no object store configured; `lib/work-items/attachments.ts`
+// is the only module that touches storage, so moving to a bucket later is a
+// one-file change. See ATTACHMENT_MAX_BYTES for the size ceiling.
+export const workItemAttachments = pgTable(
+  'work_item_attachments',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    workItemId: text('work_item_id')
+      .notNull()
+      .references(() => workItems.id, { onDelete: 'cascade' }),
+    // Set when the file was uploaded from a comment composer rather than the
+    // description; the comment's deletion does not cascade — attachments stay
+    // reachable from the item's Files list.
+    commentId: text('comment_id').references(() => workItemComments.id, { onDelete: 'set null' }),
+    uploadedByMemberId: text('uploaded_by_member_id').references(() => members.id, { onDelete: 'set null' }),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    // Base64 of the raw bytes. Large, but TOASTed out of line by Postgres and
+    // never selected unless the download route asks for it.
+    data: text('data').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    itemIdx: index('work_item_attachments_item_idx').on(table.workItemId),
+    commentIdx: index('work_item_attachments_comment_idx').on(table.commentId),
+  }),
+)
+
+export type WorkItemAttachment = typeof workItemAttachments.$inferSelect
+export type InsertWorkItemAttachment = typeof workItemAttachments.$inferInsert
+
 // Reusable pre-filled issue defaults ("Bug report", "Chore"…). `defaults` holds
 // any subset of work-item fields; nulls/absent fields fall back to form input.
 export interface WorkItemTemplateDefaults {

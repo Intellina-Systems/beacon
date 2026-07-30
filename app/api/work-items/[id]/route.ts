@@ -14,7 +14,9 @@ import { demoteResolvedBlocks } from '@/lib/work-items/relations'
 const patchSchema = z
   .object({
     title: z.string().min(1).max(300).optional(),
-    description: z.string().max(10000).nullable().optional(),
+    // Generous ceiling: descriptions now carry inline screenshot embeds
+    // (`![shot](/api/attachments/<id>)`) alongside the prose.
+    description: z.string().max(50000).nullable().optional(),
     kind: z.enum(WORK_ITEM_KINDS).optional(),
     status: z.enum(WORK_ITEM_STATUSES).optional(),
     priority: z.number().int().min(0).max(4).optional(),

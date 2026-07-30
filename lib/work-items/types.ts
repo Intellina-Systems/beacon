@@ -75,3 +75,24 @@ export interface WatcherEntry {
   reason: string
   name: string
 }
+
+export interface CommentEntry {
+  id: string
+  body: string
+  authorMemberId: string | null
+  authorName: string | null
+  authorAvatarUrl: string | null
+  createdAt: string
+  editedAt: string | null
+}
+
+export interface AttachmentEntry {
+  id: string
+  filename: string
+  contentType: string
+  size: number
+  url: string
+  commentId: string | null
+  uploadedByMemberId: string | null
+  createdAt: string
+}

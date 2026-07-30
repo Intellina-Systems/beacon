@@ -3,6 +3,7 @@
 import { createReactInlineContentSpec } from '@blocknote/react'
 import { cn } from '@/lib/utils'
 import { STATUS_META } from '@/lib/work-items/constants'
+import { workItemHref } from '@/lib/work-items/href'
 import type { WorkItemStatus } from '@/lib/db/schema'
 import { useWorkItemSnapshot } from '../work-item-status-cache'
 
@@ -48,7 +49,7 @@ function WorkItemChip({
 
   return (
     <a
-      href={`/work?item=${encodeURIComponent(itemId)}`}
+      href={workItemHref({ id: itemId, key: itemKey })}
       className="inline-flex items-baseline gap-1.5 rounded-sm border bg-muted/40 px-1.5 py-0.5 align-baseline text-[0.9em] no-underline transition-colors hover:bg-accent"
       title={meta ? `${snapshot.title} — ${meta.label}` : snapshot.title}
     >

@@ -9,7 +9,6 @@ import { BulkActionBar } from './table/bulk-action-bar'
 import { SortHead } from './table/sort-head'
 import { WorkItemTableRow } from './table/work-item-table-row'
 import type { SortKey } from './table/types'
-import { WorkItemDetailSheet } from './work-item-detail-sheet'
 import { PickWorkItemDialog, type PickableWorkItem } from './pick-work-item-dialog'
 import type { ProjectOption, RosterOption, WorkItemRow } from '@/lib/work-items/types'
 
@@ -28,7 +27,6 @@ export function WorkItemsTable({
   rows,
   roster,
   projects,
-  currentMemberId,
   isTriageView,
   sort,
   dir,
@@ -36,7 +34,6 @@ export function WorkItemsTable({
   rows: WorkItemRow[]
   roster: RosterOption[]
   projects: ProjectOption[]
-  currentMemberId: string
   isTriageView: boolean
   sort?: SortKey
   dir?: 'asc' | 'desc'
@@ -44,7 +41,6 @@ export function WorkItemsTable({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [localRows, setLocalRows] = useState(rows)
-  const [clickedId, setClickedId] = useState<string | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [duplicatePickerFor, setDuplicatePickerFor] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -55,12 +51,6 @@ export function WorkItemsTable({
     setLocalRows(rows)
     setSelected(new Set())
   }, [rows])
-
-  // Deep-link: /work?item=<id> opens that item's detail sheet (used by Pulse
-  // plans/blockers/events links). Derived from the URL so no effect/setState is
-  // needed; a local click takes precedence over the param.
-  const itemParam = searchParams.get('item')
-  const selectedId = clickedId ?? itemParam
 
   async function moveTo(draggedId: string, overId: string) {
     const order = localRows.map((r) => r.id).filter((id) => id !== draggedId)
@@ -306,7 +296,6 @@ export function WorkItemsTable({
                 dragging={draggingId === item.id}
                 busy={busyId === item.id}
                 onToggleSelected={toggleSelected}
-                onClick={setClickedId}
                 onDragStart={setDraggingId}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(_e, overId) => {
@@ -322,17 +311,6 @@ export function WorkItemsTable({
           </TableBody>
         </Table>
       </div>
-
-      <WorkItemDetailSheet
-        itemId={selectedId}
-        open={selectedId !== null}
-        onClose={() => {
-          setClickedId(null)
-          if (itemParam) router.replace('/work', { scroll: false })
-        }}
-        roster={roster}
-        currentMemberId={currentMemberId}
-      />
 
       <PickWorkItemDialog
         open={duplicatePickerFor !== null}

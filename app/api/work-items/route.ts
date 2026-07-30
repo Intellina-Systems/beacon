@@ -91,7 +91,7 @@ const createSchema = z.object({
   kind: z.enum(WORK_ITEM_KINDS).default('task'),
   projectId: z.string().optional(),
   title: z.string().min(1).max(300),
-  description: z.string().max(10000).optional(),
+  description: z.string().max(50000).optional(),
   parentId: z.string().optional(),
   status: z.enum(WORK_ITEM_STATUSES).default('todo'),
   priority: z.number().int().min(0).max(4).default(0),

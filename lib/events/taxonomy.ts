@@ -9,6 +9,7 @@ export const EVENT_TYPES = [
   'task.started',
   'task.status_changed',
   'task.assigned',
+  'task.commented',
   'task.relation_added',
   'task.relation_removed',
   'task.blocked',

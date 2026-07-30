@@ -5,7 +5,9 @@ import { ArrowLeft, Crown } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { canViewAllTeams, detailVisibleMemberIds, visibleMemberIds } from '@/lib/auth/permissions'
+import { canViewAllTeams, detailVisibleMemberIds, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
+import { canManageTeam } from '@/lib/org/access'
+import { ManageTeamButton } from '@/components/teams/manage-team-button'
 import { OPEN_STATUSES } from '@/lib/work-items/constants'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -71,7 +73,8 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
       .orderBy(desc(workItems.updatedAt))
       .limit(30),
     db
-      .select({ id: members.id, name: members.name })
+      // avatarUrl feeds the Manage dialog's roster picker.
+      .select({ id: members.id, name: members.name, avatarUrl: members.avatarUrl })
       .from(members)
       .where(eq(members.workspaceId, workspaceId))
       .orderBy(members.name),
@@ -80,17 +83,37 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
   // Same scoping the /work board applies to its assignee picker.
   const roster = visible ? fullRoster.filter((m) => visible.includes(m.id)) : fullRoster
 
+  const canManage = await canManageTeam(ctx, team.id)
+
   return (
     <PageShell
       title={team.name}
       description={team.description ?? undefined}
       actions={
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-          <Link href="/org">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Org
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+            <Link href="/org">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Org
+            </Link>
+          </Button>
+          {/* Admins, plus this team's own Leads — the same rule canManageTeam
+              enforces on PATCH and the members routes, so the button never
+              shows for someone the API would reject. */}
+          {canManage && (
+            <ManageTeamButton
+              team={{
+                id: team.id,
+                name: team.name,
+                description: team.description,
+                kind: team.kind,
+                members: teamMemberRows,
+              }}
+              roster={roster}
+              isWorkspaceAdmin={isAdmin(ctx)}
+            />
+          )}
+        </div>
       }
       fixed
     >
@@ -151,12 +174,7 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ id:
 
           <Panel>
             <PanelHeader label="Open work" meta={<span className="tabular-nums">{openItems.length}</span>} />
-            <OpenWorkList
-              items={openItems}
-              roster={roster}
-              currentMemberId={ctx.member.id}
-              emptyLabel="No open work tagged to this team"
-            />
+            <OpenWorkList items={openItems} emptyLabel="No open work tagged to this team" />
           </Panel>
 
           <OrgDocumentsPanel teamId={team.id} scopeLabel={team.name} />

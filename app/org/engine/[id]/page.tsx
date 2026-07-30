@@ -5,7 +5,9 @@ import { ArrowLeft, Crown } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { engineMembers, engines, members, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { detailVisibleMemberIds, visibleMemberIds } from '@/lib/auth/permissions'
+import { detailVisibleMemberIds, isAdmin, visibleMemberIds } from '@/lib/auth/permissions'
+import { canManageOrgUnit } from '@/lib/org/access'
+import { ManageUnitButton } from '@/components/org/manage-unit-button'
 import { OPEN_STATUSES } from '@/lib/work-items/constants'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -98,12 +100,33 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
       title={engine.name}
       description={engine.description ?? undefined}
       actions={
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
-          <Link href="/org">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Org
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+            <Link href="/org">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Org
+            </Link>
+          </Button>
+          {/* Admins, plus this engine's own Lead — same rule the PATCH route
+              enforces via canManageOrgUnit, so the button never appears for
+              someone the API would reject. */}
+          {canManageOrgUnit(ctx, engine) && (
+            <ManageUnitButton
+              label="Engine"
+              apiBase="/api/engines"
+              unit={{
+                id: engine.id,
+                name: engine.name,
+                description: engine.description,
+                ownerMemberId: engine.ownerMemberId,
+                ownerName: engine.ownerName,
+                members: engineMemberRows,
+              }}
+              roster={roster}
+              isWorkspaceAdmin={isAdmin(ctx)}
+            />
+          )}
+        </div>
       }
       fixed
     >
@@ -157,12 +180,7 @@ export default async function EngineDetailPage({ params }: { params: Promise<{ i
 
           <Panel>
             <PanelHeader label="Open work" meta={<span className="tabular-nums">{openItems.length}</span>} />
-            <OpenWorkList
-              items={openItems}
-              roster={roster}
-              currentMemberId={ctx.member.id}
-              emptyLabel="No open work tagged to this engine"
-            />
+            <OpenWorkList items={openItems} emptyLabel="No open work tagged to this engine" />
           </Panel>
 
           <OrgDocumentsPanel engineId={engine.id} scopeLabel={engine.name} />

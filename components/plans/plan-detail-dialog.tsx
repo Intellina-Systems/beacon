@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { STATUS_META } from '@/lib/work-items/constants'
+import { workItemHref } from '@/lib/work-items/href'
 import { cn } from '@/lib/utils'
 import type { WorkItemStatus } from '@/lib/db/schema'
 
@@ -87,7 +88,7 @@ export function PlanDetailDialog({
                   {detail.items.map((item) => (
                     <Link
                       key={item.id}
-                      href={`/work?item=${item.id}`}
+                      href={workItemHref(item)}
                       className="group flex items-center gap-2 rounded-md border bg-card px-2.5 py-2 text-sm transition-colors hover:border-beacon/40 hover:bg-accent/40"
                     >
                       {item.touched ? (

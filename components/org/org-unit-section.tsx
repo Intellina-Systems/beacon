@@ -139,7 +139,7 @@ function NewUnitDialog({
   )
 }
 
-function ManageUnitDialog({
+export function ManageUnitDialog({
   label,
   apiBase,
   unit,

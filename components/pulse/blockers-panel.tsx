@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { relativeTime } from '@/lib/utils/relative-time'
+import { workItemHref } from '@/lib/work-items/href'
 import { cn } from '@/lib/utils'
 
 export interface BlockerRow {
@@ -94,7 +95,7 @@ export function BlockersPanel({ blockers, className }: { blockers: BlockerRow[];
                 <div key={b.eventId} className="group flex items-center gap-1 py-2">
                   {b.workItemId ? (
                     <Link
-                      href={`/work?item=${b.workItemId}`}
+                      href={workItemHref({ id: b.workItemId })}
                       className="-mx-2 flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-accent/60"
                     >
                       {rowContent}

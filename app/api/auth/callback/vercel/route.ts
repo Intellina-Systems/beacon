@@ -1,6 +1,7 @@
 import { type NextRequest } from 'next/server'
 import { OAuth2Client, type OAuth2Tokens } from 'arctic'
 import { createSession, saveSession } from '@/lib/session/create'
+import { hasActiveMembership, isUnclaimedInstall } from '@/lib/auth/sign-in-eligibility'
 import { cookies } from 'next/headers'
 
 export async function GET(req: NextRequest): Promise<Response> {
@@ -56,6 +57,17 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!session) {
     console.error('[Vercel Callback] Failed to create session')
     return new Response('Failed to create session', { status: 500 })
+  }
+
+  // Invite-only, same rule as the GitHub flow: authenticating is not the same
+  // as belonging here. Checked after createSession (which is what resolves the
+  // Vercel identity to an internal user) but before any cookie is written, so
+  // a stranger still ends up with no session.
+  if (!(await hasActiveMembership(session.user.id)) && !(await isUnclaimedInstall())) {
+    cookieStore.delete(`vercel_oauth_state`)
+    cookieStore.delete(`vercel_oauth_code_verifier`)
+    cookieStore.delete(`vercel_oauth_redirect_to`)
+    return Response.redirect(new URL('/?error=not_invited', req.nextUrl.origin))
   }
 
   // Note: Vercel tokens are already stored in users table by upsertUser() in createSession()

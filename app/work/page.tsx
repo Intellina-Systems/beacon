@@ -92,6 +92,7 @@ export default async function WorkPage({
     sort?: string
     dir?: string
     q?: string
+    item?: string
   }>
 }) {
   const ctx = await getWorkspaceContext()
@@ -109,7 +110,13 @@ export default async function WorkPage({
     sort: rawSort,
     dir: rawDir,
     q: rawQ,
+    item: rawItem,
   } = await searchParams
+
+  // Legacy deep link: /work?item=<id> used to open a drawer over the board.
+  // Items now have their own page, so send those links there.
+  if (rawItem) redirect(`/work/${encodeURIComponent(rawItem)}`)
+
   const statuses = new Set(
     (rawStatus?.split(',') ?? []).filter((s): s is WorkItemStatus => WORK_ITEM_STATUSES.includes(s as WorkItemStatus)),
   )
@@ -416,14 +423,13 @@ export default async function WorkPage({
             </div>
           ) : layout === 'board' ? (
             <div className="min-h-0 flex-1 overflow-hidden">
-              <BoardView rows={rows} roster={fullRoster} currentMemberId={ctx.member.id} />
+              <BoardView rows={rows} />
             </div>
           ) : (
             <WorkItemsTable
               rows={rows}
               roster={fullRoster}
               projects={projectList}
-              currentMemberId={ctx.member.id}
               isTriageView={isTriageView}
               sort={sort}
               dir={dir}

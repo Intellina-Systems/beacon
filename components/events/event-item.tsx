@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { RelativeTime } from '@/components/ui/relative-time'
+import { workItemHref } from '@/lib/work-items/href'
 import { cn } from '@/lib/utils'
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -97,7 +98,7 @@ export function EventItem({ event }: { event: EventItemData }) {
   if (event.workItemId) {
     return (
       <Link
-        href={`/work?item=${event.workItemId}`}
+        href={workItemHref({ id: event.workItemId })}
         className="-mx-2 flex items-start gap-3 rounded-md px-2 py-2.5 transition-colors hover:bg-accent/60"
       >
         {inner}

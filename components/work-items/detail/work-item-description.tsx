@@ -1,73 +1,81 @@
-import { Pencil } from 'lucide-react'
-import { Streamdown } from 'streamdown'
+'use client'
+
+import { ImagePlus, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { MarkdownBody } from './markdown-body'
+import { MarkdownComposer } from './markdown-composer'
 
 export function WorkItemDescription({
+  workItemId,
   description,
   editing,
   draft,
+  saving,
   onDraftChange,
   onStartEdit,
   onSave,
   onCancel,
+  onUploaded,
 }: {
+  workItemId: string
   description: string | null
   editing: boolean
   draft: string
+  saving?: boolean
   onDraftChange: (value: string) => void
   onStartEdit: () => void
   onSave: () => void
   onCancel: () => void
+  onUploaded?: () => void
 }) {
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label className="micro-label">Description</Label>
-        {!editing && description && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-[11px] text-muted-foreground"
-            onClick={onStartEdit}
-          >
-            <Pencil className="mr-1 h-3 w-3" />
-            Edit
-          </Button>
-        )}
-      </div>
-      {editing ? (
-        <div className="space-y-2">
-          <Textarea
-            rows={8}
-            value={draft}
-            onChange={(e) => onDraftChange(e.target.value)}
-            placeholder="Add a description… Markdown supported."
-            autoFocus
-          />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={onSave}>
-              Save
-            </Button>
+  if (editing) {
+    return (
+      <MarkdownComposer
+        value={draft}
+        onChange={onDraftChange}
+        workItemId={workItemId}
+        autoFocus
+        minHeight={220}
+        onUploaded={onUploaded}
+        footer={
+          <>
             <Button size="sm" variant="ghost" onClick={onCancel}>
               Cancel
             </Button>
-          </div>
-        </div>
-      ) : description ? (
-        <Streamdown className="text-sm leading-relaxed text-foreground/90 [&_a]:text-beacon [&_a]:underline [&_a]:underline-offset-4 [&_h1]:mt-4 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mt-4 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-medium [&_li]:my-0.5 [&_pre]:max-w-full [&_ul]:list-disc [&_ul]:pl-5">
-          {description}
-        </Streamdown>
-      ) : (
-        <Button
-          variant="ghost"
-          className="h-auto p-0 text-sm font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
-          onClick={onStartEdit}
-        >
-          Add a description…
-        </Button>
-      )}
-    </section>
+            <Button size="sm" onClick={onSave} disabled={saving}>
+              Save
+            </Button>
+          </>
+        }
+      />
+    )
+  }
+
+  if (!description) {
+    return (
+      <button
+        type="button"
+        onClick={onStartEdit}
+        className="group flex w-full items-center gap-2 rounded-lg border border-dashed px-3.5 py-4 text-left text-sm text-muted-foreground transition-colors hover:border-beacon/40 hover:bg-beacon/[0.03] hover:text-foreground"
+      >
+        <ImagePlus className="h-4 w-4 shrink-0 opacity-60" />
+        Add a description — paste screenshots straight in
+      </button>
+    )
+  }
+
+  return (
+    <div className="group relative">
+      <MarkdownBody>{description}</MarkdownBody>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onStartEdit}
+        className="absolute -top-1 right-0 h-7 px-2 text-[11px] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <Pencil className="mr-1 h-3 w-3" />
+        Edit
+      </Button>
+    </div>
   )
 }

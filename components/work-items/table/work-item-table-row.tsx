@@ -1,4 +1,6 @@
 import { memo } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Ban, Check, Clock, ExternalLink, GripVertical } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -7,6 +9,7 @@ import { TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { RelativeTime } from '@/components/ui/relative-time'
 import { EDITABLE_STATUSES, KIND_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_META } from '@/lib/work-items/constants'
+import { workItemHref } from '@/lib/work-items/href'
 import type { ProjectOption, RosterOption, WorkItemRow } from '@/lib/work-items/types'
 import { QuickEditCell } from './quick-edit-cell'
 
@@ -24,7 +27,6 @@ function WorkItemTableRowImpl({
   dragging,
   busy,
   onToggleSelected,
-  onClick,
   onDragStart,
   onDragOver,
   onDrop,
@@ -42,7 +44,6 @@ function WorkItemTableRowImpl({
   dragging: boolean
   busy: boolean
   onToggleSelected: (id: string) => void
-  onClick: (id: string) => void
   onDragStart: (id: string) => void
   onDragOver: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent, overId: string) => void
@@ -51,6 +52,9 @@ function WorkItemTableRowImpl({
   onTriageAction: (id: string, body: Record<string, unknown>) => void
   onMarkDuplicate: (id: string) => void
 }) {
+  const router = useRouter()
+  const href = workItemHref(item)
+
   return (
     <TableRow
       draggable={!sorted}
@@ -62,7 +66,9 @@ function WorkItemTableRowImpl({
         onDrop(e, item.id)
       }}
       onDragEnd={onDragEnd}
-      onClick={() => onClick(item.id)}
+      // The whole row is a click target for convenience; the title is also a
+      // real anchor so middle-click and "open in new tab" behave.
+      onClick={() => router.push(href)}
       className={cn('cursor-pointer', dragging && 'opacity-40', selected && 'bg-beacon/[0.04]')}
     >
       <TableCell className="px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
@@ -84,7 +90,13 @@ function WorkItemTableRowImpl({
       <TableCell className="max-w-0 px-4 py-2.5">
         <div className="flex items-center gap-2.5">
           {item.key && <span className="shrink-0 font-mono text-xs text-muted-foreground">{item.key}</span>}
-          <span className="truncate font-medium">{item.title}</span>
+          <Link
+            href={href}
+            onClick={(e) => e.stopPropagation()}
+            className="truncate font-medium hover:underline hover:underline-offset-4"
+          >
+            {item.title}
+          </Link>
           {item.kind !== 'task' && (
             <Badge variant="secondary" className="shrink-0 px-1.5 py-0 font-mono text-[10px] uppercase">
               {KIND_LABEL[item.kind]}

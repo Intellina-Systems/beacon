@@ -7,8 +7,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/page-shell'
-import { WorkItemDetailSheet } from '@/components/work-items/work-item-detail-sheet'
 import { RelativeTime } from '@/components/ui/relative-time'
+import { workItemHref } from '@/lib/work-items/href'
 import { cn } from '@/lib/utils'
 
 interface NotificationRow {
@@ -26,29 +26,15 @@ interface NotificationRow {
   workItemTitle: string | null
 }
 
-interface RosterOption {
-  id: string
-  name: string
-}
-
 const SNOOZE_PRESETS = [
   { label: '1 hour', ms: 60 * 60 * 1000 },
   { label: '1 day', ms: 24 * 60 * 60 * 1000 },
   { label: '1 week', ms: 7 * 24 * 60 * 60 * 1000 },
 ]
 
-export function InboxList({
-  initialRows,
-  roster,
-  currentMemberId,
-}: {
-  initialRows: NotificationRow[]
-  roster: RosterOption[]
-  currentMemberId: string
-}) {
+export function InboxList({ initialRows }: { initialRows: NotificationRow[] }) {
   const router = useRouter()
   const [rows, setRows] = useState(initialRows)
-  const [selectedWorkItemId, setSelectedWorkItemId] = useState<string | null>(null)
 
   // Resync local state when the server-rendered page reloads (same pattern
   // as components/work-items/work-items-table.tsx).
@@ -115,7 +101,7 @@ export function InboxList({
           return (
             <div
               key={row.id}
-              onClick={() => row.workItemId && setSelectedWorkItemId(row.workItemId)}
+              onClick={() => row.workItemId && router.push(workItemHref({ id: row.workItemId, key: row.workItemKey }))}
               className={cn(
                 'flex items-start gap-3 px-4 py-3 transition-colors',
                 row.workItemId && 'cursor-pointer hover:bg-accent/40',
@@ -171,14 +157,6 @@ export function InboxList({
           )
         })}
       </div>
-
-      <WorkItemDetailSheet
-        itemId={selectedWorkItemId}
-        open={selectedWorkItemId !== null}
-        onClose={() => setSelectedWorkItemId(null)}
-        roster={roster}
-        currentMemberId={currentMemberId}
-      />
     </>
   )
 }

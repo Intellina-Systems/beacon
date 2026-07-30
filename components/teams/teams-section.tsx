@@ -125,14 +125,21 @@ function NewTeamDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o
   )
 }
 
-function ManageTeamDialog({
+export function ManageTeamDialog({
   team,
   roster,
   onOpenChange,
+  isWorkspaceAdmin = true,
 }: {
   team: TeamWithMembers
   roster: RosterMember[]
   onOpenChange: (open: boolean) => void
+  /**
+   * Leads may edit their own team's name and roster, but assigning leads and
+   * deleting the team are Admin-only server-side — hide both rather than let
+   * someone click into a 403.
+   */
+  isWorkspaceAdmin?: boolean
 }) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -215,15 +222,20 @@ function ManageTeamDialog({
             selection={selection}
             onToggleMember={toggleMember}
             onToggleLead={toggleLead}
+            canEditLead={isWorkspaceAdmin}
             leadLabel="lead"
           />
         </div>
 
         <DialogFooter className="flex items-center justify-between gap-2 border-t pt-4 sm:justify-between">
-          <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={handleDeleteTeam}>
-            <Trash2 className="mr-1 h-3.5 w-3.5" />
-            Delete team
-          </Button>
+          {isWorkspaceAdmin ? (
+            <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={handleDeleteTeam}>
+              <Trash2 className="mr-1 h-3.5 w-3.5" />
+              Delete team
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
