@@ -2,7 +2,15 @@ import 'server-only'
 
 import { and, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { dailyPlans, events, members, workItems, type DailyPlan, type DailyPlanStatus, type WorkItemStatus } from '@/lib/db/schema'
+import {
+  dailyPlans,
+  events,
+  members,
+  workItems,
+  type DailyPlan,
+  type DailyPlanStatus,
+  type WorkItemStatus,
+} from '@/lib/db/schema'
 import { visibleMemberIds } from '@/lib/auth/permissions'
 import type { WorkspaceContext } from '@/lib/auth/workspace-context'
 

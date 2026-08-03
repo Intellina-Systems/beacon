@@ -191,7 +191,11 @@ export async function syncInboundIssueComment(
   if (!item) return
 
   const markerExternalId = `github:${repoIdentifier}:issue-comment:${comment.id}`
-  const claimed = await claimGithubDelivery(workspaceId, markerExternalId, `GitHub comment synced to ${item.key ?? item.title}`)
+  const claimed = await claimGithubDelivery(
+    workspaceId,
+    markerExternalId,
+    `GitHub comment synced to ${item.key ?? item.title}`,
+  )
   if (!claimed) return // redelivery, or the echo of our own outbound push
 
   const roster = await db.select().from(members).where(eq(members.workspaceId, workspaceId))

@@ -8,7 +8,14 @@ import { syncCommentToGithub } from '@/lib/github/issue-sync'
 import { addWatchers } from './watchers'
 import { createComment, listComments, type CommentRecord } from './comment-store'
 
-export { type CommentRecord, listComments, createComment, getComment, updateComment, deleteComment } from './comment-store'
+export {
+  type CommentRecord,
+  listComments,
+  createComment,
+  getComment,
+  updateComment,
+  deleteComment,
+} from './comment-store'
 
 export class CommentError extends Error {}
 

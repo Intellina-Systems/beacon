@@ -15,7 +15,13 @@ export interface UnresolvedYesterday {
 // from yesterday takes priority (resolving it is a superset concern — it
 // also gets today squared away via "Continue"), otherwise a plain nudge if
 // today itself has nothing yet. Renders nothing once either is resolved.
-export function PlanPrompt({ todayPlanned, yesterday }: { todayPlanned: boolean; yesterday: UnresolvedYesterday | null }) {
+export function PlanPrompt({
+  todayPlanned,
+  yesterday,
+}: {
+  todayPlanned: boolean
+  yesterday: UnresolvedYesterday | null
+}) {
   const router = useRouter()
   const [dismissed, setDismissed] = useState(false)
   const [busy, setBusy] = useState(false)

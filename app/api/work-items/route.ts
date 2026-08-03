@@ -180,7 +180,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (linkGithubIssue) {
     githubIssue = await linkWorkItemToGithubIssue({
       workspaceId: ctx.workspaceId,
-      workItem: { id: item.id, key: item.key, title: item.title, description: item.description, projectId: item.projectId },
+      workItem: {
+        id: item.id,
+        key: item.key,
+        title: item.title,
+        description: item.description,
+        projectId: item.projectId,
+      },
       actorName: ctx.member.name,
       origin: new URL(req.url).origin,
     })

@@ -18,7 +18,9 @@ export interface PlanReminderResult {
 
 function localHour(date: Date, timezone: string): number {
   try {
-    return Number(new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }).format(date)) % 24
+    return (
+      Number(new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }).format(date)) % 24
+    )
   } catch {
     return date.getUTCHours()
   }
@@ -26,9 +28,12 @@ function localHour(date: Date, timezone: string): number {
 
 function localDateKey(date: Date, timezone: string): string {
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
-      date,
-    )
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date)
   } catch {
     return serverDateKey(date)
   }
@@ -46,7 +51,13 @@ function localDateKey(date: Date, timezone: string): string {
 export async function checkPlanReminders(): Promise<PlanReminderResult> {
   const now = new Date()
   const roster = await db
-    .select({ id: members.id, workspaceId: members.workspaceId, name: members.name, timezone: members.timezone, accessRole: members.accessRole })
+    .select({
+      id: members.id,
+      workspaceId: members.workspaceId,
+      name: members.name,
+      timezone: members.timezone,
+      accessRole: members.accessRole,
+    })
     .from(members)
     .where(eq(members.status, 'active'))
 
@@ -96,12 +107,17 @@ export async function checkPlanReminders(): Promise<PlanReminderResult> {
   const notificationRows = dueMembers
     .map((m) => {
       const eventId = eventIdByExternalId.get(m.externalId)
-      return eventId ? { id: generateId(), workspaceId: m.workspaceId, memberId: m.id, eventId, workItemId: null } : null
+      return eventId
+        ? { id: generateId(), workspaceId: m.workspaceId, memberId: m.id, eventId, workItemId: null }
+        : null
     })
     .filter((row): row is NonNullable<typeof row> => row !== null)
 
   if (notificationRows.length > 0) {
-    await db.insert(notifications).values(notificationRows).onConflictDoNothing({ target: [notifications.memberId, notifications.eventId] })
+    await db
+      .insert(notifications)
+      .values(notificationRows)
+      .onConflictDoNothing({ target: [notifications.memberId, notifications.eventId] })
   }
 
   return { sent: notificationRows.length }

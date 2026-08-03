@@ -22,7 +22,12 @@ export interface GithubSyncKeys {
 }
 
 export function emptyGithubSyncKeys(): GithubSyncKeys {
-  return { commitKeys: new Set(), closingCommitKeys: new Set(), closingMergesByKey: new Map(), actorLoginByKey: new Map() }
+  return {
+    commitKeys: new Set(),
+    closingCommitKeys: new Set(),
+    closingMergesByKey: new Map(),
+    actorLoginByKey: new Map(),
+  }
 }
 
 export interface GithubIngestResult {
@@ -41,7 +46,12 @@ export async function runGithubIngest(
   keys: GithubSyncKeys,
 ): Promise<GithubIngestResult> {
   const allKeys = Array.from(
-    new Set([...keys.commitKeys, ...keys.closingCommitKeys, ...keys.closingMergesByKey.keys(), ...keys.actorLoginByKey.keys()]),
+    new Set([
+      ...keys.commitKeys,
+      ...keys.closingCommitKeys,
+      ...keys.closingMergesByKey.keys(),
+      ...keys.actorLoginByKey.keys(),
+    ]),
   )
   const existingItems = allKeys.length
     ? await db

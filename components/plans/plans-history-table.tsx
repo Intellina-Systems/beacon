@@ -54,7 +54,10 @@ export function PlansHistoryTable({ rows }: { rows: PlanHistoryRowData[] }) {
                   </div>
                   <p className="truncate text-xs text-muted-foreground">{row.intention}</p>
                 </div>
-                <Badge variant={row.status === 'done' ? 'outline' : 'secondary'} className="shrink-0 px-1.5 py-0 text-[10px]">
+                <Badge
+                  variant={row.status === 'done' ? 'outline' : 'secondary'}
+                  className="shrink-0 px-1.5 py-0 text-[10px]"
+                >
                   {row.status === 'done' ? 'Done' : 'Pending'}
                 </Badge>
               </button>
