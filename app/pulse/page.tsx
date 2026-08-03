@@ -11,6 +11,7 @@ import {
   getAssignedWorkItems,
   getMemberPlan,
   getTodaysPlans,
+  getYesterdaysUnresolvedPlan,
   hydrateWorkItems,
   serverDateKey,
 } from '@/lib/plans/queries'
@@ -18,6 +19,7 @@ import { getBusyIntervals } from '@/lib/calendar/free-busy'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState, PageShell, Panel, PanelHeader } from '@/components/page-shell'
 import { DailyPlanCard, type PlanWorkItemOption } from '@/components/plans/daily-plan-card'
+import { PlanPrompt } from '@/components/plans/plan-prompt'
 import { TodaysPlansPanel } from '@/components/plans/todays-plans-panel'
 import { BlockersPanel, type BlockerRow } from '@/components/pulse/blockers-panel'
 import { EventItem } from '@/components/events/event-item'
@@ -93,6 +95,7 @@ export default async function PulsePage() {
     activeInsights,
     scopedItems,
     myPlan,
+    yesterdaysUnresolvedPlan,
     assignedItems,
     todaysPlans,
   ] = await Promise.all([
@@ -132,6 +135,7 @@ export default async function PulsePage() {
         ),
       ),
     getMemberPlan(ctx.member.id, today),
+    getYesterdaysUnresolvedPlan(ctx.member.id, today),
     getAssignedWorkItems(workspaceId, ctx.member.id),
     getTodaysPlans(ctx, today),
   ])
@@ -392,10 +396,20 @@ export default async function PulsePage() {
             Admins see the whole workspace's plans via TodaysPlansPanel and
             don't file one themselves. */}
         {!isAdmin(ctx) && (
-          <div className="shrink-0">
+          <div className="shrink-0 space-y-3">
+            <PlanPrompt
+              todayPlanned={Boolean(myPlan)}
+              yesterday={
+                yesterdaysUnresolvedPlan
+                  ? { date: yesterdaysUnresolvedPlan.date, intention: yesterdaysUnresolvedPlan.intention }
+                  : null
+              }
+            />
             <DailyPlanCard
+              date={today}
               initialIntention={myPlan?.intention ?? null}
               initialWorkItemIds={myPlan?.workItemIds ?? []}
+              initialStatus={myPlan?.status ?? 'pending'}
               options={planOptions}
               meetingCount={myMeetingCount}
             />

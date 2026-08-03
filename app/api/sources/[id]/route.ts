@@ -4,6 +4,8 @@ import { db } from '@/lib/db/client'
 import { signalSources } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { forbidden, isAdmin } from '@/lib/auth/permissions'
+import { deregisterRepoWebhook } from '@/lib/github/repo-webhook'
+import type { GithubWebhookConfig } from '@/lib/github/webhook-signature'
 
 const patchSchema = z.object({
   enabled: z.boolean().optional(),
@@ -42,8 +44,14 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const [deleted] = await db
     .delete(signalSources)
     .where(and(eq(signalSources.id, id), eq(signalSources.workspaceId, ctx.workspaceId)))
-    .returning({ id: signalSources.id })
+    .returning()
 
   if (!deleted) return Response.json({ error: 'Not found' }, { status: 404 })
+
+  const webhookConfig = deleted.config as GithubWebhookConfig | null
+  if (deleted.kind === 'github_repo' && webhookConfig?.webhookId) {
+    await deregisterRepoWebhook(ctx.workspaceId, deleted.identifier, webhookConfig)
+  }
+
   return Response.json({ success: true })
 }

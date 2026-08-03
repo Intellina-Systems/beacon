@@ -36,6 +36,10 @@ export interface ActivityEvent {
   actorLabel: string | null
   memberName: string | null
   occurredAt: string
+  // Already selected by lib/events/queries.ts's listEvents — declared here so
+  // consumers like WorkItemGitActivity can read PR/commit details (number,
+  // url, closing…) without a second fetch.
+  payload: Record<string, unknown> | null
 }
 
 export interface ItemDetail {

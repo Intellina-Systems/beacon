@@ -65,6 +65,7 @@ export const EVENT_TYPES = [
   // Daily planning — the one intent signal members declare by hand
   'plan.declared',
   'plan.updated',
+  'plan.reminder',
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]

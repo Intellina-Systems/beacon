@@ -15,6 +15,7 @@ import { visibleMemberIds } from '@/lib/auth/permissions'
 import { rankAfter } from '@/lib/work-items/rank'
 import { maxRank } from '@/lib/work-items/ordering'
 import { insertWorkItem } from '@/lib/work-items/create'
+import { linkWorkItemToGithubIssue } from '@/lib/github/issue-link'
 
 export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getWorkspaceContext()
@@ -102,6 +103,7 @@ const createSchema = z.object({
   dueDate: z.coerce.date().optional(),
   estimate: z.number().min(0).max(1000).nullable().optional(),
   templateId: z.string().optional(),
+  linkGithubIssue: z.boolean().optional().default(false),
 })
 
 // Fields the request body may leave to a template. Explicit body values always
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const rank = rankAfter(await maxRank(ctx.workspaceId))
-  const { templateId: _templateId, ...itemFields } = data
+  const { templateId: _templateId, linkGithubIssue, ...itemFields } = data
 
   let item: typeof workItems.$inferSelect
   try {
@@ -174,5 +176,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: 'Could not allocate a unique issue key' }, { status: 500 })
   }
 
-  return Response.json({ item }, { status: 201 })
+  let githubIssue: { ok: boolean; externalUrl?: string; reason?: string } | undefined
+  if (linkGithubIssue) {
+    githubIssue = await linkWorkItemToGithubIssue({
+      workspaceId: ctx.workspaceId,
+      workItem: { id: item.id, key: item.key, title: item.title, description: item.description, projectId: item.projectId },
+      actorName: ctx.member.name,
+      origin: new URL(req.url).origin,
+    })
+  }
+
+  return Response.json({ item, ...(githubIssue ? { githubIssue } : {}) }, { status: 201 })
 }

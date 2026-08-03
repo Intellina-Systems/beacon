@@ -73,7 +73,7 @@ function defaultSummary(raw: RawEvent): string {
 }
 
 function memberMatches(member: Member, needle: string): boolean {
-  const lower = needle.toLowerCase()
+  const lower = needle.trim().toLowerCase()
   return (
     member.name.toLowerCase() === lower ||
     member.email?.toLowerCase() === lower ||

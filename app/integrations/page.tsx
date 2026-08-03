@@ -1,17 +1,20 @@
 import { redirect } from 'next/navigation'
 import { desc, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { apiKeys, projects, signalSources } from '@/lib/db/schema'
+import { apiKeys, members, projects, signalSources } from '@/lib/db/schema'
 import { getServerSession } from '@/lib/session/get-server-session'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { isAdmin } from '@/lib/auth/permissions'
 import { getServerGitHubConnection } from '@/lib/github/get-connection-status'
+import { getUnmatchedActors } from '@/lib/events/queries'
+import { suggestMemberMatch } from '@/lib/members/suggest-match'
 import { ConnectionsCard } from '@/components/integrations/connections-card'
 import { SourcesCard } from '@/components/integrations/sources-card'
 import { ApiKeysCard } from '@/components/integrations/api-keys-card'
 import { AgentSetupCard } from '@/components/integrations/agent-setup-card'
 import { McpConnectorCard } from '@/components/integrations/mcp-connector-card'
 import { McpGrantsAdminTable } from '@/components/integrations/mcp-grants-admin-table'
+import { UnmatchedIdentitiesTable } from '@/components/integrations/unmatched-identities-table'
 import { PageShell } from '@/components/page-shell'
 import { listGrantsForWorkspace } from '@/lib/oauth/grants'
 
@@ -26,7 +29,7 @@ export default async function IntegrationsPage() {
   if (!isAdmin(ctx)) redirect('/timeline')
   const workspaceId = ctx.workspaceId
 
-  const [github, sources, projectList, keys, mcpGrants] = await Promise.all([
+  const [github, sources, projectList, keys, mcpGrants, roster, unmatchedActors] = await Promise.all([
     getServerGitHubConnection(session.user.id),
     db
       .select()
@@ -51,7 +54,20 @@ export default async function IntegrationsPage() {
       .where(eq(apiKeys.workspaceId, workspaceId))
       .orderBy(desc(apiKeys.createdAt)),
     listGrantsForWorkspace(workspaceId),
+    db
+      .select({ id: members.id, name: members.name, githubUsername: members.githubUsername, aliases: members.aliases })
+      .from(members)
+      .where(eq(members.workspaceId, workspaceId))
+      .orderBy(members.name),
+    getUnmatchedActors(workspaceId),
   ])
+
+  const unmatchedRows = unmatchedActors.map((actor) => ({
+    actorLabel: actor.actorLabel,
+    eventCount: actor.eventCount,
+    lastSeenAt: actor.lastSeenAt.toISOString(),
+    suggestedMemberId: suggestMemberMatch(actor.actorLabel, roster)?.member.id ?? null,
+  }))
 
   return (
     <PageShell
@@ -77,6 +93,8 @@ export default async function IntegrationsPage() {
             projects={projectList}
             githubConnected={github.connected}
           />
+
+          <UnmatchedIdentitiesTable rows={unmatchedRows} members={roster.map((m) => ({ id: m.id, name: m.name }))} />
 
           <ApiKeysCard
             keys={keys.map((key) => ({

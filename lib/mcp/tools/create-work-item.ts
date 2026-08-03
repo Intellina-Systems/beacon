@@ -6,6 +6,7 @@ import { members, WORK_ITEM_KINDS, WORK_ITEM_STATUSES } from '@/lib/db/schema'
 import { rankAfter } from '@/lib/work-items/rank'
 import { maxRank } from '@/lib/work-items/ordering'
 import { insertWorkItem } from '@/lib/work-items/create'
+import { linkWorkItemToGithubIssue } from '@/lib/github/issue-link'
 import { requireMemberContext } from '../context'
 
 const inputSchema = z.object({
@@ -19,6 +20,13 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe('A project id from list_projects — defaults to the workspace default project'),
+  linkGithubIssue: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Also create a linked GitHub Issue in the project’s connected repo, keeping status and comments in sync both ways. Only works when the project has exactly one connected GitHub repo.',
+    ),
 })
 
 // Errors here are surfaced to the model as a tool result, not a 500 — the
@@ -73,11 +81,36 @@ export function registerCreateWorkItemTool(server: McpServer) {
         rank,
       })
 
+      let githubIssue: { ok: boolean; externalUrl?: string; reason?: string } | undefined
+      if (input.linkGithubIssue) {
+        const requestUrl = ctx.http?.req?.url
+        githubIssue = requestUrl
+          ? await linkWorkItemToGithubIssue({
+              workspaceId: workspaceCtx.workspaceId,
+              workItem: {
+                id: item.id,
+                key: item.key,
+                title: item.title,
+                description: item.description,
+                projectId: item.projectId,
+              },
+              actorName: workspaceCtx.member.name,
+              origin: new URL(requestUrl).origin,
+            })
+          : { ok: false, reason: 'Could not determine Beacon’s URL from this request' }
+      }
+
       return {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify({ id: item.id, key: item.key, title: item.title, status: item.status }),
+            text: JSON.stringify({
+              id: item.id,
+              key: item.key,
+              title: item.title,
+              status: item.status,
+              ...(githubIssue ? { githubIssue } : {}),
+            }),
           },
         ],
       }

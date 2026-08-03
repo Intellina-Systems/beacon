@@ -1327,6 +1327,9 @@ export type InsertDocCollaborator = typeof docCollaborators.$inferInsert
 // feeds plan-vs-actual (planned items vs items that actually got activity).
 // ---------------------------------------------------------------------------
 
+export const DAILY_PLAN_STATUSES = ['pending', 'done'] as const
+export type DailyPlanStatus = (typeof DAILY_PLAN_STATUSES)[number]
+
 export const dailyPlans = pgTable(
   'daily_plans',
   {
@@ -1341,6 +1344,8 @@ export const dailyPlans = pgTable(
     date: text('date').notNull(),
     intention: text('intention').notNull(),
     workItemIds: jsonb('work_item_ids').$type<string[]>().notNull().default([]),
+    status: text('status', { enum: DAILY_PLAN_STATUSES }).notNull().default('pending'),
+    completedAt: timestamp('completed_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

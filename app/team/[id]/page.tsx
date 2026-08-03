@@ -120,6 +120,8 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               email={member.email}
               title={member.title}
               accessRole={member.accessRole}
+              githubUsername={member.githubUsername}
+              aliases={member.aliases}
               showAccessRole={member.status !== 'profile'}
               isSelf={member.id === ctx.member.id}
             />

@@ -2,7 +2,7 @@ import 'server-only'
 
 import { and, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { dailyPlans, events, members, workItems, type DailyPlan, type WorkItemStatus } from '@/lib/db/schema'
+import { dailyPlans, events, members, workItems, type DailyPlan, type DailyPlanStatus, type WorkItemStatus } from '@/lib/db/schema'
 import { visibleMemberIds } from '@/lib/auth/permissions'
 import type { WorkspaceContext } from '@/lib/auth/workspace-context'
 
@@ -48,6 +48,15 @@ export async function getMemberPlan(memberId: string, date: string): Promise<Dai
     .where(and(eq(dailyPlans.memberId, memberId), eq(dailyPlans.date, date)))
     .limit(1)
   return row ?? null
+}
+
+// The one-day-lookback carryover check: yesterday's plan, only if it was
+// never resolved. Already-done or never-filed both mean nothing to prompt
+// about — the prompt is specifically "you didn't close the loop on this."
+export async function getYesterdaysUnresolvedPlan(memberId: string, today: string): Promise<DailyPlan | null> {
+  const yesterday = serverDateKey(new Date(startOfDateKey(today).getTime() - 24 * 60 * 60 * 1000))
+  const plan = await getMemberPlan(memberId, yesterday)
+  return plan && plan.status === 'pending' ? plan : null
 }
 
 // Work items a member actually touched (via any attributed event) on a given
@@ -145,4 +154,34 @@ export async function getTodaysPlans(ctx: WorkspaceContext, date: string = serve
       touchedCount: plannedIds.filter((id) => touched.has(id)).length,
     }
   })
+}
+
+export interface PlanHistoryRow {
+  id: string
+  memberId: string
+  memberName: string
+  date: string
+  intention: string
+  status: DailyPlanStatus
+}
+
+// Admin-facing "/plans" page: every plan across the workspace over a lookback
+// window, newest first — deliberately lean (no plan-vs-actual counts; that
+// detail is one click away via PlanDetailDialog) since the ask here is just
+// "see the plan, see done-or-pending."
+export async function getPlansHistory(workspaceId: string, sinceDays = 14): Promise<PlanHistoryRow[]> {
+  const since = serverDateKey(new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000))
+  return db
+    .select({
+      id: dailyPlans.id,
+      memberId: dailyPlans.memberId,
+      memberName: members.name,
+      date: dailyPlans.date,
+      intention: dailyPlans.intention,
+      status: dailyPlans.status,
+    })
+    .from(dailyPlans)
+    .innerJoin(members, eq(members.id, dailyPlans.memberId))
+    .where(and(eq(dailyPlans.workspaceId, workspaceId), gte(dailyPlans.date, since)))
+    .orderBy(desc(dailyPlans.date), members.name)
 }

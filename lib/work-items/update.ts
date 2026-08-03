@@ -15,6 +15,7 @@ import {
 import type { WorkspaceContext } from '@/lib/auth/workspace-context'
 import { canRouteWorkItems, checkWorkItemDelegation } from '@/lib/auth/permissions'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
+import { syncStatusToGithub } from '@/lib/github/issue-sync'
 import { rankForMove } from './ordering'
 import { addWatchers } from './watchers'
 import { demoteResolvedBlocks } from './relations'
@@ -258,6 +259,16 @@ export async function updateWorkItem(
   }
   if (eventsToEmit.length > 0) {
     await ingestEvents(eventsToEmit, { workspaceId: ctx.workspaceId })
+  }
+
+  // Best-effort: keep a linked GitHub Issue's open/closed state in sync.
+  if (statusChanged && item.externalProvider === 'github' && item.externalId) {
+    await syncStatusToGithub({
+      workspaceId: ctx.workspaceId,
+      externalId: item.externalId,
+      newStatus: fields.status!,
+      previousStatus: existing.status,
+    })
   }
 
   // Resolving an item demotes any "blocks" relations it holds to "related" —

@@ -371,6 +371,41 @@ export async function getLiveActivity(
     .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime())
 }
 
+export interface UnmatchedActor {
+  actorLabel: string
+  eventCount: number
+  lastSeenAt: Date
+}
+
+// Every actor label that has never resolved to a roster member — the raw
+// name/login string is always kept on the event (see events.actorLabel)
+// independent of whether resolveMember found a match, so this is a plain
+// aggregation over events already ingested, not a new signal.
+export async function getUnmatchedActors(workspaceId: string, limit = 50): Promise<UnmatchedActor[]> {
+  const rows = await db
+    .select({
+      actorLabel: events.actorLabel,
+      eventCount: count(events.id),
+      lastSeenAt: sql<Date>`max(${events.occurredAt})`,
+    })
+    .from(events)
+    .where(and(eq(events.workspaceId, workspaceId), isNull(events.memberId), isNotNull(events.actorLabel)))
+    .groupBy(events.actorLabel)
+    .orderBy(desc(sql`max(${events.occurredAt})`))
+    .limit(limit)
+
+  return rows
+    .filter((row): row is typeof row & { actorLabel: string } => row.actorLabel !== null)
+    .map((row) => ({
+      actorLabel: row.actorLabel,
+      eventCount: row.eventCount,
+      // sql<Date> is only a type assertion — max() over a raw sql fragment
+      // comes back from the driver as a string, unlike normal column selects
+      // which go through Drizzle's timestamp-mode conversion.
+      lastSeenAt: row.lastSeenAt instanceof Date ? row.lastSeenAt : new Date(row.lastSeenAt),
+    }))
+}
+
 // Daily event counts for sparkline-style charts.
 export async function getDailyActivity(workspaceId: string, sinceDays = 14, visibleMemberIds?: string[] | null) {
   const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000)

@@ -1,63 +1,21 @@
 import 'server-only'
 
-import { and, asc, eq } from 'drizzle-orm'
-import { nanoid } from 'nanoid'
+import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
-import { members, workItemComments, workItems } from '@/lib/db/schema'
+import { workItems } from '@/lib/db/schema'
 import { ingestEvents } from '@/lib/events/ingest'
+import { syncCommentToGithub } from '@/lib/github/issue-sync'
 import { addWatchers } from './watchers'
+import { createComment, listComments, type CommentRecord } from './comment-store'
 
-export interface CommentRecord {
-  id: string
-  body: string
-  authorMemberId: string | null
-  authorName: string | null
-  authorAvatarUrl: string | null
-  createdAt: Date
-  editedAt: Date | null
-}
-
-export async function listComments(workspaceId: string, workItemId: string): Promise<CommentRecord[]> {
-  return db
-    .select({
-      id: workItemComments.id,
-      body: workItemComments.body,
-      authorMemberId: workItemComments.authorMemberId,
-      authorName: members.name,
-      authorAvatarUrl: members.avatarUrl,
-      createdAt: workItemComments.createdAt,
-      editedAt: workItemComments.editedAt,
-    })
-    .from(workItemComments)
-    .leftJoin(members, eq(members.id, workItemComments.authorMemberId))
-    .where(and(eq(workItemComments.workspaceId, workspaceId), eq(workItemComments.workItemId, workItemId)))
-    .orderBy(asc(workItemComments.createdAt))
-}
-
-export async function createComment(input: {
-  workspaceId: string
-  workItemId: string
-  authorMemberId: string
-  body: string
-}): Promise<{ id: string }> {
-  const [row] = await db
-    .insert(workItemComments)
-    .values({
-      id: nanoid(),
-      workspaceId: input.workspaceId,
-      workItemId: input.workItemId,
-      authorMemberId: input.authorMemberId,
-      body: input.body,
-    })
-    .returning({ id: workItemComments.id })
-  return row
-}
+export { type CommentRecord, listComments, createComment, getComment, updateComment, deleteComment } from './comment-store'
 
 export class CommentError extends Error {}
 
 // Bundles the full "post a comment" side effects — create, auto-subscribe
-// the author, emit `task.commented` — used by both the HTTP route and MCP
-// tools so the two never drift apart on what commenting actually does.
+// the author, emit `task.commented`, push to a linked GitHub Issue if one
+// exists — used by both the HTTP route and MCP tools so the two never drift
+// apart on what commenting actually does.
 export async function postComment(input: {
   workspaceId: string
   workItemId: string
@@ -66,7 +24,13 @@ export async function postComment(input: {
   body: string
 }): Promise<{ comment: CommentRecord | null; comments: CommentRecord[] }> {
   const [item] = await db
-    .select({ id: workItems.id, key: workItems.key, title: workItems.title })
+    .select({
+      id: workItems.id,
+      key: workItems.key,
+      title: workItems.title,
+      externalProvider: workItems.externalProvider,
+      externalId: workItems.externalId,
+    })
     .from(workItems)
     .where(and(eq(workItems.id, input.workItemId), eq(workItems.workspaceId, input.workspaceId)))
     .limit(1)
@@ -97,35 +61,17 @@ export async function postComment(input: {
     { workspaceId: input.workspaceId },
   )
 
+  // Best-effort: push the comment to a linked GitHub Issue, if any.
+  if (item.externalProvider === 'github' && item.externalId) {
+    await syncCommentToGithub({
+      workspaceId: input.workspaceId,
+      workItemId: input.workItemId,
+      externalId: item.externalId,
+      authorName: input.authorName,
+      body: input.body,
+    })
+  }
+
   const comments = await listComments(input.workspaceId, input.workItemId)
   return { comment: comments.find((c) => c.id === comment.id) ?? null, comments }
-}
-
-export async function getComment(workspaceId: string, commentId: string) {
-  const [row] = await db
-    .select({
-      id: workItemComments.id,
-      workItemId: workItemComments.workItemId,
-      authorMemberId: workItemComments.authorMemberId,
-    })
-    .from(workItemComments)
-    .where(and(eq(workItemComments.id, commentId), eq(workItemComments.workspaceId, workspaceId)))
-    .limit(1)
-  return row ?? null
-}
-
-export async function updateComment(workspaceId: string, commentId: string, body: string): Promise<void> {
-  const now = new Date()
-  await db
-    .update(workItemComments)
-    .set({ body, editedAt: now, updatedAt: now })
-    .where(and(eq(workItemComments.id, commentId), eq(workItemComments.workspaceId, workspaceId)))
-}
-
-export async function deleteComment(workspaceId: string, commentId: string): Promise<boolean> {
-  const deleted = await db
-    .delete(workItemComments)
-    .where(and(eq(workItemComments.id, commentId), eq(workItemComments.workspaceId, workspaceId)))
-    .returning({ id: workItemComments.id })
-  return deleted.length > 0
 }

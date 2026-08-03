@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -37,6 +38,7 @@ const EMPTY_FORM = {
   estimate: '',
   dueDate: '',
   labels: '',
+  linkGithubIssue: false,
 }
 
 export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: string }) {
@@ -122,10 +124,22 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
                 .map((l) => l.trim())
                 .filter(Boolean)
             : undefined,
+          linkGithubIssue: form.linkGithubIssue || undefined,
         }),
       })
       if (res.ok) {
-        toast.success('Work item created')
+        const data = await res.json().catch(() => ({}))
+        if (form.linkGithubIssue) {
+          if (data.githubIssue?.ok) {
+            toast.success('Work item created and linked to a GitHub issue')
+          } else {
+            toast.success('Work item created', {
+              description: data.githubIssue?.reason ?? 'Could not link a GitHub issue',
+            })
+          }
+        } else {
+          toast.success('Work item created')
+        }
         setOpen(false)
         router.refresh()
       } else {
@@ -367,6 +381,17 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
                 onChange={(e) => setForm((f) => ({ ...f, labels: e.target.value }))}
                 placeholder="bug, frontend, urgent"
               />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="linkGithubIssue"
+                checked={form.linkGithubIssue}
+                onCheckedChange={(checked) => setForm((f) => ({ ...f, linkGithubIssue: checked === true }))}
+              />
+              <Label htmlFor="linkGithubIssue" className="cursor-pointer font-normal text-muted-foreground">
+                Also create a linked GitHub issue
+              </Label>
             </div>
 
             <DialogFooter>

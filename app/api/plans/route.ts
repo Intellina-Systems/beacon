@@ -1,11 +1,8 @@
-import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { db } from '@/lib/db/client'
-import { dailyPlans } from '@/lib/db/schema'
+import { DAILY_PLAN_STATUSES } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { ingestEvents } from '@/lib/events/ingest'
-import { generateId } from '@/lib/utils/id'
 import { getAssignedWorkItems, getMemberPlan, hydrateWorkItems, serverDateKey } from '@/lib/plans/queries'
+import { setPlanStatus, upsertDailyPlan } from '@/lib/plans/upsert'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -25,7 +22,9 @@ export async function GET(req: Request): Promise<Response> {
 
   return Response.json({
     date,
-    plan: plan ? { intention: plan.intention, workItemIds: plan.workItemIds, updatedAt: plan.updatedAt } : null,
+    plan: plan
+      ? { intention: plan.intention, workItemIds: plan.workItemIds, status: plan.status, updatedAt: plan.updatedAt }
+      : null,
     linked,
     assigned,
   })
@@ -47,45 +46,37 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const date = parsed.data.date ?? serverDateKey()
-  const intention = parsed.data.intention.trim()
 
-  // Keep only work items that really belong to this workspace — never trust
-  // ids from the client for cross-tenant linking.
-  const requestedIds = parsed.data.workItemIds ?? []
-  const valid = await hydrateWorkItems(ctx.workspaceId, requestedIds)
-  const workItemIds = valid.map((item) => item.id)
+  const result = await upsertDailyPlan(ctx, {
+    date,
+    intention: parsed.data.intention,
+    workItemIds: parsed.data.workItemIds,
+  })
 
-  const existing = await getMemberPlan(ctx.member.id, date)
-  const now = new Date()
+  return Response.json(
+    { ok: true, date: result.date, intention: result.intention, workItemIds: result.workItemIds },
+    { status: result.created ? 201 : 200 },
+  )
+}
 
-  if (existing) {
-    await db.update(dailyPlans).set({ intention, workItemIds, updatedAt: now }).where(eq(dailyPlans.id, existing.id))
-  } else {
-    await db.insert(dailyPlans).values({
-      id: generateId(16),
-      workspaceId: ctx.workspaceId,
-      memberId: ctx.member.id,
-      date,
-      intention,
-      workItemIds,
-    })
+const statusSchema = z.object({
+  date: z.string().regex(DATE_RE, 'date must be YYYY-MM-DD'),
+  status: z.enum(DAILY_PLAN_STATUSES),
+})
+
+// Scoped to the caller's own plans — matches upsert's "you can only ever
+// write your own plan" rule.
+export async function PATCH(req: Request): Promise<Response> {
+  const ctx = await getWorkspaceContext()
+  if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const parsed = statusSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 })
   }
 
-  // Append the intent to the event stream so it shows on the timeline/Pulse and
-  // feeds plan-vs-actual. Attributed to the member via their name.
-  await ingestEvents(
-    [
-      {
-        type: existing ? 'plan.updated' : 'plan.declared',
-        source: 'manual',
-        engineer: ctx.member.name,
-        summary: `${existing ? 'Updated' : 'Planned'} today: ${intention}`.slice(0, 200),
-        occurredAt: now,
-        payload: { date, workItemIds },
-      },
-    ],
-    { workspaceId: ctx.workspaceId, defaultSource: 'manual' },
-  )
+  const result = await setPlanStatus(ctx, parsed.data.date, parsed.data.status)
+  if (!result.ok) return Response.json({ error: 'No plan found for that date' }, { status: 404 })
 
-  return Response.json({ ok: true, date, intention, workItemIds }, { status: existing ? 200 : 201 })
+  return Response.json({ ok: true, date: parsed.data.date, status: parsed.data.status })
 }

@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { CalendarClock, Check, Pencil } from 'lucide-react'
+import { CalendarClock, Check, Circle, CircleCheck, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import type { DailyPlanStatus } from '@/lib/db/schema'
 
 export interface PlanWorkItemOption {
   id: string
@@ -15,21 +16,50 @@ export interface PlanWorkItemOption {
 }
 
 interface DailyPlanCardProps {
+  date: string
   initialIntention: string | null
   initialWorkItemIds: string[]
+  initialStatus: DailyPlanStatus
   /** Assigned active items + anything already linked, deduped — the pick list. */
   options: PlanWorkItemOption[]
   /** Today's meeting count from the connected calendar, if any — read-only context. */
   meetingCount?: number
 }
 
-export function DailyPlanCard({ initialIntention, initialWorkItemIds, options, meetingCount }: DailyPlanCardProps) {
+export function DailyPlanCard({
+  date,
+  initialIntention,
+  initialWorkItemIds,
+  initialStatus,
+  options,
+  meetingCount,
+}: DailyPlanCardProps) {
   const router = useRouter()
   const hasPlan = Boolean(initialIntention)
   const [editing, setEditing] = useState(!hasPlan)
   const [intention, setIntention] = useState(initialIntention ?? '')
   const [selected, setSelected] = useState<Set<string>>(new Set(initialWorkItemIds))
   const [saving, setSaving] = useState(false)
+  const [togglingStatus, setTogglingStatus] = useState(false)
+
+  async function toggleStatus() {
+    const nextStatus: DailyPlanStatus = initialStatus === 'done' ? 'pending' : 'done'
+    setTogglingStatus(true)
+    try {
+      const res = await fetch('/api/plans', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, status: nextStatus }),
+      })
+      if (res.ok) {
+        router.refresh()
+      } else {
+        toast.error('Could not update plan status')
+      }
+    } finally {
+      setTogglingStatus(false)
+    }
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -98,15 +128,31 @@ export function DailyPlanCard({ initialIntention, initialWorkItemIds, options, m
                 ))}
             </div>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="mt-2 -ml-2 text-muted-foreground"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil className="mr-1.5 h-3.5 w-3.5" />
-            Edit plan
-          </Button>
+          <div className="mt-2 -ml-2 flex items-center gap-1">
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setEditing(true)}>
+              <Pencil className="mr-1.5 h-3.5 w-3.5" />
+              Edit plan
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn(initialStatus === 'done' ? 'text-beacon' : 'text-muted-foreground')}
+              disabled={togglingStatus}
+              onClick={toggleStatus}
+            >
+              {initialStatus === 'done' ? (
+                <>
+                  <CircleCheck className="mr-1.5 h-3.5 w-3.5" />
+                  Done
+                </>
+              ) : (
+                <>
+                  <Circle className="mr-1.5 h-3.5 w-3.5" />
+                  Mark done
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="mt-2.5 space-y-3">

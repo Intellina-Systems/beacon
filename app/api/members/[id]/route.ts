@@ -24,6 +24,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     aliases?: string[] | null
   }
 
+  // People instinctively type "@handle" into a field labeled "username" —
+  // strip one leading @ so it still matches a bare login/handle emitted by
+  // GitHub or Slack events.
+  const stripAt = (value: string): string => (value.startsWith('@') ? value.slice(1) : value)
+
   const updated = await db
     .update(members)
     .set({
@@ -33,9 +38,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.accessRole !== undefined &&
         ['admin', 'manager', 'engineer'].includes(body.accessRole) && { accessRole: body.accessRole }),
       ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl?.trim() ?? null }),
-      ...(body.githubUsername !== undefined && { githubUsername: body.githubUsername?.trim() ?? null }),
-      ...(body.slackHandle !== undefined && { slackHandle: body.slackHandle?.trim() ?? null }),
-      ...(body.aliases !== undefined && { aliases: body.aliases ?? null }),
+      ...(body.githubUsername !== undefined && {
+        githubUsername: body.githubUsername ? stripAt(body.githubUsername.trim()) : null,
+      }),
+      ...(body.slackHandle !== undefined && {
+        slackHandle: body.slackHandle ? stripAt(body.slackHandle.trim()) : null,
+      }),
+      ...(body.aliases !== undefined && {
+        aliases: body.aliases ? body.aliases.map((a) => a.trim()).filter(Boolean) : null,
+      }),
       updatedAt: new Date(),
     })
     .where(and(eq(members.id, id), eq(members.workspaceId, ctx.workspaceId)))

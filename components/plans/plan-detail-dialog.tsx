@@ -27,10 +27,13 @@ interface PlanDetail {
 
 export function PlanDetailDialog({
   memberId,
+  date,
   open,
   onOpenChange,
 }: {
   memberId: string | null
+  /** Defaults to today (the Pulse drill-in's original behavior) when omitted. */
+  date?: string
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -41,7 +44,8 @@ export function PlanDetailDialog({
   useEffect(() => {
     if (!open || !memberId) return
     let active = true
-    fetch(`/api/plans/${memberId}`)
+    const query = date ? `?date=${encodeURIComponent(date)}` : ''
+    fetch(`/api/plans/${memberId}${query}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: PlanDetail | null) => {
         if (active) setDetail(data ?? { memberName: '', intention: null, items: [] })
@@ -49,7 +53,7 @@ export function PlanDetailDialog({
     return () => {
       active = false
     }
-  }, [open, memberId])
+  }, [open, memberId, date])
 
   const loading = detail === null
 
@@ -60,7 +64,7 @@ export function PlanDetailDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {detail ? `${detail.memberName}'s plan today` : 'Plan'}
+            {detail ? `${detail.memberName}'s plan${date ? ` — ${date}` : ' today'}` : 'Plan'}
           </DialogTitle>
         </DialogHeader>
 
@@ -81,7 +85,7 @@ export function PlanDetailDialog({
                 <p className="micro-label mb-2 flex items-center justify-between">
                   <span>Linked work</span>
                   <span className="tabular-nums text-muted-foreground">
-                    {touchedCount}/{detail.items.length} touched today
+                    {touchedCount}/{detail.items.length} touched{date ? '' : ' today'}
                   </span>
                 </p>
                 <div className="space-y-1">

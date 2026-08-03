@@ -16,6 +16,8 @@ export function EditMemberDialog({
   email,
   title,
   accessRole,
+  githubUsername,
+  aliases,
   showAccessRole = false,
   isSelf = false,
 }: {
@@ -24,6 +26,8 @@ export function EditMemberDialog({
   email: string | null
   title: string | null
   accessRole?: 'admin' | 'manager' | 'engineer'
+  githubUsername?: string | null
+  aliases?: string[] | null
   showAccessRole?: boolean
   isSelf?: boolean
 }) {
@@ -35,6 +39,8 @@ export function EditMemberDialog({
   const [emailVal, setEmailVal] = useState(email ?? '')
   const [titleVal, setTitleVal] = useState(title ?? '')
   const [roleVal, setRoleVal] = useState(accessRole ?? 'engineer')
+  const [githubUsernameVal, setGithubUsernameVal] = useState(githubUsername ?? '')
+  const [aliasesDraft, setAliasesDraft] = useState((aliases ?? []).join(', '))
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -48,6 +54,11 @@ export function EditMemberDialog({
           name: nameVal,
           email: emailVal || null,
           title: titleVal || null,
+          githubUsername: githubUsernameVal || null,
+          aliases: aliasesDraft
+            .split(',')
+            .map((a) => a.trim())
+            .filter(Boolean),
           ...(showAccessRole ? { accessRole: roleVal } : {}),
         }),
       })
@@ -119,6 +130,28 @@ export function EditMemberDialog({
                 onChange={(e) => setTitleVal(e.target.value)}
                 placeholder="Engineer, Designer, PM…"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="githubUsername">GitHub username</Label>
+              <Input
+                id="githubUsername"
+                value={githubUsernameVal}
+                onChange={(e) => setGithubUsernameVal(e.target.value)}
+                placeholder="octocat"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="aliases">Other identities</Label>
+              <Input
+                id="aliases"
+                value={aliasesDraft}
+                onChange={(e) => setAliasesDraft(e.target.value)}
+                placeholder="jane.doe, Jane D, jane@old-email.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Comma-separated. Any name, login, or handle that shows up in events for this person — used to match
+                activity from coding agents or CI that don&apos;t emit their GitHub login.
+              </p>
             </div>
             {showAccessRole && (
               <div className="space-y-2">

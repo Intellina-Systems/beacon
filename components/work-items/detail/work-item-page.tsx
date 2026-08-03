@@ -14,6 +14,7 @@ import { WorkItemDescription } from './work-item-description'
 import { WorkItemRelations } from './work-item-relations'
 import { WorkItemAttachments } from './work-item-attachments'
 import { WorkItemComments } from './work-item-comments'
+import { WorkItemGitActivity } from './work-item-git-activity'
 import { WorkItemActivity } from './work-item-activity'
 import { WorkItemPropertiesRail } from './work-item-properties-rail'
 import { WorkItemWatchers } from './work-item-watchers'
@@ -186,6 +187,8 @@ export function WorkItemPage({
               onDelete={removeComment}
               onUploaded={loadAttachments}
             />
+
+            <WorkItemGitActivity events={events} />
 
             <WorkItemActivity events={events} />
           </main>
