@@ -711,10 +711,10 @@ export type WorkItemComment = typeof workItemComments.$inferSelect
 export type InsertWorkItemComment = typeof workItemComments.$inferInsert
 
 // Files pinned to a work item — screenshots pasted into a description or
-// comment, plus plain file uploads. Bytes live in Postgres (base64) because
-// the deployment has no object store configured; `lib/work-items/attachments.ts`
-// is the only module that touches storage, so moving to a bucket later is a
-// one-file change. See ATTACHMENT_MAX_BYTES for the size ceiling.
+// comment, plus plain file uploads. Bytes live in the Supabase Storage
+// "Uploaded_Files" bucket; Postgres only holds metadata plus the object's
+// path. `lib/work-items/attachments.ts` is the only module that touches
+// storage. See ATTACHMENT_MAX_BYTES for the size ceiling.
 export const workItemAttachments = pgTable(
   'work_item_attachments',
   {
@@ -733,9 +733,8 @@ export const workItemAttachments = pgTable(
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
     size: integer('size').notNull(),
-    // Base64 of the raw bytes. Large, but TOASTed out of line by Postgres and
-    // never selected unless the download route asks for it.
-    data: text('data').notNull(),
+    // Object key inside the "Uploaded_Files" Supabase Storage bucket.
+    storagePath: text('storage_path').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({

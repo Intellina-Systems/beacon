@@ -134,6 +134,20 @@
       "when": 1785786929363,
       "tag": "0018_furry_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785823447248,
+      "tag": "0019_heavy_robin_chapel",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785823468468,
+      "tag": "0020_solid_mach_iv",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "work_item_attachments" DROP COLUMN "data";

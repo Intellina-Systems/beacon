@@ -4,14 +4,13 @@ import { and, desc, eq } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { workItemAttachments } from '@/lib/db/schema'
+import { createSignedUrl, deleteFile, uploadFile } from '@/lib/supabase/storage'
 
 /**
  * Attachment storage. Every read/write of attachment bytes goes through this
  * module — the rest of the app only ever sees ids, metadata, and the
- * `/api/attachments/<id>` URL. Bytes currently live in Postgres as base64
- * because no object store is configured for this deployment; swapping to a
- * bucket means reimplementing `storeAttachment` / `readAttachmentBytes` here
- * and nothing else.
+ * `/api/attachments/<id>` URL. Bytes live in the Supabase Storage
+ * "Uploaded_Files" bucket; Postgres only holds metadata and the object path.
  */
 
 export const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024
@@ -67,6 +66,10 @@ export function safeFilename(name: string): string {
   return (cleaned || 'file').slice(0, 200)
 }
 
+function storagePathFor(workspaceId: string, workItemId: string, id: string): string {
+  return `${workspaceId}/${workItemId}/${id}`
+}
+
 export async function storeAttachment(input: {
   workspaceId: string
   workItemId: string
@@ -77,18 +80,24 @@ export async function storeAttachment(input: {
   bytes: ArrayBuffer
 }): Promise<AttachmentMeta> {
   const buffer = Buffer.from(input.bytes)
+  const id = nanoid()
+  const contentType = input.contentType || 'application/octet-stream'
+  const storagePath = storagePathFor(input.workspaceId, input.workItemId, id)
+
+  await uploadFile(storagePath, buffer, contentType)
+
   const [row] = await db
     .insert(workItemAttachments)
     .values({
-      id: nanoid(),
+      id,
       workspaceId: input.workspaceId,
       workItemId: input.workItemId,
       commentId: input.commentId ?? null,
       uploadedByMemberId: input.uploadedByMemberId,
       filename: safeFilename(input.filename),
-      contentType: input.contentType || 'application/octet-stream',
+      contentType,
       size: buffer.byteLength,
-      data: buffer.toString('base64'),
+      storagePath,
     })
     .returning({
       id: workItemAttachments.id,
@@ -99,6 +108,12 @@ export async function storeAttachment(input: {
       size: workItemAttachments.size,
       uploadedByMemberId: workItemAttachments.uploadedByMemberId,
       createdAt: workItemAttachments.createdAt,
+    })
+    .catch(async (err) => {
+      // Row insert failed after the object was already written — don't leave
+      // an orphaned file behind in the bucket.
+      await deleteFile(storagePath).catch(() => {})
+      throw err
     })
 
   return { ...row, url: attachmentUrl(row.id) }
@@ -124,28 +139,32 @@ export async function listAttachments(workspaceId: string, workItemId: string): 
   return rows.map((row) => ({ ...row, url: attachmentUrl(row.id) }))
 }
 
-export async function readAttachmentBytes(
-  workspaceId: string,
-  id: string,
-): Promise<{ filename: string; contentType: string; bytes: Buffer } | null> {
+export async function getAttachmentSignedUrl(workspaceId: string, id: string): Promise<string | null> {
   const [row] = await db
     .select({
       filename: workItemAttachments.filename,
       contentType: workItemAttachments.contentType,
-      data: workItemAttachments.data,
+      storagePath: workItemAttachments.storagePath,
     })
     .from(workItemAttachments)
     .where(and(eq(workItemAttachments.id, id), eq(workItemAttachments.workspaceId, workspaceId)))
     .limit(1)
 
   if (!row) return null
-  return { filename: row.filename, contentType: row.contentType, bytes: Buffer.from(row.data, 'base64') }
+  // Inline-safe types render in the browser tab using their stored
+  // content-type; everything else forces a download under its original name.
+  const downloadName = isInlineContentType(row.contentType) ? undefined : row.filename
+  return createSignedUrl(row.storagePath, downloadName)
 }
 
 export async function deleteAttachment(workspaceId: string, id: string): Promise<boolean> {
-  const deleted = await db
+  const [deleted] = await db
     .delete(workItemAttachments)
     .where(and(eq(workItemAttachments.id, id), eq(workItemAttachments.workspaceId, workspaceId)))
-    .returning({ id: workItemAttachments.id })
-  return deleted.length > 0
+    .returning({ id: workItemAttachments.id, storagePath: workItemAttachments.storagePath })
+  if (!deleted) return false
+  // DB row is the source of truth for "does this attachment exist" — a
+  // failed bucket cleanup just leaves an orphaned object, not a broken link.
+  await deleteFile(deleted.storagePath).catch((err) => console.error('attachment storage cleanup failed', err))
+  return true
 }
