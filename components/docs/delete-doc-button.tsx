@@ -26,7 +26,8 @@ export function DeleteDocButton({ docId }: { docId: string }) {
     try {
       const res = await fetch(`/api/docs/${docId}`, { method: 'DELETE' })
       if (res.ok) {
-        router.push('/docs')
+        const { parentId } = (await res.json()) as { parentId: string | null }
+        router.push(parentId ? `/docs/${parentId}` : '/docs')
         router.refresh()
       } else {
         toast.error('Failed to delete document')

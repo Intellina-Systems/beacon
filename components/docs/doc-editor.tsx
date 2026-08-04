@@ -3,7 +3,13 @@
 import '@blocknote/shadcn/style.css'
 import './doc-typography.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { SuggestionMenuController, getDefaultReactSlashMenuItems, useCreateBlockNote } from '@blocknote/react'
+import { useRouter } from 'next/navigation'
+import {
+  LinkToolbarController,
+  SuggestionMenuController,
+  getDefaultReactSlashMenuItems,
+  useCreateBlockNote,
+} from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/shadcn'
 import { filterSuggestionItems } from '@blocknote/core'
 import { en } from '@blocknote/core/locales'
@@ -26,6 +32,8 @@ import { getDiagramSlashMenuItems } from './slash-commands/diagram-item'
 import { getAiSlashMenuItems, type TaskProposalOptions } from './slash-commands/ai-items'
 import { GenerateTasksDialog } from './generate-tasks-dialog'
 import { ProjectStatusDialog } from './project-status-dialog'
+import { openDocLink } from './open-doc-link'
+import { DocLinkToolbar } from './doc-link-toolbar'
 import type { ResolvedTask } from '@/lib/work-items/bulk-import'
 
 // Shortened from 1200ms — the debounce itself isn't the main thing that made
@@ -50,6 +58,7 @@ async function patchDoc(docId: string, body: Record<string, unknown>): Promise<b
 }
 
 export function DocEditor({ doc, editable }: { doc: Doc; editable: boolean }) {
+  const router = useRouter()
   const [title, setTitle] = useState(doc.title)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const contentTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -66,6 +75,21 @@ export function DocEditor({ doc, editable }: { doc: Doc; editable: boolean }) {
     // getMultiColumnSlashMenuItems throws when the slash menu opens.
     dictionary: { ...en, multi_column: multiColumnLocales.en },
     initialContent: doc.content.length > 0 ? (doc.content as (typeof docSchema.PartialBlock)[]) : undefined,
+    links: {
+      // BlockNote's default link behavior is always `window.open(href, '_blank')`
+      // — right for an external URL, wrong for a link to another Beacon doc
+      // (or a work item), which should navigate in place like the rest of
+      // the app. Ctrl/Cmd-click still forces a new tab, matching normal
+      // browser link behavior. The link-hover toolbar's own "open" button is
+      // a separate code path — see DocLinkToolbar.
+      onClick: (event) => {
+        const href = (event.target as HTMLElement).closest('a')?.getAttribute('href')
+        if (!href) return false
+        event.preventDefault()
+        openDocLink(href, router, { newTab: event.metaKey || event.ctrlKey })
+        return true
+      },
+    },
   })
 
   // The column items ship under BlockNote's own "Basic blocks" group, so
@@ -159,12 +183,13 @@ export function DocEditor({ doc, editable }: { doc: Doc; editable: boolean }) {
         </div>
       </div>
       {!editable && <p className="mb-4 text-xs text-muted-foreground">You have view-only access to this document.</p>}
-      <BlockNoteView editor={editor} editable={editable} slashMenu={false}>
+      <BlockNoteView editor={editor} editable={editable} slashMenu={false} linkToolbar={false}>
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) => filterSuggestionItems(slashMenuItems, query)}
         />
         <MentionMenus editor={editor} />
+        <LinkToolbarController linkToolbar={DocLinkToolbar} />
       </BlockNoteView>
       <GenerateTasksDialog
         editor={editor}

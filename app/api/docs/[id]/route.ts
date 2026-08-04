@@ -1,4 +1,5 @@
 import { type NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { db } from '@/lib/db/client'
@@ -6,6 +7,7 @@ import { docs } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { resolveDocAccess } from '@/lib/docs/access'
 import { moveDoc } from '@/lib/docs/move'
+import { LAST_DOC_COOKIE } from '@/lib/docs/last-doc-cookie'
 
 const patchSchema = z
   .object({
@@ -71,5 +73,15 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!access.isOwner) return Response.json({ error: 'Only the owner can delete this document' }, { status: 403 })
 
   await db.delete(docs).where(eq(docs.id, id))
-  return Response.json({ ok: true })
+
+  // Bare /docs resumes whatever id this cookie holds — left pointing at a
+  // doc that no longer exists, that resume silently falls through to
+  // creating a brand-new blank doc instead (see app/docs/page.tsx), which is
+  // what "deleting a page just creates a new Untitled page" actually was.
+  const cookieStore = await cookies()
+  if (cookieStore.get(LAST_DOC_COOKIE)?.value === id) {
+    cookieStore.delete(LAST_DOC_COOKIE)
+  }
+
+  return Response.json({ ok: true, parentId: access.doc.parentId })
 }

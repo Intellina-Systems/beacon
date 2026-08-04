@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from '@/lib/utils'
 import type { DocTreeNode } from '@/lib/docs/tree'
 import { MoveDocDialog } from './move-doc-dialog'
+import { DeleteDocDialog } from './delete-doc-dialog'
 
 async function fetchTree(): Promise<DocTreeNode[]> {
   const res = await fetch('/api/docs?tree=1')
@@ -35,6 +36,7 @@ export function DocsSidebarTree() {
   const router = useRouter()
   const [tree, setTree] = useState<DocTreeNode[] | null>(null)
   const [moving, setMoving] = useState<DocTreeNode | null>(null)
+  const [deleting, setDeleting] = useState<DocTreeNode | null>(null)
 
   const refresh = useCallback(() => {
     void fetchTree().then(setTree)
@@ -95,7 +97,14 @@ export function DocsSidebarTree() {
             <li className="px-2 py-1.5 text-xs text-sidebar-foreground/60">No documents yet</li>
           ) : (
             tree.map((node) => (
-              <SidebarDocNode key={node.id} node={node} pathname={pathname} onMove={setMoving} onChanged={refresh} />
+              <SidebarDocNode
+                key={node.id}
+                node={node}
+                pathname={pathname}
+                onMove={setMoving}
+                onDelete={setDeleting}
+                onChanged={refresh}
+              />
             ))
           )}
         </SidebarMenu>
@@ -107,6 +116,7 @@ export function DocsSidebarTree() {
         onClose={() => setMoving(null)}
         onMoved={refresh}
       />
+      <DeleteDocDialog doc={deleting} open={deleting !== null} onClose={() => setDeleting(null)} onDeleted={refresh} />
     </SidebarGroup>
   )
 }
@@ -115,11 +125,13 @@ function SidebarDocNode({
   node,
   pathname,
   onMove,
+  onDelete,
   onChanged,
 }: {
   node: DocTreeNode
   pathname: string
   onMove: (node: DocTreeNode) => void
+  onDelete: (node: DocTreeNode) => void
   onChanged: () => void
 }) {
   const router = useRouter()
@@ -194,6 +206,11 @@ function SidebarDocNode({
             <DropdownMenuContent align="start" side="right">
               <DropdownMenuItem onClick={newSubPage}>New sub-page</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onMove(node)}>Move to…</DropdownMenuItem>
+              {node.isMine && (
+                <DropdownMenuItem onClick={() => onDelete(node)} className="text-destructive focus:text-destructive">
+                  Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -201,7 +218,14 @@ function SidebarDocNode({
       {hasChildren && expanded && (
         <SidebarMenuSub className="mx-0 border-sidebar-border py-0 pr-0 pl-3">
           {node.children.map((child) => (
-            <SidebarDocNode key={child.id} node={child} pathname={pathname} onMove={onMove} onChanged={onChanged} />
+            <SidebarDocNode
+              key={child.id}
+              node={child}
+              pathname={pathname}
+              onMove={onMove}
+              onDelete={onDelete}
+              onChanged={onChanged}
+            />
           ))}
         </SidebarMenuSub>
       )}
