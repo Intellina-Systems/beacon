@@ -76,7 +76,10 @@ export function GenerateTasksDialog({
       const blocks: (typeof docSchema.PartialBlock)[] = created.map((item) => ({
         type: 'checkListItem',
         content: [
-          { type: 'workItemMention', props: { itemId: item.id, itemKey: item.key ?? '', title: item.title, status: item.status } },
+          {
+            type: 'workItemMention',
+            props: { itemId: item.id, itemKey: item.key ?? '', title: item.title, status: item.status },
+          },
           ' ',
         ],
       }))

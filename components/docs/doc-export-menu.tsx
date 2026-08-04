@@ -56,7 +56,12 @@ export function DocExportMenu({ editor, title }: { editor: DocEditorInstance; ti
           ...pdfDefaultSchemaMappings.blockMapping,
           // No diagram rendering in the PDF export — just the source, so the
           // content isn't silently dropped.
-          mermaidDiagram: (block) => <Text>[Diagram]{'\n'}{block.props.code}</Text>,
+          mermaidDiagram: (block) => (
+            <Text>
+              [Diagram]{'\n'}
+              {block.props.code}
+            </Text>
+          ),
         },
         inlineContentMapping: {
           ...pdfDefaultSchemaMappings.inlineContentMapping,

@@ -57,7 +57,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   let inheritedFrom: { id: string; title: string } | null = null
   if (result.access.doc.parentId) {
     const [parent] = await db
-      .select({ id: docs.id, title: docs.title, shareMode: docs.shareMode, workspacePermission: docs.workspacePermission })
+      .select({
+        id: docs.id,
+        title: docs.title,
+        shareMode: docs.shareMode,
+        workspacePermission: docs.workspacePermission,
+      })
       .from(docs)
       .where(eq(docs.id, result.access.doc.parentId))
       .limit(1)

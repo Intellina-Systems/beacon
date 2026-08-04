@@ -49,7 +49,9 @@ export async function GET(req: NextRequest): Promise<Response> {
         ),
       )
       .limit(remaining)
-    contentMatches = rows.filter((r) => !titleMatchedIds.has(r.id)).map((r) => ({ ...r, matchedIn: 'content' as const }))
+    contentMatches = rows
+      .filter((r) => !titleMatchedIds.has(r.id))
+      .map((r) => ({ ...r, matchedIn: 'content' as const }))
   }
 
   return Response.json({ results: [...titleMatches, ...contentMatches] })

@@ -26,7 +26,10 @@ async function runSummarize(editor: DocEditorInstance, docId: string) {
   editor.updateBlock(placeholder, { type: 'quote', content: data.summary as string })
 }
 
-async function runGenerateTasks(docId: string, onExtracted: (tasks: ResolvedTask[], options: TaskProposalOptions) => void) {
+async function runGenerateTasks(
+  docId: string,
+  onExtracted: (tasks: ResolvedTask[], options: TaskProposalOptions) => void,
+) {
   const toastId = toast.loading('Extracting tasks from this document…')
   try {
     const res = await fetch(`/api/docs/${docId}/generate-tasks`, { method: 'POST' })

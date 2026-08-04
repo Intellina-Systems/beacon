@@ -17,7 +17,8 @@ export function registerGetDocTool(server: McpServer) {
     'get_doc',
     {
       title: 'Get document',
-      description: 'Fetch a Beacon document’s content as markdown, along with its title and where it sits in the doc tree.',
+      description:
+        'Fetch a Beacon document’s content as markdown, along with its title and where it sits in the doc tree.',
       inputSchema,
     },
     async (input, ctx: ServerContext) => {

@@ -12,7 +12,11 @@ export type MoveDocResult = { ok: true; doc: Doc } | { ok: false; error: string;
 // Shared by PATCH /api/docs/[id] (parentId field) and the move_doc MCP tool,
 // so the permission + cycle guard can never drift between the two entry
 // points. newParentId: null moves the doc to top-level.
-export async function moveDoc(ctx: WorkspaceContext, docId: string, newParentId: string | null): Promise<MoveDocResult> {
+export async function moveDoc(
+  ctx: WorkspaceContext,
+  docId: string,
+  newParentId: string | null,
+): Promise<MoveDocResult> {
   const access = await resolveDocAccess(ctx, docId)
   if (!access) return { ok: false, error: 'Not found', status: 404 }
   if (access.permission !== 'edit') return { ok: false, error: 'Forbidden', status: 403 }

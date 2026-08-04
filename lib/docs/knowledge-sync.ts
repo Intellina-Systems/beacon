@@ -49,7 +49,11 @@ export async function syncDocToKnowledge(workspaceId: string, doc: Doc): Promise
   if (!content) return // nothing worth indexing yet
 
   const now = new Date()
-  const [existing] = await db.select({ id: knowledgeDocuments.id }).from(knowledgeDocuments).where(eq(knowledgeDocuments.id, doc.id)).limit(1)
+  const [existing] = await db
+    .select({ id: knowledgeDocuments.id })
+    .from(knowledgeDocuments)
+    .where(eq(knowledgeDocuments.id, doc.id))
+    .limit(1)
 
   const [stored] = existing
     ? await db
