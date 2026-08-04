@@ -32,7 +32,7 @@ export type KnowledgeSignalKind = z.infer<typeof signalKindSchema>
 
 export async function extractKnowledgeSignals(input: { context?: string | null; title: string; content: string }) {
   const { output } = await generateText({
-    model: 'openai/gpt-5.4-nano',
+    model: 'openai/gpt-5.6-luna',
     output: Output.object({ schema: signalExtractionSchema }),
     system:
       'You extract engineering-team signals from messy knowledge sources (meeting notes, docs, emails, chats). Return only grounded signals. Do not invent people, dates, commitments, or metrics. Prefer specific user needs, pain points, blockers, risks, decisions, open questions, and feature requests.',

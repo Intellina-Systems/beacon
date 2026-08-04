@@ -88,7 +88,7 @@ export async function extractTasksFromContent(input: {
   teams: string[]
 }): Promise<ExtractedTask[]> {
   const { output } = await generateText({
-    model: 'openai/gpt-5.4-nano',
+    model: 'openai/gpt-5.6-luna',
     output: Output.object({ schema: bulkImportSchema }),
     system: [
       'You extract actionable engineering tasks from pasted, unstructured text (meeting notes, chat logs, emails, specs).',

@@ -11,7 +11,7 @@ const summarySchema = z.object({
 // the one LLM call pattern this codebase already uses everywhere.
 export async function summarizeDoc(input: { title: string; markdown: string }): Promise<string> {
   const { output } = await generateText({
-    model: 'openai/gpt-5.4-nano',
+    model: 'openai/gpt-5.6-luna',
     output: Output.object({ schema: summarySchema }),
     system:
       'You summarize internal engineering documents concisely and factually. Do not invent information not present in the source.',

@@ -185,7 +185,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: 'openai/gpt-5.4-nano',
+    model: 'openai/gpt-5.6-luna',
     system: systemParts.join('\n'),
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(5),

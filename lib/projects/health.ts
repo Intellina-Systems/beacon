@@ -82,7 +82,7 @@ export async function draftProjectUpdate(workspaceId: string, project: Project):
     .join('\n')
 
   const { object } = await generateObject({
-    model: 'openai/gpt-5.4-nano',
+    model: 'openai/gpt-5.6-luna',
     schema: draftSchema,
     system:
       'You write short, honest project status updates for an engineering team from raw event-log data. ' +
