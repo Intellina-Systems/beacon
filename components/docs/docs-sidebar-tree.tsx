@@ -127,6 +127,19 @@ function SidebarDocNode({
   const hasChildren = node.children.length > 0
   const active = pathname === `/docs/${node.id}`
 
+  // The /subpage slash command creates a child without navigating here, so
+  // this node's own local `expanded` state never flips — the new child would
+  // otherwise sit correctly nested but invisible until someone happens to
+  // click the (possibly newly-appeared) expand arrow.
+  useEffect(() => {
+    function handleChanged(e: Event) {
+      const detail = (e as CustomEvent<{ expandId?: string }>).detail
+      if (detail?.expandId === node.id) setExpanded(true)
+    }
+    window.addEventListener('beacon:docs-changed', handleChanged)
+    return () => window.removeEventListener('beacon:docs-changed', handleChanged)
+  }, [node.id])
+
   async function newSubPage() {
     const res = await fetch('/api/docs', {
       method: 'POST',

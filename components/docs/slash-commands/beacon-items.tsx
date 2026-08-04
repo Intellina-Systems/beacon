@@ -35,8 +35,12 @@ async function createSubPage(editor: DocEditorInstance, parentId: string) {
   // Stays on the current page (matching Notion's inline-page-link behavior,
   // not a full navigate-away) — the doc header's own "New sub-page" button
   // covers the navigate-away case. The sidebar tree only refetches on
-  // pathname change or window focus, neither of which fires here.
-  window.dispatchEvent(new Event('beacon:docs-changed'))
+  // pathname change or window focus, neither of which fires here. The
+  // parentId in the detail tells the parent's row to expand itself — without
+  // it the new child lands in the tree already, just collapsed under a
+  // parent that previously had no children (and so no expand arrow to
+  // notice), which reads as "it didn't actually nest."
+  window.dispatchEvent(new CustomEvent('beacon:docs-changed', { detail: { expandId: parentId } }))
 }
 
 export function getBeaconSlashMenuItems(editor: DocEditorInstance, docId: string): DefaultReactSuggestionItem[] {

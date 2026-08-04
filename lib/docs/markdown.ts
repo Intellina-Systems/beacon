@@ -24,11 +24,9 @@ import { generateId } from '@/lib/utils/id'
 // fills in schema defaults for anything a partial block omits, the same way
 // it already does for blocks a human created via the slash menu.
 
-export interface SimpleInline {
-  type: 'text'
-  text: string
-  styles: Record<string, boolean>
-}
+export type SimpleInline =
+  | { type: 'text'; text: string; styles: Record<string, boolean> }
+  | { type: 'link'; href: string; content: SimpleInline[] }
 
 export interface SimpleBlock {
   id: string
@@ -46,8 +44,12 @@ function styledText(text: string, styles: Record<string, boolean>): SimpleInline
   return { type: 'text', text, styles }
 }
 
+function linkNode(text: string, href: string): SimpleInline {
+  return { type: 'link', href, content: [plainText(text)] }
+}
+
 // Bold before italic so "**x**" isn't mis-split by the single-asterisk rule.
-const INLINE_PATTERN = /(\*\*(.+?)\*\*)|(`(.+?)`)|(\*(.+?)\*)|(_(.+?)_)/g
+const INLINE_PATTERN = /(\*\*(.+?)\*\*)|(`(.+?)`)|(\*(.+?)\*)|(_(.+?)_)|(\[([^\]]+)\]\(([^)]+)\))/g
 
 function parseInline(text: string): SimpleInline[] {
   const runs: SimpleInline[] = []
@@ -59,6 +61,7 @@ function parseInline(text: string): SimpleInline[] {
     else if (match[4] !== undefined) runs.push(styledText(match[4], { code: true }))
     else if (match[6] !== undefined) runs.push(styledText(match[6], { italic: true }))
     else if (match[8] !== undefined) runs.push(styledText(match[8], { italic: true }))
+    else if (match[10] !== undefined) runs.push(linkNode(match[10], match[11]))
     lastIndex = index + match[0].length
   }
   if (lastIndex < text.length) runs.push(plainText(text.slice(lastIndex)))
@@ -123,11 +126,13 @@ function inlineToText(content: unknown): string {
   if (!Array.isArray(content)) return ''
   return content
     .map((node) => {
-      if (node && typeof node === 'object' && 'text' in node) {
-        const text = (node as { text?: unknown }).text
-        return typeof text === 'string' ? text : ''
+      if (!node || typeof node !== 'object') return ''
+      const n = node as { type?: unknown; text?: unknown; href?: unknown; content?: unknown }
+      if (n.type === 'link') {
+        const label = inlineToText(n.content)
+        return typeof n.href === 'string' ? `[${label}](${n.href})` : label
       }
-      return ''
+      return typeof n.text === 'string' ? n.text : ''
     })
     .join('')
 }

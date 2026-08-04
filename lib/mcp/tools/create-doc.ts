@@ -12,7 +12,7 @@ const inputSchema = z.object({
     .max(50000)
     .optional()
     .describe(
-      'Markdown content. Supports headings (#), bullet/numbered/check lists (-, 1., - [ ]), quotes (>), dividers (---), and inline **bold**/*italic*/`code`.',
+      'Markdown content. Supports headings (#), bullet/numbered/check lists (-, 1., - [ ]), quotes (>), dividers (---), links ([text](url) — use /docs/{id} to link another Beacon doc), and inline **bold**/*italic*/`code`.',
     ),
   parentId: z
     .string()
