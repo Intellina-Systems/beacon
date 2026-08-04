@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { KIND_LABEL, KIND_ORDER, PRIORITY_LABEL, PRIORITY_ORDER } from '@/lib/work-items/constants'
+import { workItemHref } from '@/lib/work-items/href'
 import type { WorkItemKind, WorkItemTemplateDefaults } from '@/lib/db/schema'
 
 interface Option {
@@ -129,16 +130,22 @@ export function CreateWorkItemDialog({ defaultProjectId }: { defaultProjectId?: 
       })
       if (res.ok) {
         const data = await res.json().catch(() => ({}))
+        const key: string | undefined = data.item?.key ?? data.item?.id
+        // Jump straight to the new item — without this, "find the thing I
+        // just created" means searching or filtering by yourself as creator,
+        // since new items don't sort to the top by default.
+        const action = key ? { label: `Open ${key}`, onClick: () => router.push(workItemHref(data.item)) } : undefined
         if (form.linkGithubIssue) {
           if (data.githubIssue?.ok) {
-            toast.success('Work item created and linked to a GitHub issue')
+            toast.success('Work item created and linked to a GitHub issue', { action })
           } else {
             toast.success('Work item created', {
               description: data.githubIssue?.reason ?? 'Could not link a GitHub issue',
+              action,
             })
           }
         } else {
-          toast.success('Work item created')
+          toast.success('Work item created', { action })
         }
         setOpen(false)
         router.refresh()

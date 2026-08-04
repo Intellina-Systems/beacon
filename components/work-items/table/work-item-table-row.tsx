@@ -83,7 +83,7 @@ function WorkItemTableRowImpl({
           'px-2 py-2.5 text-muted-foreground/40',
           sorted ? 'cursor-not-allowed opacity-40' : 'cursor-grab active:cursor-grabbing',
         )}
-        title={sorted ? 'Clear sort to reorder manually' : undefined}
+        title={sorted ? 'Choose "Manual order" from Sort by to reorder' : undefined}
       >
         <GripVertical className="h-3.5 w-3.5" />
       </TableCell>

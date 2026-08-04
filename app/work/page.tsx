@@ -30,6 +30,7 @@ import { BoardView } from '@/components/work-items/board-view'
 import { BoardColumnsProvider } from '@/components/work-items/board-columns-context'
 import { BoardColumnsButton } from '@/components/work-items/board-columns-button'
 import { SavedViewsBar } from '@/components/work-items/saved-views-bar'
+import { SortMenu } from '@/components/work-items/sort-menu'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
 import { COMPLETED_STATUSES, OPEN_STATUSES, STATUS_META } from '@/lib/work-items/constants'
@@ -40,8 +41,11 @@ export const metadata = { title: 'Work' }
 
 const PAGE_SIZE = 50
 
-// Column keys the table header can sort by; falls back to manual rank order when unset.
-const SORT_KEYS = ['title', 'project', 'status', 'priority', 'assignee', 'activity'] as const
+// Column keys the table header (or the Sort by menu) can sort by. 'created'
+// is the default — newest first — so a just-created item is where you'd
+// look for it instead of buried wherever its rank happened to land it.
+// 'manual' is drag order (the old always-on default), now an explicit choice.
+const SORT_KEYS = ['title', 'project', 'status', 'priority', 'assignee', 'activity', 'created', 'manual'] as const
 type SortKey = (typeof SORT_KEYS)[number]
 
 interface FilterState {
@@ -122,8 +126,12 @@ export default async function WorkPage({
   )
   const layout: ViewLayout = rawLayout === 'list' ? 'list' : 'board'
   const page = parsePage(rawPage)
-  const sort = SORT_KEYS.find((k) => k === rawSort)
-  const dir: 'asc' | 'desc' = rawDir === 'desc' ? 'desc' : 'asc'
+  const sort = SORT_KEYS.find((k) => k === rawSort) ?? 'created'
+  // 'created' defaults to newest-first; every other key (including an
+  // explicit 'created' in the URL) defaults asc unless dir says otherwise.
+  const dir: 'asc' | 'desc' =
+    rawDir === 'asc' ? 'asc' : rawDir === 'desc' ? 'desc' : sort === 'created' ? 'desc' : 'asc'
+  const isDefaultSort = sort === 'created' && dir === 'desc'
   const q = rawQ?.trim() || undefined
 
   const [projectList, fullRoster, savedViews, engineOptions, teamOptions] = await Promise.all([
@@ -200,11 +208,10 @@ export default async function WorkPage({
     priority: workItems.priority,
     assignee: members.name,
     activity: sql`coalesce(${workItems.lastEventAt}, ${workItems.updatedAt})`,
+    created: workItems.createdAt,
+    manual: workItems.rank,
   }
-  // Manual drag order (rank) is the default; clicking a header switches to that column instead.
-  const orderBy = sort
-    ? [dir === 'desc' ? desc(sortColumn[sort]) : asc(sortColumn[sort]), asc(workItems.createdAt)]
-    : [asc(workItems.rank), asc(workItems.createdAt)]
+  const orderBy = [dir === 'desc' ? desc(sortColumn[sort]) : asc(sortColumn[sort]), asc(workItems.createdAt)]
 
   const [rows, statusCounts] = await Promise.all([
     db
@@ -253,8 +260,8 @@ export default async function WorkPage({
     engine,
     orgTeam,
     layout,
-    sort,
-    dir: sort ? dir : undefined,
+    sort: isDefaultSort ? undefined : sort,
+    dir: isDefaultSort ? undefined : dir,
     q,
   }
   const isTriageView = statuses.size === 1 && statuses.has('triage')
@@ -403,6 +410,7 @@ export default async function WorkPage({
                 canDeleteAny={isAdmin(ctx)}
               />
             </div>
+            <SortMenu sort={sort} dir={dir} />
             {layout === 'board' && <BoardColumnsButton />}
           </div>
 
@@ -423,7 +431,7 @@ export default async function WorkPage({
             </div>
           ) : layout === 'board' ? (
             <div className="min-h-0 flex-1 overflow-hidden">
-              <BoardView rows={rows} />
+              <BoardView rows={rows} sort={sort} />
             </div>
           ) : (
             <WorkItemsTable

@@ -14,9 +14,10 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { BOARD_STATUSES, useBoardColumns } from './board-columns-context'
 import type { WorkItemRow } from './work-items-table'
+import type { SortKey } from './table/types'
 import type { WorkItemStatus } from '@/lib/db/schema'
 
-export function BoardView({ rows }: { rows: WorkItemRow[] }) {
+export function BoardView({ rows, sort }: { rows: WorkItemRow[]; sort: SortKey }) {
   const router = useRouter()
   const [localRows, setLocalRows] = useState(rows)
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -38,25 +39,38 @@ export function BoardView({ rows }: { rows: WorkItemRow[] }) {
     if (!item) return
     const statusChanged = item.status !== targetStatus
 
-    const destItems = localRows.filter((r) => r.status === targetStatus && r.id !== itemId)
-    let moveAfterId: string | null = null
-    let moveBeforeId: string | null = null
-    if (overId) {
-      const idx = destItems.findIndex((r) => r.id === overId)
-      if (idx !== -1) {
-        moveBeforeId = overId
-        moveAfterId = idx > 0 ? destItems[idx - 1].id : null
+    // Position-within-column only means anything when the board is actually
+    // showing manual (rank) order — computing it under a "Newest first" sort
+    // would just have the card snap back to its created-date position the
+    // moment the refresh below re-fetches.
+    let reorder: { moveAfterId: string | null; moveBeforeId: string | null } | undefined
+    if (sort === 'manual') {
+      const destItems = localRows.filter((r) => r.status === targetStatus && r.id !== itemId)
+      let moveAfterId: string | null = null
+      let moveBeforeId: string | null = null
+      if (overId) {
+        const idx = destItems.findIndex((r) => r.id === overId)
+        if (idx !== -1) {
+          moveBeforeId = overId
+          moveAfterId = idx > 0 ? destItems[idx - 1].id : null
+        }
+      } else {
+        moveAfterId = destItems.length > 0 ? destItems[destItems.length - 1].id : null
       }
-    } else {
-      moveAfterId = destItems.length > 0 ? destItems[destItems.length - 1].id : null
+      reorder = { moveAfterId, moveBeforeId }
     }
+
+    // Dropped back into the same column, not in manual mode — there's
+    // nothing to persist, so skip the request rather than send an empty
+    // patch the API would reject.
+    if (!statusChanged && !reorder) return
 
     setLocalRows((prev) => prev.map((r) => (r.id === itemId ? { ...r, status: targetStatus } : r)))
 
     const res = await fetch(`/api/work-items/${itemId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...(statusChanged ? { status: targetStatus } : {}), moveAfterId, moveBeforeId }),
+      body: JSON.stringify({ ...(statusChanged ? { status: targetStatus } : {}), ...reorder }),
     })
     if (res.ok) {
       router.refresh()

@@ -132,7 +132,7 @@ export function WorkItemsTable({
     }
   }
 
-  // Clicking a sorted column cycles asc -> desc -> back to the default manual (rank) order.
+  // Clicking a sorted column cycles asc -> desc -> back to the default (newest first).
   function toggleSort(key: SortKey) {
     const params = new URLSearchParams(searchParams.toString())
     if (sort === key && dir === 'asc') {
@@ -291,7 +291,7 @@ export function WorkItemsTable({
                 roster={roster}
                 projects={projects}
                 isTriageView={isTriageView}
-                sorted={!!sort}
+                sorted={sort !== 'manual'}
                 selected={selected.has(item.id)}
                 dragging={draggingId === item.id}
                 busy={busyId === item.id}
