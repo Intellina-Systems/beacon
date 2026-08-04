@@ -52,6 +52,12 @@ export function DocExportMenu({ editor, title }: { editor: DocEditorInstance; ti
       const { Text, pdf } = reactPdf
       const exporter = new PDFExporter(docSchema, {
         ...pdfDefaultSchemaMappings,
+        blockMapping: {
+          ...pdfDefaultSchemaMappings.blockMapping,
+          // No diagram rendering in the PDF export — just the source, so the
+          // content isn't silently dropped.
+          mermaidDiagram: (block) => <Text>[Diagram]{'\n'}{block.props.code}</Text>,
+        },
         inlineContentMapping: {
           ...pdfDefaultSchemaMappings.inlineContentMapping,
           personMention: (inlineContent) => <Text>@{inlineContent.props.name}</Text>,
@@ -70,13 +76,20 @@ export function DocExportMenu({ editor, title }: { editor: DocEditorInstance; ti
   async function exportDocx() {
     setBusy(true)
     try {
-      const [{ DOCXExporter, docxDefaultSchemaMappings }, { docSchema }, { TextRun }] = await Promise.all([
+      const [{ DOCXExporter, docxDefaultSchemaMappings }, { docSchema }, { Paragraph, TextRun }] = await Promise.all([
         import('@blocknote/xl-docx-exporter'),
         import('./doc-schema'),
         import('docx'),
       ])
       const exporter = new DOCXExporter(docSchema, {
         ...docxDefaultSchemaMappings,
+        blockMapping: {
+          ...docxDefaultSchemaMappings.blockMapping,
+          // No diagram rendering in the Word export — just the source, so the
+          // content isn't silently dropped.
+          mermaidDiagram: (block) =>
+            new Paragraph({ children: [new TextRun({ text: `[Diagram] ${block.props.code}`, italics: true })] }),
+        },
         inlineContentMapping: {
           ...docxDefaultSchemaMappings.inlineContentMapping,
           personMention: (inlineContent) => new TextRun({ text: `@${inlineContent.props.name}` }),

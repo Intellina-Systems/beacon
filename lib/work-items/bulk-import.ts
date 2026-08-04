@@ -32,6 +32,54 @@ const bulkImportSchema = z.object({
 
 export type ExtractedTask = z.infer<typeof extractedTaskSchema>
 
+export interface NamedOption {
+  id: string
+  name: string
+}
+
+export interface ResolvedTask {
+  title: string
+  description: string | null
+  kind: ExtractedTask['kind']
+  priority: number
+  labels: string[]
+  dueDate: string | null
+  estimate: number | null
+  assigneeMemberId: string | null
+  projectId: string | null
+  engineId: string | null
+  teamId: string | null
+}
+
+function matchByName(options: NamedOption[], name: string | null): string | null {
+  if (!name) return null
+  const needle = name.trim().toLowerCase()
+  return options.find((o) => o.name.trim().toLowerCase() === needle)?.id ?? null
+}
+
+// Maps each extracted task's free-text assignee/project/engine/team names
+// onto real workspace ids — shared by the bulk-import route and the docs
+// /generate-tasks route so the "only set it when the name matches exactly"
+// resolution rule lives in one place.
+export function resolveExtractedTasks(
+  extracted: ExtractedTask[],
+  options: { roster: NamedOption[]; projects: NamedOption[]; engines: NamedOption[]; teams: NamedOption[] },
+): ResolvedTask[] {
+  return extracted.map((task) => ({
+    title: task.title,
+    description: task.description,
+    kind: task.kind,
+    priority: task.priority,
+    labels: task.labels,
+    dueDate: task.dueDate,
+    estimate: task.estimate,
+    assigneeMemberId: matchByName(options.roster, task.assigneeName),
+    projectId: matchByName(options.projects, task.projectName),
+    engineId: matchByName(options.engines, task.engineName),
+    teamId: matchByName(options.teams, task.teamName),
+  }))
+}
+
 export async function extractTasksFromContent(input: {
   content: string
   roster: string[]

@@ -1,21 +1,27 @@
 import { type NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
-import { z } from 'zod'
 import { db } from '@/lib/db/client'
 import { engines, members, projects, teams } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
+import { resolveDocAccess } from '@/lib/docs/access'
+import { blocksToMarkdown } from '@/lib/docs/markdown'
 import { extractTasksFromContent, resolveExtractedTasks } from '@/lib/work-items/bulk-import'
 
-const requestSchema = z.object({ content: z.string().trim().min(1).max(20000) })
-
-export async function POST(req: NextRequest): Promise<Response> {
+// Extraction only — same "propose, never auto-create" restraint as
+// /api/work-items/bulk-import: this returns resolved-but-uncreated task
+// proposals, and nothing gets written until the review dialog's confirm
+// posts the selected subset to the existing /api/work-items/bulk endpoint.
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const parsed = requestSchema.safeParse(await req.json().catch(() => null))
-  if (!parsed.success) {
-    return Response.json({ error: 'Paste some content to extract tasks from' }, { status: 400 })
-  }
+  const { id } = await params
+  const access = await resolveDocAccess(ctx, id)
+  if (!access) return Response.json({ error: 'Not found' }, { status: 404 })
+  if (access.permission !== 'edit') return Response.json({ error: 'Forbidden' }, { status: 403 })
+
+  const markdown = blocksToMarkdown(access.doc.content as unknown[])
+  if (!markdown.trim()) return Response.json({ error: 'Nothing to extract tasks from yet' }, { status: 400 })
 
   const [roster, projectRows, engineRows, teamRows] = await Promise.all([
     db.select({ id: members.id, name: members.name }).from(members).where(eq(members.workspaceId, ctx.workspaceId)),
@@ -25,18 +31,16 @@ export async function POST(req: NextRequest): Promise<Response> {
   ])
 
   const extracted = await extractTasksFromContent({
-    content: parsed.data.content,
+    content: markdown,
     roster: roster.map((m) => m.name),
     projects: projectRows.map((p) => p.name),
     engines: engineRows.map((e) => e.name),
     teams: teamRows.map((t) => t.name),
   }).catch(() => null)
 
-  if (!extracted) {
-    return Response.json({ error: 'Could not extract tasks from that content' }, { status: 502 })
-  }
+  if (!extracted) return Response.json({ error: 'Could not extract tasks from this document' }, { status: 502 })
   if (extracted.length === 0) {
-    return Response.json({ error: 'No actionable tasks found in that content' }, { status: 422 })
+    return Response.json({ error: 'No actionable tasks found in this document' }, { status: 422 })
   }
 
   const tasks = resolveExtractedTasks(extracted, {
@@ -46,5 +50,5 @@ export async function POST(req: NextRequest): Promise<Response> {
     teams: teamRows,
   })
 
-  return Response.json({ tasks })
+  return Response.json({ tasks, options: { members: roster, projects: projectRows } })
 }

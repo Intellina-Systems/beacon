@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   Activity,
+  ArrowLeft,
   BookOpen,
   Cable,
   CalendarClock,
@@ -34,8 +35,10 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarRail,
+  SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
+import { DocsSidebarTree } from '@/components/docs/docs-sidebar-tree'
 import { cn } from '@/lib/utils'
 import type { Session } from '@/lib/session/types'
 
@@ -127,6 +130,7 @@ export function BeaconLayout({
   defaultSidebarOpen = true,
 }: BeaconLayoutProps) {
   const pathname = usePathname()
+  const inDocs = pathname.startsWith('/docs')
 
   const visibleSections = navSections
     .map((section) => ({
@@ -143,36 +147,57 @@ export function BeaconLayout({
         </SidebarHeader>
 
         <SidebarContent className="px-2 py-3">
-          {visibleSections.map((section) => (
-            <SidebarGroup key={section.label} className="p-0 py-2">
-              {/* Heading kept for screen readers only — the sidebar reads as one
-                  flat list now that the Monitor/Intelligence/Configure grouping
-                  is gone. */}
-              <SidebarGroupLabel className="sr-only">{section.label}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {section.items.map(({ href, label, icon: Icon }) => {
-                    const active = pathname.startsWith(href)
-                    return (
-                      <SidebarMenuItem key={href}>
-                        <SidebarMenuButton asChild isActive={active} tooltip={label}>
-                          <Link href={href} aria-current={active ? 'page' : undefined}>
-                            <Icon className={cn(active && 'text-beacon')} />
-                            <span className="flex-1">{label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                        {href === '/inbox' && unreadNotifications > 0 && (
-                          <SidebarMenuBadge className="rounded-full bg-beacon px-1.5 py-0.5 font-mono text-[10px] font-semibold text-beacon-foreground">
-                            {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                          </SidebarMenuBadge>
-                        )}
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
+          {inDocs ? (
+            <>
+              <SidebarGroup className="p-0 pb-1">
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild size="sm" tooltip="Back to Beacon">
+                        <Link href="/pulse">
+                          <ArrowLeft className="text-sidebar-foreground/70" />
+                          <span className="flex-1">Back to Beacon</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+              <SidebarSeparator className="mx-0" />
+              <DocsSidebarTree />
+            </>
+          ) : (
+            visibleSections.map((section) => (
+              <SidebarGroup key={section.label} className="p-0 py-2">
+                {/* Heading kept for screen readers only — the sidebar reads as one
+                    flat list now that the Monitor/Intelligence/Configure grouping
+                    is gone. */}
+                <SidebarGroupLabel className="sr-only">{section.label}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {section.items.map(({ href, label, icon: Icon }) => {
+                      const active = pathname.startsWith(href)
+                      return (
+                        <SidebarMenuItem key={href}>
+                          <SidebarMenuButton asChild isActive={active} tooltip={label}>
+                            <Link href={href} aria-current={active ? 'page' : undefined}>
+                              <Icon className={cn(active && 'text-beacon')} />
+                              <span className="flex-1">{label}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                          {href === '/inbox' && unreadNotifications > 0 && (
+                            <SidebarMenuBadge className="rounded-full bg-beacon px-1.5 py-0.5 font-mono text-[10px] font-semibold text-beacon-foreground">
+                              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                            </SidebarMenuBadge>
+                          )}
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))
+          )}
         </SidebarContent>
 
         <SidebarFooter className="shrink-0 border-t border-sidebar-border p-2">

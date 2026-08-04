@@ -1,7 +1,7 @@
 'use client'
 
-import '@blocknote/core/fonts/inter.css'
 import '@blocknote/shadcn/style.css'
+import './doc-typography.css'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/shadcn'
 import { en } from '@blocknote/core/locales'

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Check, Copy, Share2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -47,6 +48,7 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
   const [publicShareToken, setPublicShareToken] = useState<string | null>(null)
   const [publicBusy, setPublicBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [inheritedFrom, setInheritedFrom] = useState<{ id: string; title: string } | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -62,6 +64,7 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
         setRoster((memberData.members ?? []).map((m: { id: string; name: string }) => ({ id: m.id, name: m.name })))
         setPublicShareEnabled(shareData.publicShareEnabled ?? false)
         setPublicShareToken(shareData.publicShareToken ?? null)
+        setInheritedFrom(shareData.inheritedFrom ?? null)
       })
       .catch(() => toast.error('Failed to load sharing settings'))
       .finally(() => setLoading(false))
@@ -102,6 +105,10 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
     const prevPermission = workspacePermission
     if (next.shareMode) setShareMode(next.shareMode)
     if (next.workspacePermission) setWorkspacePermission(next.workspacePermission)
+    // A manual change means it's no longer a pristine copy of the parent's
+    // settings — clear the inherited badge instantly rather than waiting for
+    // a reload to notice the divergence.
+    setInheritedFrom(null)
     const res = await fetch(`/api/docs/${docId}/share`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -247,7 +254,17 @@ export function ShareDocDialog({ docId, ownerName }: { docId: string; ownerName:
               </div>
 
               <div className="space-y-2 border-t pt-4">
-                <Label>General access</Label>
+                <div className="flex items-center justify-between">
+                  <Label>General access</Label>
+                  {inheritedFrom && (
+                    <span className="text-xs text-muted-foreground">
+                      Inherited from{' '}
+                      <Link href={`/docs/${inheritedFrom.id}`} className="underline hover:text-foreground">
+                        {inheritedFrom.title}
+                      </Link>
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <Select
                     value={shareMode}

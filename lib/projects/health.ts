@@ -22,7 +22,7 @@ export interface ProjectActivitySummary {
   totalItems: number
 }
 
-async function gatherProjectActivity(
+export async function gatherProjectActivity(
   workspaceId: string,
   projectId: string,
   sinceDays = 7,

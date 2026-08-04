@@ -1,0 +1,19 @@
+/*
+ * The docs canvas gets its own reading-optimized register — Plex Serif
+ * instead of BlockNote's bundled Inter — plus a touch more line-height than
+ * BlockNote's UI-chrome default, since serif body text reads more
+ * comfortably a little looser. Imported after @blocknote/shadcn/style.css
+ * (same file, later import) so this override wins regardless of how the
+ * bundler orders unrelated CSS chunks elsewhere.
+ */
+.bn-root {
+  --bn-font-family: var(--font-plex-serif), Georgia, 'Times New Roman', serif;
+}
+
+.bn-editor .bn-inline-content {
+  line-height: 1.65;
+}
+
+.bn-editor .bn-inline-content code {
+  font-family: var(--font-plex-mono), monospace;
+}

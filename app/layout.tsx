@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
+import { IBM_Plex_Sans, IBM_Plex_Mono, IBM_Plex_Serif } from 'next/font/google'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -25,6 +25,15 @@ const plexMono = IBM_Plex_Mono({
   variable: '--font-plex-mono',
   subsets: ['latin'],
   weight: ['400', '500', '600'],
+})
+
+// Docs get their own reading-optimized register — same type family as the
+// rest of the product (Plex Sans for UI, Plex Mono for code), extended
+// rather than reaching for an unrelated third typeface.
+const plexSerif = IBM_Plex_Serif({
+  variable: '--font-plex-serif',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
 })
 
 export const metadata: Metadata = {
@@ -64,7 +73,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${plexSans.variable} ${plexMono.variable} antialiased`}>
+      <body className={`${plexSans.variable} ${plexMono.variable} ${plexSerif.variable} antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AccentThemeProvider>
             {session?.user ? (

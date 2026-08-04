@@ -50,12 +50,33 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .where(eq(docCollaborators.docId, id))
     .orderBy(members.name)
 
+  // "Inherited from X" is a display-only signal, not a stored flag: a
+  // sub-page whose current general-access settings still match its parent's
+  // is presumed inherited (it was copied at creation and never touched
+  // since); the moment either setting diverges, it's presumed overridden.
+  let inheritedFrom: { id: string; title: string } | null = null
+  if (result.access.doc.parentId) {
+    const [parent] = await db
+      .select({ id: docs.id, title: docs.title, shareMode: docs.shareMode, workspacePermission: docs.workspacePermission })
+      .from(docs)
+      .where(eq(docs.id, result.access.doc.parentId))
+      .limit(1)
+    if (
+      parent &&
+      parent.shareMode === result.access.doc.shareMode &&
+      parent.workspacePermission === result.access.doc.workspacePermission
+    ) {
+      inheritedFrom = { id: parent.id, title: parent.title || 'Untitled' }
+    }
+  }
+
   return Response.json({
     shareMode: result.access.doc.shareMode,
     workspacePermission: result.access.doc.workspacePermission,
     publicShareEnabled: result.access.doc.publicShareEnabled,
     publicShareToken: result.access.doc.publicShareToken,
     collaborators,
+    inheritedFrom,
   })
 }
 

@@ -5,11 +5,14 @@ import { db } from '@/lib/db/client'
 import { docs } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { resolveDocAccess } from '@/lib/docs/access'
+import { moveDoc } from '@/lib/docs/move'
 
 const patchSchema = z
   .object({
     title: z.string().min(1).max(300).optional(),
     content: z.array(z.unknown()).optional(),
+    // null moves the doc to top-level; omitted leaves parentId untouched.
+    parentId: z.string().nullable().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, { message: 'Empty update' })
 
@@ -37,9 +40,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success)
     return Response.json({ error: parsed.error.issues[0]?.message ?? 'Invalid body' }, { status: 400 })
 
+  const { parentId, ...fields } = parsed.data
+
+  if (parentId !== undefined) {
+    const result = await moveDoc(ctx, id, parentId)
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status })
+  }
+
+  if (Object.keys(fields).length === 0) {
+    const [doc] = await db.select().from(docs).where(eq(docs.id, id)).limit(1)
+    return Response.json({ doc })
+  }
+
   const [updated] = await db
     .update(docs)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...fields, updatedAt: new Date() })
     .where(eq(docs.id, id))
     .returning()
 

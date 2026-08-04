@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -1265,6 +1266,13 @@ export const docs = pgTable(
     ownerMemberId: text('owner_member_id')
       .notNull()
       .references(() => members.id, { onDelete: 'cascade' }),
+    // Nesting: null means top-level. Self-referencing FK, so a deleted parent
+    // cascades to its children rather than orphaning them (matches Notion:
+    // deleting a page deletes its sub-pages).
+    parentId: text('parent_id').references((): AnyPgColumn => docs.id, { onDelete: 'cascade' }),
+    // Fractional rank among siblings sharing the same parentId — same scheme
+    // as lib/work-items/rank.ts, reused rather than reinvented.
+    rank: text('rank'),
     title: text('title').notNull().default('Untitled'),
     // BlockNote's Block[] — an ordered tree of block objects (id, type, props,
     // content, children). Opaque to the server; only the editor interprets it.
@@ -1284,6 +1292,7 @@ export const docs = pgTable(
   (table) => ({
     workspaceIdx: index('docs_workspace_idx').on(table.workspaceId),
     ownerIdx: index('docs_owner_idx').on(table.ownerMemberId),
+    parentIdx: index('docs_parent_idx').on(table.parentId),
     publicTokenUnique: uniqueIndex('docs_public_share_token_idx')
       .on(table.publicShareToken)
       .where(sql`${table.publicShareToken} is not null`),
@@ -1317,6 +1326,31 @@ export const docCollaborators = pgTable(
 
 export type DocCollaborator = typeof docCollaborators.$inferSelect
 export type InsertDocCollaborator = typeof docCollaborators.$inferInsert
+
+// Lightweight presence: a per-(doc, member) heartbeat row, upserted every
+// ~15s while a doc is open and read back as "who's here right now" (lastSeenAt
+// within the last ~30s). Deliberately not real-time (no websocket, no Yjs) —
+// polling is enough to answer "is someone else looking at this" and warn
+// before a silent overwrite; true multiplayer is a separate, named fast-follow.
+export const docPresence = pgTable(
+  'doc_presence',
+  {
+    id: text('id').primaryKey(),
+    docId: text('doc_id')
+      .notNull()
+      .references(() => docs.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    docMemberUnique: uniqueIndex('doc_presence_doc_member_idx').on(table.docId, table.memberId),
+    docIdx: index('doc_presence_doc_idx').on(table.docId),
+  }),
+)
+
+export type DocPresence = typeof docPresence.$inferSelect
 
 // ---------------------------------------------------------------------------
 // Daily plans — the one manual signal Beacon deliberately asks for: what a

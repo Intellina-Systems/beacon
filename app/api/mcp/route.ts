@@ -12,6 +12,13 @@ import { registerCreateWorkItemTool } from '@/lib/mcp/tools/create-work-item'
 import { registerUpdateWorkItemTool } from '@/lib/mcp/tools/update-work-item'
 import { registerAddCommentTool } from '@/lib/mcp/tools/add-comment'
 import { registerAddRelationTool } from '@/lib/mcp/tools/add-relation'
+import { registerCreateDocTool } from '@/lib/mcp/tools/create-doc'
+import { registerUpdateDocTool } from '@/lib/mcp/tools/update-doc'
+import { registerGetDocTool } from '@/lib/mcp/tools/get-doc'
+import { registerListDocsTool } from '@/lib/mcp/tools/list-docs'
+import { registerMoveDocTool } from '@/lib/mcp/tools/move-doc'
+import { registerAddDocTaskTool } from '@/lib/mcp/tools/add-doc-task'
+import { registerToggleDocTaskTool } from '@/lib/mcp/tools/toggle-doc-task'
 
 // The MCP tool server. mcp-handler 2.x is stateless — one handler invocation
 // per request, no session/Redis — so this file only ever registers tools;
@@ -31,6 +38,13 @@ const handler = createMcpHandler(
     registerUpdateWorkItemTool(server)
     registerAddCommentTool(server)
     registerAddRelationTool(server)
+    registerCreateDocTool(server)
+    registerUpdateDocTool(server)
+    registerGetDocTool(server)
+    registerListDocsTool(server)
+    registerMoveDocTool(server)
+    registerAddDocTaskTool(server)
+    registerToggleDocTaskTool(server)
   },
   { serverInfo: { name: 'beacon', version: '1.0.0' } },
 )

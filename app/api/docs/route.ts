@@ -1,32 +1,42 @@
 import { type NextRequest } from 'next/server'
-import { db } from '@/lib/db/client'
-import { docs } from '@/lib/db/schema'
+import { z } from 'zod'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
 import { listMyDocs, listSharedDocs } from '@/lib/docs/list'
-import { generateId } from '@/lib/utils/id'
+import { getDocTree } from '@/lib/docs/tree'
+import { resolveDocAccess } from '@/lib/docs/access'
+import { createDoc } from '@/lib/docs/create'
 
-export async function GET(): Promise<Response> {
+export async function GET(req: NextRequest): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // ?tree=1 returns the unified nested structure (used by the sidebar's
+  // docs-sidebar-tree.tsx); the default flat shape stays for any other consumer.
+  if (new URL(req.url).searchParams.get('tree') === '1') {
+    return Response.json({ tree: await getDocTree(ctx) })
+  }
 
   const [myDocs, sharedDocs] = await Promise.all([listMyDocs(ctx), listSharedDocs(ctx)])
   return Response.json({ myDocs, sharedDocs })
 }
 
-export async function POST(_req: NextRequest): Promise<Response> {
+const createSchema = z.object({ parentId: z.string().optional() })
+
+export async function POST(req: NextRequest): Promise<Response> {
   const ctx = await getWorkspaceContext()
   if (!ctx) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [doc] = await db
-    .insert(docs)
-    .values({
-      id: generateId(),
-      workspaceId: ctx.workspaceId,
-      ownerMemberId: ctx.member.id,
-      title: 'Untitled',
-      content: [],
-    })
-    .returning()
+  const parsed = createSchema.safeParse(await req.json().catch(() => ({})))
+  if (!parsed.success) return Response.json({ error: 'Invalid body' }, { status: 400 })
 
+  if (parsed.data.parentId) {
+    const parentAccess = await resolveDocAccess(ctx, parsed.data.parentId)
+    if (!parentAccess) return Response.json({ error: 'Parent document not found' }, { status: 404 })
+    if (parentAccess.permission !== 'edit') {
+      return Response.json({ error: "You don't have edit access to that parent document" }, { status: 403 })
+    }
+  }
+
+  const doc = await createDoc(ctx, { parentId: parsed.data.parentId ?? null })
   return Response.json({ doc }, { status: 201 })
 }

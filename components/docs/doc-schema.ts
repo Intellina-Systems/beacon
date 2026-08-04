@@ -1,6 +1,7 @@
-import { BlockNoteSchema, defaultInlineContentSpecs } from '@blocknote/core'
+import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core'
 import { withMultiColumn } from '@blocknote/xl-multi-column'
 import { PersonMention, PersonMentionStatic, WorkItemMention, WorkItemMentionStatic } from './blocks/mention-specs'
+import { MermaidBlock, MermaidBlockStatic } from './blocks/mermaid-block'
 
 /**
  * The editor schema for Beacon docs: BlockNote's defaults, plus column layouts,
@@ -12,6 +13,10 @@ import { PersonMention, PersonMentionStatic, WorkItemMention, WorkItemMentionSta
  */
 export const docSchema = withMultiColumn(
   BlockNoteSchema.create({
+    blockSpecs: {
+      ...defaultBlockSpecs,
+      mermaidDiagram: MermaidBlock(),
+    },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
       personMention: PersonMention,
@@ -28,6 +33,10 @@ export type DocSchema = typeof docSchema
  */
 export const publicDocSchema = withMultiColumn(
   BlockNoteSchema.create({
+    blockSpecs: {
+      ...defaultBlockSpecs,
+      mermaidDiagram: MermaidBlockStatic(),
+    },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
       personMention: PersonMentionStatic,
