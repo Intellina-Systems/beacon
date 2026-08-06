@@ -1,4 +1,12 @@
-export type AnyPart = { type: string; state?: string; input?: unknown; output?: unknown; toolCallId?: string }
+export type AnyPart = {
+  type: string
+  state?: string
+  input?: unknown
+  output?: unknown
+  toolCallId?: string
+  approval?: { id: string; approved?: boolean; reason?: string }
+  errorText?: string
+}
 
 export function resolveToolName(part: AnyPart): string {
   if (part.type.startsWith('tool-')) return part.type.slice(5)

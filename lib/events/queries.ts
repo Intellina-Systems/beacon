@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { events, members, workItems, type Event, type Member, type WorkItem } from '@/lib/db/schema'
 import { BLOCKING_EVENT_TYPES, UNBLOCKING_EVENT_TYPES, categorizeEventType, type EventCategory } from './taxonomy'
@@ -15,6 +15,10 @@ export interface EventFilters {
   // events stay visible — they're workspace-wide signals like CI). `null` or
   // undefined means unrestricted (admin/manager).
   visibleMemberIds?: string[] | null
+  // Absolute range (inclusive) — distinct from `sinceDays`, which is relative
+  // to now. Used by the Timeline date-range filter.
+  startDate?: Date
+  endDate?: Date
 }
 
 function visibilityCondition(visibleMemberIds: string[] | null | undefined): SQL | undefined {
@@ -31,6 +35,8 @@ function eventConditions(workspaceId: string, filters: EventFilters): (SQL | und
   }
   if (filters.source) conditions.push(eq(events.source, filters.source))
   if (filters.memberId) conditions.push(eq(events.memberId, filters.memberId))
+  if (filters.startDate) conditions.push(gte(events.occurredAt, filters.startDate))
+  if (filters.endDate) conditions.push(lte(events.occurredAt, filters.endDate))
   if (filters.workItemId) conditions.push(eq(events.workItemId, filters.workItemId))
   if (filters.types?.length) conditions.push(inArray(events.type, filters.types))
   conditions.push(visibilityCondition(filters.visibleMemberIds))

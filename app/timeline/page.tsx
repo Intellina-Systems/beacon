@@ -1,10 +1,15 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { eq } from 'drizzle-orm'
 import { Bot, Github, BookOpen, PenLine, Radio, Rocket } from 'lucide-react'
+import { db } from '@/lib/db/client'
+import { members } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { visibleMemberIds } from '@/lib/auth/permissions'
-import { countEvents, countEventsBySource, listEvents } from '@/lib/events/queries'
+import { canManageWorkspaceConfig, visibleMemberIds } from '@/lib/auth/permissions'
+import { countEvents, countEventsBySource, listEvents, type EventFilters } from '@/lib/events/queries'
 import { EventItem } from '@/components/events/event-item'
+import { TimelinePersonFilter } from '@/components/events/timeline-person-filter'
+import { TimelineDateRangeFilter } from '@/components/events/timeline-date-range-filter'
 import { EmptyState, PageShell } from '@/components/page-shell'
 import { Pagination, parsePage } from '@/components/ui/pagination'
 import { cn } from '@/lib/utils'
@@ -24,31 +29,73 @@ const SOURCE_FILTERS = [
   { value: 'manual', label: 'Manual', icon: PenLine },
 ] as const
 
-function timelineHref(source: string | undefined, page: number) {
+function timelineHref(
+  source: string | undefined,
+  page: number,
+  member: string | undefined,
+  from?: string,
+  to?: string,
+) {
   const params = new URLSearchParams()
   if (source) params.set('source', source)
+  if (member) params.set('member', member)
+  if (from) params.set('from', from)
+  if (to) params.set('to', to)
   if (page > 1) params.set('page', String(page))
   const qs = params.toString()
   return qs ? `/timeline?${qs}` : '/timeline'
 }
 
+// YYYY-MM-DD from a <input type="date">, parsed to the start/end instant of
+// that day in the server's local time. Silently ignored if malformed rather
+// than erroring — a hand-edited URL shouldn't 500 the page.
+function parseDay(value: string | undefined, edge: 'start' | 'end'): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined
+  const date = new Date(`${value}T${edge === 'start' ? '00:00:00.000' : '23:59:59.999'}`)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
 export default async function TimelinePage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string; page?: string }>
+  searchParams: Promise<{ source?: string; page?: string; member?: string; from?: string; to?: string }>
 }) {
   const ctx = await getWorkspaceContext()
   if (!ctx) redirect('/')
 
-  const { source, page: rawPage } = await searchParams
+  const { source, page: rawPage, member: rawMember, from, to } = await searchParams
   const page = parsePage(rawPage)
+  const startDate = parseDay(from, 'start')
+  const endDate = parseDay(to, 'end')
 
-  const visible = await visibleMemberIds(ctx)
-  const filters = { source: (source as Event['source']) || undefined, visibleMemberIds: visible }
+  // Admins filter by anyone; managers by their own teams' members (same
+  // scoping their other views already use); regular members don't get this
+  // control at all — they only ever see their own visible feed.
+  const canFilterByPerson = canManageWorkspaceConfig(ctx)
+  const [visible, fullRoster] = await Promise.all([
+    visibleMemberIds(ctx),
+    canFilterByPerson
+      ? db
+          .select({ id: members.id, name: members.name })
+          .from(members)
+          .where(eq(members.workspaceId, ctx.workspaceId))
+          .orderBy(members.name)
+      : Promise.resolve([]),
+  ])
+  const roster = visible ? fullRoster.filter((m) => visible.includes(m.id)) : fullRoster
+  const member = rawMember && roster.some((m) => m.id === rawMember) ? rawMember : undefined
+
+  const filters: EventFilters = {
+    source: (source as Event['source']) || undefined,
+    memberId: member,
+    startDate,
+    endDate,
+    visibleMemberIds: visible,
+  }
   const [events, total, sourceCounts] = await Promise.all([
     listEvents(ctx.workspaceId, { ...filters, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE }),
     countEvents(ctx.workspaceId, filters),
-    countEventsBySource(ctx.workspaceId, { visibleMemberIds: visible }),
+    countEventsBySource(ctx.workspaceId, { memberId: member, startDate, endDate, visibleMemberIds: visible }),
   ])
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const countBySource = new Map(sourceCounts.map((r) => [r.source, r.count]))
@@ -82,7 +129,7 @@ export default async function TimelinePage({
               return (
                 <Link
                   key={filter.value}
-                  href={timelineHref(filter.value, 1)}
+                  href={timelineHref(filter.value, 1, member, from, to)}
                   className={cn(
                     'flex h-full items-center gap-1.5 px-2.5 transition-colors',
                     active
@@ -96,6 +143,10 @@ export default async function TimelinePage({
                 </Link>
               )
             })}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            {canFilterByPerson && <TimelinePersonFilter roster={roster} current={member} />}
+            <TimelineDateRangeFilter from={from} to={to} />
           </div>
         </div>
 
@@ -138,7 +189,7 @@ export default async function TimelinePage({
           page={page}
           pageCount={pageCount}
           total={total}
-          hrefFor={(p) => timelineHref(source, p)}
+          hrefFor={(p) => timelineHref(source, p, member, from, to)}
           className="mt-2 shrink-0"
         />
       </div>

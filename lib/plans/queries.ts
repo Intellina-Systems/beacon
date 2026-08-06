@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, desc, eq, gte, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   dailyPlans,
@@ -173,12 +173,26 @@ export interface PlanHistoryRow {
   status: DailyPlanStatus
 }
 
+export interface PlansHistoryFilters {
+  memberId?: string
+  from?: string
+  to?: string
+  sinceDays?: number
+}
+
 // Admin-facing "/plans" page: every plan across the workspace over a lookback
 // window, newest first — deliberately lean (no plan-vs-actual counts; that
 // detail is one click away via PlanDetailDialog) since the ask here is just
-// "see the plan, see done-or-pending."
-export async function getPlansHistory(workspaceId: string, sinceDays = 14): Promise<PlanHistoryRow[]> {
-  const since = serverDateKey(new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000))
+// "see the plan, see done-or-pending." An explicit `from` replaces the
+// default lookback window entirely rather than combining with it, same as
+// picking a date range means "show me this range," not "this range within
+// the last two weeks."
+export async function getPlansHistory(
+  workspaceId: string,
+  filters: PlansHistoryFilters = {},
+): Promise<PlanHistoryRow[]> {
+  const { memberId, from, to, sinceDays = 14 } = filters
+  const since = from ?? serverDateKey(new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000))
   return db
     .select({
       id: dailyPlans.id,
@@ -190,6 +204,13 @@ export async function getPlansHistory(workspaceId: string, sinceDays = 14): Prom
     })
     .from(dailyPlans)
     .innerJoin(members, eq(members.id, dailyPlans.memberId))
-    .where(and(eq(dailyPlans.workspaceId, workspaceId), gte(dailyPlans.date, since)))
+    .where(
+      and(
+        eq(dailyPlans.workspaceId, workspaceId),
+        gte(dailyPlans.date, since),
+        to ? lte(dailyPlans.date, to) : undefined,
+        memberId ? eq(dailyPlans.memberId, memberId) : undefined,
+      ),
+    )
     .orderBy(desc(dailyPlans.date), members.name)
 }

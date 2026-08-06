@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { SquarePen } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { generateId } from '@/lib/utils/id'
 import { ChatConversation } from './chat-conversation'
+import { ChatHistoryMenu } from './chat-history-menu'
 
 export function ChatPageClient() {
-  const [chatKey, setChatKey] = useState(0)
+  const router = useRouter()
   const searchParams = useSearchParams()
 
   // Opened from a team or engine page: answer from that unit's documents only.
@@ -16,6 +18,34 @@ export function ChatPageClient() {
   const teamId = searchParams.get('teamId')
   const scopeLabel = searchParams.get('scopeLabel')
   const scoped = Boolean(engineId || teamId)
+
+  const [conversationId, setConversationId] = useState(() => searchParams.get('c') ?? generateId())
+
+  function updateUrl(id: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('c', id)
+    router.replace(`/chat?${params.toString()}`, { scroll: false })
+  }
+
+  // The very first conversationId — generated locally when the page loads
+  // without a ?c= param — never makes it into the URL on its own; without
+  // this, refreshing (or bookmarking) that first message loses it, since
+  // there'd be nothing in the URL to resume and a fresh id gets minted again.
+  useEffect(() => {
+    if (!searchParams.get('c')) updateUrl(conversationId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only meant to backfill the URL once per mount, not react to every searchParams change
+  }, [])
+
+  function startNewChat() {
+    const id = generateId()
+    setConversationId(id)
+    updateUrl(id)
+  }
+
+  function openConversation(id: string) {
+    setConversationId(id)
+    updateUrl(id)
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -32,18 +62,19 @@ export function ChatPageClient() {
             </p>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          onClick={() => setChatKey((k) => k + 1)}
-          title="New chat"
-        >
-          <SquarePen className="h-4 w-4" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <ChatHistoryMenu activeId={conversationId} onSelect={openConversation} />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={startNewChat} title="New chat">
+            <SquarePen className="h-4 w-4" />
+          </Button>
+        </div>
       </header>
 
-      <ChatConversation key={chatKey} scope={scoped ? { engineId, teamId } : undefined} />
+      <ChatConversation
+        key={conversationId}
+        conversationId={conversationId}
+        scope={scoped ? { engineId, teamId } : undefined}
+      />
     </div>
   )
 }

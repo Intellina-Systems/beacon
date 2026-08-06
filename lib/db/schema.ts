@@ -1679,3 +1679,42 @@ export const calendarShares = pgTable(
 
 export type CalendarShare = typeof calendarShares.$inferSelect
 export type InsertCalendarShare = typeof calendarShares.$inferInsert
+
+// ---------------------------------------------------------------------------
+// Ask Beacon — persisted chat history. One row per conversation; the full
+// UIMessage array lives in `messages` verbatim (text/tool-call/tool-approval/
+// reasoning parts, whatever shape the `ai` package produces) — same
+// "opaque JSON, only the client interprets it" choice docs.content makes for
+// BlockNote's Block[]. This table (and its FKs/indexes) already existed live
+// pre-dating this repo's own tracking of it — `scope` is the only actual
+// addition this migration makes.
+// ---------------------------------------------------------------------------
+
+export const chatConversations = pgTable(
+  'chat_conversations',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    memberId: text('member_id')
+      .notNull()
+      .references(() => members.id, { onDelete: 'cascade' }),
+    // Starts as the literal default below; renamed to a derived summary of
+    // the first user message the first time the conversation is persisted.
+    title: text('title').notNull().default('New chat'),
+    messages: jsonb('messages').$type<unknown[]>().notNull().default([]),
+    // Mirrors ChatScope from hooks/use-beacon-chat.ts, so resuming a
+    // team/engine-scoped conversation keeps answering from that scope.
+    scope: jsonb('scope').$type<{ engineId?: string | null; teamId?: string | null }>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    memberIdx: index('chat_conversations_member_idx').on(table.memberId, table.updatedAt),
+    workspaceIdx: index('chat_conversations_workspace_idx').on(table.workspaceId),
+  }),
+)
+
+export type ChatConversation = typeof chatConversations.$inferSelect
+export type InsertChatConversation = typeof chatConversations.$inferInsert

@@ -5,7 +5,13 @@ import { ToolPartRenderer } from './tool-part-renderer'
 import type { AnyPart } from '@/lib/chat/tool-parts'
 import type { UIMessage } from 'ai'
 
-export function MessageBubble({ message }: { message: UIMessage }) {
+export function MessageBubble({
+  message,
+  onRespondToApproval,
+}: {
+  message: UIMessage
+  onRespondToApproval?: (id: string, approved: boolean) => void
+}) {
   const isUser = message.role === 'user'
 
   return (
@@ -23,7 +29,7 @@ export function MessageBubble({ message }: { message: UIMessage }) {
               return (
                 <div key={i} className="rounded-2xl bg-muted px-4 py-3 text-foreground">
                   <Streamdown
-                    className="text-sm leading-relaxed [&_a]:underline [&_a]:underline-offset-4 [&_pre]:max-w-full"
+                    className="text-sm leading-relaxed [&_a]:underline [&_a]:underline-offset-4 [&_pre]:max-w-full [&_table]:my-2 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
                     controls
                     isAnimating={part.state === 'streaming'}
                   >
@@ -58,7 +64,7 @@ export function MessageBubble({ message }: { message: UIMessage }) {
           if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
             return (
               <div key={i} className="w-full">
-                <ToolPartRenderer part={part as AnyPart} />
+                <ToolPartRenderer part={part as AnyPart} onRespondToApproval={onRespondToApproval} />
               </div>
             )
           }

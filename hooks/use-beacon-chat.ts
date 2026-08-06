@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useSyncExternalStore, useCallback } from 'react'
-import { AbstractChat, DefaultChatTransport } from 'ai'
+import { AbstractChat, DefaultChatTransport, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import type { UIMessage, ChatState, ChatStatus } from 'ai'
 import type { ResponseLevel } from '@/lib/chat/response-level'
 
@@ -12,7 +12,7 @@ import type { ResponseLevel } from '@/lib/chat/response-level'
 // We proxy all writes and method calls to trigger React re-renders.
 // ---------------------------------------------------------------------------
 
-function createReactiveChatState(): {
+function createReactiveChatState(initialMessages: UIMessage[]): {
   state: ChatState<UIMessage>
   subscribe: (l: () => void) => () => void
   getSnapshot: () => number
@@ -32,7 +32,7 @@ function createReactiveChatState(): {
   } = {
     status: 'ready',
     error: undefined,
-    messages: [],
+    messages: initialMessages,
   }
 
   // Proxy intercepts direct property writes (status, error, messages)
@@ -105,6 +105,10 @@ class BeaconChat extends AbstractChat<UIMessage> {
     super({
       state,
       transport: new DefaultChatTransport({ api: '/api/chat' }),
+      // The instant every pending write-tool approval in the current step has
+      // a response, auto-repost to /api/chat so the model's tool loop
+      // resumes without the user having to send anything themselves.
+      sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
     })
   }
 }
@@ -119,8 +123,8 @@ export interface ChatScope {
   teamId?: string | null
 }
 
-export function useBeaconChat(scope?: ChatScope) {
-  const [store] = useState(() => createReactiveChatState())
+export function useBeaconChat(conversationId: string, scope?: ChatScope, initialMessages: UIMessage[] = []) {
+  const [store] = useState(() => createReactiveChatState(initialMessages))
   const [chat] = useState(() => new BeaconChat(store.state))
   const { subscribe, getSnapshot } = store
 
@@ -132,14 +136,32 @@ export function useBeaconChat(scope?: ChatScope) {
   const engineId = scope?.engineId ?? null
   const teamId = scope?.teamId ?? null
 
-  const sendMessage = useCallback(
-    (text: string, responseLevel?: ResponseLevel) => {
-      const body: Record<string, unknown> = {}
+  const buildBody = useCallback(
+    (responseLevel?: ResponseLevel) => {
+      const body: Record<string, unknown> = { conversationId }
       if (responseLevel) body.responseLevel = responseLevel
       if (engineId || teamId) body.scope = { engineId, teamId }
-      void chat.sendMessage({ text }, Object.keys(body).length > 0 ? { body } : undefined)
+      return body
     },
-    [chat, engineId, teamId],
+    [conversationId, engineId, teamId],
+  )
+
+  const sendMessage = useCallback(
+    (text: string, responseLevel?: ResponseLevel) => {
+      void chat.sendMessage({ text }, { body: buildBody(responseLevel) })
+    },
+    [chat, buildBody],
+  )
+
+  // Called from the write-confirmation card's Confirm/Cancel buttons. The
+  // `options.body` here is what the SDK resends with once every pending
+  // approval is resolved — it must carry the same body shape sendMessage
+  // does, or the resend silently loses conversationId/scope.
+  const respondToApproval = useCallback(
+    (approvalId: string, approved: boolean, responseLevel?: ResponseLevel) => {
+      void chat.addToolApprovalResponse({ id: approvalId, approved, options: { body: buildBody(responseLevel) } })
+    },
+    [chat, buildBody],
   )
 
   const stop = useCallback(() => {
@@ -151,6 +173,7 @@ export function useBeaconChat(scope?: ChatScope) {
     status: chat.status,
     error: chat.error,
     sendMessage,
+    respondToApproval,
     stop,
   }
 }

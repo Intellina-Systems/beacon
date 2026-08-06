@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Sparkles, Send, StopCircle, Bug } from 'lucide-react'
+import type { UIMessage } from 'ai'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useBeaconChat, type ChatScope } from '@/hooks/use-beacon-chat'
@@ -48,8 +49,50 @@ const SUGGESTIONS = [
   },
 ]
 
-export function ChatConversation({ scope }: { scope?: ChatScope } = {}) {
-  const { messages, status, sendMessage, stop } = useBeaconChat(scope)
+// Loads persisted history (if any) before the chat hook is constructed, so a
+// resumed conversation hydrates with its full message list instead of
+// starting empty and then jumping.
+export function ChatConversation({ conversationId, scope }: { conversationId: string; scope?: ChatScope }) {
+  // The caller keys this component by conversationId (chat-page-client.tsx),
+  // so switching conversations remounts it fresh rather than re-running this
+  // effect on the same instance — initialMessages starting at null on every
+  // mount is already the reset, no need to set it again inside the effect.
+  const [initialMessages, setInitialMessages] = useState<UIMessage[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/chat/conversations/${conversationId}`)
+      .then((r) => (r.ok ? r.json() : { messages: [] }))
+      .then((data: { messages?: UIMessage[] }) => {
+        if (!cancelled) setInitialMessages(data.messages ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setInitialMessages([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [conversationId])
+
+  if (initialMessages === null) return null
+
+  return <ChatConversationInner conversationId={conversationId} scope={scope} initialMessages={initialMessages} />
+}
+
+function ChatConversationInner({
+  conversationId,
+  scope,
+  initialMessages,
+}: {
+  conversationId: string
+  scope?: ChatScope
+  initialMessages: UIMessage[]
+}) {
+  const { messages, status, sendMessage, respondToApproval, stop } = useBeaconChat(
+    conversationId,
+    scope,
+    initialMessages,
+  )
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -116,7 +159,7 @@ export function ChatConversation({ scope }: { scope?: ChatScope } = {}) {
         ) : (
           <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble key={m.id} message={m} onRespondToApproval={respondToApproval} />
             ))}
             {status === 'submitted' && <ThinkingBubble />}
             <div ref={bottomRef} />
