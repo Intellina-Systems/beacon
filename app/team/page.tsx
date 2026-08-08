@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { count, eq } from 'drizzle-orm'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
+import { detailVisibleMemberIds, isAdmin, isSuperadmin } from '@/lib/auth/permissions'
 import { db } from '@/lib/db/client'
 import { members } from '@/lib/db/schema'
 import { getMemberActivity } from '@/lib/events/queries'
@@ -60,7 +60,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         isAdmin(ctx) ? (
           <div className="flex items-center gap-2">
             <PendingInvitesButton />
-            <AddMemberButton teams={teamOptions} />
+            <AddMemberButton teams={teamOptions} canGrantSuperadmin={isSuperadmin(ctx)} />
           </div>
         ) : undefined
       }

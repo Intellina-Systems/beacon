@@ -10,15 +10,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-
-type AccessRole = 'admin' | 'manager' | 'engineer'
+import type { AccessRole } from '@/lib/db/schema'
 
 export interface TeamOption {
   id: string
   name: string
 }
 
-export function AddMemberButton({ teams }: { teams: TeamOption[] }) {
+export function AddMemberButton({
+  teams,
+  canGrantSuperadmin = false,
+}: {
+  teams: TeamOption[]
+  // Only an existing superadmin may invite/create another superadmin —
+  // mirrors the server-side guard in app/api/invites/route.ts.
+  canGrantSuperadmin?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [name, setName] = useState('')
@@ -224,6 +231,9 @@ export function AddMemberButton({ teams }: { teams: TeamOption[] }) {
                       <SelectItem value="engineer">Engineer</SelectItem>
                       <SelectItem value="manager">Manager</SelectItem>
                       <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="superadmin" disabled={!canGrantSuperadmin}>
+                        Super Admin
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

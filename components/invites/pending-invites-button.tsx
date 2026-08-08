@@ -7,12 +7,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
+import type { AccessRole } from '@/lib/db/schema'
 
 interface PendingInvite {
   id: string
   memberId: string
   memberName: string
-  memberRole: 'admin' | 'manager' | 'engineer'
+  memberRole: AccessRole
   email: string | null
   invitedByName: string | null
   expiresAt: string

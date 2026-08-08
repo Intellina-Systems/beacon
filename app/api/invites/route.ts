@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid'
 import { db } from '@/lib/db/client'
 import { ACCESS_ROLES, invites, members, teamMembers } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { forbidden, isAdmin } from '@/lib/auth/permissions'
+import { forbidden, isAdmin, isSuperadmin } from '@/lib/auth/permissions'
 import { generateInviteToken, hashInviteToken, INVITE_TTL_MS } from '@/lib/invites'
 
 export async function GET(): Promise<Response> {
@@ -58,6 +58,12 @@ export async function POST(req: Request): Promise<Response> {
   const parsed = createSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return Response.json({ error: 'Invalid invite', issues: parsed.error.issues }, { status: 400 })
   const input = parsed.data
+
+  // Same guard as PATCH /api/members/[id] — without it, any admin could mint
+  // a superadmin simply by inviting one, bypassing that endpoint's check.
+  if (input.accessRole === 'superadmin' && !isSuperadmin(ctx)) {
+    return forbidden('Only a superadmin can grant superadmin access')
+  }
 
   let memberId: string
   if (input.memberId) {

@@ -53,6 +53,8 @@ export const EVENT_TYPES = [
   'agent.tests_failed',
   'agent.blocked',
   'agent.completed',
+  'agent.session_ended',
+  'agent.instrumentation_stale',
   // Communication & knowledge
   'message.posted',
   'meeting.scheduled',

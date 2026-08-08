@@ -105,6 +105,10 @@ export const workspaces = pgTable('workspaces', {
   // Allocation increments issueCounter atomically; the incremented value is the number.
   issuePrefix: text('issue_prefix').notNull().default('BEA'),
   issueCounter: integer('issue_counter').notNull().default(0),
+  // One Vision/Mission statement per workspace, superadmin-only to view or
+  // edit (see app/vision, app/mission). Null means "not written yet."
+  vision: text('vision'),
+  mission: text('mission'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 })
@@ -116,7 +120,10 @@ export type InsertWorkspace = typeof workspaces.$inferInsert
 // Team
 // ---------------------------------------------------------------------------
 
-export const ACCESS_ROLES = ['admin', 'manager', 'engineer'] as const
+// Ordered low → high; see lib/auth/roles.ts for the hierarchy helpers built
+// on this order. superadmin sits above admin — every admin capability plus
+// extras (Vision/Mission, granting/revoking superadmin itself).
+export const ACCESS_ROLES = ['engineer', 'manager', 'admin', 'superadmin'] as const
 export type AccessRole = (typeof ACCESS_ROLES)[number]
 
 export const MEMBER_STATUSES = ['profile', 'invited', 'active'] as const
@@ -572,6 +579,11 @@ export const EVENT_SOURCES = [
 ] as const
 export type EventSource = (typeof EVENT_SOURCES)[number]
 
+// Which of beacon-insights' two reporting paths produced an agent event —
+// see the `instrumentation` column comment on `events` below.
+export const EVENT_INSTRUMENTATIONS = ['hook', 'model'] as const
+export type EventInstrumentation = (typeof EVENT_INSTRUMENTATIONS)[number]
+
 export const events = pgTable(
   'events',
   {
@@ -596,6 +608,19 @@ export const events = pgTable(
     // Idempotency key from the source system (commit sha, delivery id…)
     externalId: text('external_id'),
     confidence: real('confidence'),
+    // Correlates events emitted by the same coding-agent session (e.g. one
+    // Claude Code conversation) — lets the model-authored path (a real
+    // agent.planning/agent.blocked reason/agent.completed) and the
+    // deterministic hook-authored path (session_started, throttled
+    // heartbeats, test results) be joined back into one timeline even though
+    // they're sent independently. Null for anything that isn't agent
+    // telemetry (github/linear/cicd/... events never set this).
+    sessionId: text('session_id'),
+    // Which of the two beacon-insights paths produced this event — 'hook'
+    // (deterministic, fires whether or not the model remembers anything) or
+    // 'model' (the agent chose to send it). Distinct from `source`, which is
+    // the ingestion channel (github/agent/manual/...), not this distinction.
+    instrumentation: text('instrumentation', { enum: EVENT_INSTRUMENTATIONS }),
     occurredAt: timestamp('occurred_at').notNull(),
     ingestedAt: timestamp('ingested_at').defaultNow().notNull(),
   },
@@ -605,6 +630,7 @@ export const events = pgTable(
     workItemIdx: index('events_work_item_idx').on(table.workItemId),
     memberIdx: index('events_member_idx').on(table.memberId),
     workspaceRepoIdx: index('events_workspace_repo_idx').on(table.workspaceId, table.repo),
+    sessionIdx: index('events_session_idx').on(table.sessionId),
     dedupeUnique: uniqueIndex('events_dedupe_idx').on(table.workspaceId, table.source, table.externalId),
   }),
 )

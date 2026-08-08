@@ -168,20 +168,23 @@ export function DocEditor({ doc, editable }: { doc: Doc; editable: boolean }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-10 lg:px-0">
-      <div className="mb-2 flex items-start justify-between gap-3">
-        <Input
-          value={title}
-          onChange={(e) => handleTitleChange(e.target.value)}
-          disabled={!editable}
-          placeholder="Untitled"
-          className="h-auto border-none bg-transparent px-0 text-3xl font-bold tracking-tight shadow-none focus-visible:ring-0 disabled:opacity-100"
-        />
-        <div className="mt-2 flex shrink-0 items-center gap-3">
-          <DocPresence docId={doc.id} />
-          <span className="text-xs text-muted-foreground transition-opacity duration-200">{saveLabel}</span>
-          <DocExportMenu editor={editor} title={title} />
-        </div>
+      <div className="mb-1 flex shrink-0 items-center justify-end gap-3">
+        <DocPresence docId={doc.id} />
+        <span className="text-xs text-muted-foreground transition-opacity duration-200">{saveLabel}</span>
+        <DocExportMenu editor={editor} title={title} />
       </div>
+      <Input
+        value={title}
+        onChange={(e) => handleTitleChange(e.target.value)}
+        disabled={!editable}
+        placeholder="Untitled"
+        // The shadcn Input base styles include `md:text-sm` and
+        // `dark:bg-input/30` — both need an explicit override (not just the
+        // unprefixed `text-*`/`bg-transparent`) because Tailwind keeps
+        // differently-prefixed utilities for the same property side by side,
+        // and the prefixed one wins the cascade on a desktop, dark-mode view.
+        className="mb-6 h-auto w-full min-w-0 border-none bg-transparent px-0 py-0 text-4xl font-bold tracking-tight shadow-none focus-visible:ring-0 disabled:opacity-100 md:text-4xl dark:bg-transparent"
+      />
       {!editable && <p className="mb-4 text-xs text-muted-foreground">You have view-only access to this document.</p>}
       <BlockNoteView editor={editor} editable={editable} slashMenu={false} linkToolbar={false}>
         <SuggestionMenuController

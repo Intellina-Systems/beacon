@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, ExternalLink } from 'lucide-react'
 import { db } from '@/lib/db/client'
 import { calendarAccounts, members, teamMembers, teams, workItems } from '@/lib/db/schema'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { detailVisibleMemberIds, isAdmin } from '@/lib/auth/permissions'
+import { detailVisibleMemberIds, isAdmin, isSuperadmin } from '@/lib/auth/permissions'
 import { getActiveBlockers, getMemberActivity, listEvents } from '@/lib/events/queries'
 import { isGoogleConfigured } from '@/lib/google/oauth'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -123,6 +123,7 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
               githubUsername={member.githubUsername}
               aliases={member.aliases}
               showAccessRole={member.status !== 'profile'}
+              canGrantSuperadmin={isSuperadmin(ctx)}
               isSelf={member.id === ctx.member.id}
             />
           )}

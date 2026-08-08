@@ -22,14 +22,8 @@ import { getEnabledAuthProviders } from '@/lib/auth/providers'
 import { ChevronsUpDown, Crown, Pencil } from 'lucide-react'
 import { RenameWorkspaceDialog } from '@/components/workspace/rename-workspace-dialog'
 import { SwitchWorkspaceMenu } from '@/components/workspace/switch-workspace-menu'
-
-type Role = 'admin' | 'manager' | 'engineer'
-
-const ROLE_LABEL: Record<Role, string> = {
-  admin: 'Admin',
-  manager: 'Manager',
-  engineer: 'Engineer',
-}
+import { isAdminRole, ROLE_LABEL } from '@/lib/auth/roles'
+import type { AccessRole } from '@/lib/db/schema'
 
 function GitHubIcon({ className }: { className?: string }) {
   return (
@@ -43,7 +37,7 @@ interface SignOutProps {
   user: Session['user']
   authProvider: Session['authProvider']
   githubConnection: { connected: boolean; username: string | null }
-  role: Role
+  role: AccessRole
   workspace: {
     id: string
     name: string
@@ -126,7 +120,7 @@ export function SignOut({ user, authProvider, githubConnection, role, workspace 
             {workspace.memberships.length > 1 && (
               <SwitchWorkspaceMenu currentWorkspaceId={workspace.id} memberships={workspace.memberships} />
             )}
-            {role === 'admin' && (
+            {isAdminRole(role) && (
               <DropdownMenuItem
                 onSelect={(e) => {
                   e.preventDefault()

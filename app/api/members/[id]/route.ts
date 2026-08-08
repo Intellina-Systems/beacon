@@ -1,9 +1,9 @@
 import { type NextRequest } from 'next/server'
 import { db } from '@/lib/db/client'
-import { members } from '@/lib/db/schema'
+import { ACCESS_ROLES, members, type AccessRole } from '@/lib/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { getWorkspaceContext } from '@/lib/auth/workspace-context'
-import { forbidden, isAdmin } from '@/lib/auth/permissions'
+import { forbidden, isAdmin, isSuperadmin } from '@/lib/auth/permissions'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }): Promise<Response> {
   const ctx = await getWorkspaceContext()
@@ -17,11 +17,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     name?: string
     email?: string
     title?: string
-    accessRole?: 'admin' | 'manager' | 'engineer'
+    accessRole?: AccessRole
     avatarUrl?: string
     githubUsername?: string | null
     slackHandle?: string | null
     aliases?: string[] | null
+  }
+
+  // Granting or revoking superadmin is a step above what a plain admin may
+  // do — otherwise any admin could mint (or demote) a superadmin through
+  // this endpoint, defeating the point of the extra tier.
+  if (body.accessRole !== undefined && ACCESS_ROLES.includes(body.accessRole)) {
+    const [target] = await db
+      .select({ accessRole: members.accessRole })
+      .from(members)
+      .where(and(eq(members.id, id), eq(members.workspaceId, ctx.workspaceId)))
+      .limit(1)
+    if (!target) return Response.json({ error: 'Not found' }, { status: 404 })
+
+    const grantingSuperadmin = body.accessRole === 'superadmin' && target.accessRole !== 'superadmin'
+    const revokingSuperadmin = body.accessRole !== 'superadmin' && target.accessRole === 'superadmin'
+    if ((grantingSuperadmin || revokingSuperadmin) && !isSuperadmin(ctx)) {
+      return forbidden('Only a superadmin can grant or revoke superadmin access')
+    }
   }
 
   // People instinctively type "@handle" into a field labeled "username" —
@@ -35,8 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(body.name !== undefined && { name: body.name.trim() }),
       ...(body.email !== undefined && { email: body.email?.trim() ?? null }),
       ...(body.title !== undefined && { title: body.title?.trim() ?? null }),
-      ...(body.accessRole !== undefined &&
-        ['admin', 'manager', 'engineer'].includes(body.accessRole) && { accessRole: body.accessRole }),
+      ...(body.accessRole !== undefined && ACCESS_ROLES.includes(body.accessRole) && { accessRole: body.accessRole }),
       ...(body.avatarUrl !== undefined && { avatarUrl: body.avatarUrl?.trim() ?? null }),
       ...(body.githubUsername !== undefined && {
         githubUsername: body.githubUsername ? stripAt(body.githubUsername.trim()) : null,
@@ -67,6 +84,19 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!isAdmin(ctx)) return forbidden()
 
   const { id } = await params
+
+  // Same rule as the PATCH revoke guard above: deleting a superadmin's
+  // membership removes their access just as surely as demoting them would,
+  // so a plain admin can't use DELETE to route around that check.
+  const [target] = await db
+    .select({ accessRole: members.accessRole })
+    .from(members)
+    .where(and(eq(members.id, id), eq(members.workspaceId, ctx.workspaceId)))
+    .limit(1)
+  if (!target) return Response.json({ error: 'Not found' }, { status: 404 })
+  if (target.accessRole === 'superadmin' && !isSuperadmin(ctx)) {
+    return forbidden('Only a superadmin can remove a superadmin')
+  }
 
   await db.delete(members).where(and(eq(members.id, id), eq(members.workspaceId, ctx.workspaceId)))
 

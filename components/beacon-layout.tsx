@@ -1,5 +1,6 @@
 'use client'
 
+import { Fragment } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -9,7 +10,9 @@ import {
   Cable,
   CalendarClock,
   CalendarDays,
+  Compass,
   FileText,
+  Flag,
   Inbox,
   LayoutDashboard,
   ListTodo,
@@ -41,8 +44,7 @@ import {
 import { DocsSidebarTree } from '@/components/docs/docs-sidebar-tree'
 import { cn } from '@/lib/utils'
 import type { Session } from '@/lib/session/types'
-
-type Role = 'admin' | 'manager' | 'engineer'
+import type { AccessRole } from '@/lib/db/schema'
 
 // roles: which access roles see the item; omitted = everyone
 //
@@ -52,11 +54,21 @@ type Role = 'admin' | 'manager' | 'engineer'
 //
 // Cycles (/cycles) and Automation (/automation) are hidden from nav for now —
 // the routes still exist and remain reachable by URL.
+//
+// Vision/Mission live in their own trailing section, separated from the rest
+// by a SidebarSeparator, so they render immediately above SidebarFooter's
+// profile bar but read as visibly distinct — a superadmin should see at a
+// glance these aren't regular nav items, not just infer it from position.
 const navSections = [
   {
     label: 'Navigation',
     items: [
-      { href: '/pulse', label: 'Pulse', icon: LayoutDashboard, roles: ['admin', 'manager', 'engineer'] as Role[] },
+      {
+        href: '/pulse',
+        label: 'Pulse',
+        icon: LayoutDashboard,
+        roles: ['admin', 'manager', 'engineer', 'superadmin'] as AccessRole[],
+      },
       { href: '/chat', label: 'Ask Beacon', icon: Sparkles },
       { href: '/knowledge', label: 'Knowledge', icon: BookOpen },
       { href: '/inbox', label: 'Inbox', icon: Inbox },
@@ -66,8 +78,15 @@ const navSections = [
       { href: '/docs', label: 'Docs', icon: FileText },
       { href: '/team', label: 'People', icon: Users },
       { href: '/org', label: 'Org', icon: Network },
-      { href: '/plans', label: 'Plans', icon: CalendarClock, roles: ['admin'] as Role[] },
-      { href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin'] as Role[] },
+      { href: '/plans', label: 'Plans', icon: CalendarClock, roles: ['admin', 'superadmin'] as AccessRole[] },
+      { href: '/integrations', label: 'Integrations', icon: Cable, roles: ['admin', 'superadmin'] as AccessRole[] },
+    ],
+  },
+  {
+    label: 'Superadmin',
+    items: [
+      { href: '/vision', label: 'Vision', icon: Compass, roles: ['superadmin'] as AccessRole[] },
+      { href: '/mission', label: 'Mission', icon: Flag, roles: ['superadmin'] as AccessRole[] },
     ],
   },
 ]
@@ -108,7 +127,7 @@ interface BeaconLayoutProps {
   children: React.ReactNode
   session: Session | null | undefined
   githubConnection: { connected: boolean; username: string | null }
-  role: Role
+  role: AccessRole
   workspace: {
     id: string
     name: string
@@ -167,35 +186,42 @@ export function BeaconLayout({
               <DocsSidebarTree />
             </>
           ) : (
-            visibleSections.map((section) => (
-              <SidebarGroup key={section.label} className="p-0 py-2">
-                {/* Heading kept for screen readers only — the sidebar reads as one
-                    flat list now that the Monitor/Intelligence/Configure grouping
-                    is gone. */}
-                <SidebarGroupLabel className="sr-only">{section.label}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {section.items.map(({ href, label, icon: Icon }) => {
-                      const active = pathname.startsWith(href)
-                      return (
-                        <SidebarMenuItem key={href}>
-                          <SidebarMenuButton asChild isActive={active} tooltip={label}>
-                            <Link href={href} aria-current={active ? 'page' : undefined}>
-                              <Icon className={cn(active && 'text-beacon')} />
-                              <span className="flex-1">{label}</span>
-                            </Link>
-                          </SidebarMenuButton>
-                          {href === '/inbox' && unreadNotifications > 0 && (
-                            <SidebarMenuBadge className="rounded-full bg-beacon px-1.5 py-0.5 font-mono text-[10px] font-semibold text-beacon-foreground">
-                              {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                            </SidebarMenuBadge>
-                          )}
-                        </SidebarMenuItem>
-                      )
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+            visibleSections.map((section, index) => (
+              <Fragment key={section.label}>
+                {/* mt-auto pushes this separator — and every group after it —
+                    to the bottom of the flex-column content area, so it sits
+                    flush above the footer instead of just being last in a
+                    top-aligned list with empty space below it. */}
+                {index > 0 && <SidebarSeparator className="mx-0 mt-auto" />}
+                <SidebarGroup className="p-0 py-2">
+                  {/* Heading kept for screen readers only — visually the sidebar
+                      reads as flat lists separated by a divider, not labelled
+                      sections. */}
+                  <SidebarGroupLabel className="sr-only">{section.label}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {section.items.map(({ href, label, icon: Icon }) => {
+                        const active = pathname.startsWith(href)
+                        return (
+                          <SidebarMenuItem key={href}>
+                            <SidebarMenuButton asChild isActive={active} tooltip={label}>
+                              <Link href={href} aria-current={active ? 'page' : undefined}>
+                                <Icon className={cn(active && 'text-beacon')} />
+                                <span className="flex-1">{label}</span>
+                              </Link>
+                            </SidebarMenuButton>
+                            {href === '/inbox' && unreadNotifications > 0 && (
+                              <SidebarMenuBadge className="rounded-full bg-beacon px-1.5 py-0.5 font-mono text-[10px] font-semibold text-beacon-foreground">
+                                {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                              </SidebarMenuBadge>
+                            )}
+                          </SidebarMenuItem>
+                        )
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              </Fragment>
             ))
           )}
         </SidebarContent>

@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { AccessRole } from '@/lib/db/schema'
 
 export function EditMemberDialog({
   memberId,
@@ -19,16 +20,22 @@ export function EditMemberDialog({
   githubUsername,
   aliases,
   showAccessRole = false,
+  canGrantSuperadmin = false,
   isSelf = false,
 }: {
   memberId: string
   name: string
   email: string | null
   title: string | null
-  accessRole?: 'admin' | 'manager' | 'engineer'
+  accessRole?: AccessRole
   githubUsername?: string | null
   aliases?: string[] | null
   showAccessRole?: boolean
+  // Only an existing superadmin may grant/revoke superadmin — mirrors the
+  // server-side guard in app/api/members/[id]/route.ts. Rendering the option
+  // disabled (not omitted) still lets an already-superadmin row display
+  // correctly for a non-superadmin viewer.
+  canGrantSuperadmin?: boolean
   isSelf?: boolean
 }) {
   const router = useRouter()
@@ -65,6 +72,9 @@ export function EditMemberDialog({
       if (res.ok) {
         setOpen(false)
         router.refresh()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        toast.error(data.error ?? 'Failed to save changes')
       }
     } finally {
       setSaving(false)
@@ -164,6 +174,9 @@ export function EditMemberDialog({
                     <SelectItem value="engineer">Engineer</SelectItem>
                     <SelectItem value="manager">Manager</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="superadmin" disabled={!canGrantSuperadmin}>
+                      Super Admin
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

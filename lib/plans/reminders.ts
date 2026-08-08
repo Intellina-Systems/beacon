@@ -4,6 +4,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { events, members, notifications } from '@/lib/db/schema'
 import { ingestEvents, type RawEvent } from '@/lib/events/ingest'
+import { isAdminRole } from '@/lib/auth/roles'
 import { generateId } from '@/lib/utils/id'
 import { getMemberPlan, serverDateKey } from './queries'
 
@@ -46,8 +47,9 @@ function localDateKey(date: Date, timezone: string): string {
 // work item involved, so this bypasses ingestEvents' watcher-based fan-out
 // (lib/events/ingest.ts fanOutNotifications) in favor of the same
 // null-workItemId shape the automation engine's `notify` action already
-// produces (lib/events/ingest.ts runAutomationRules). Admins are skipped —
-// they don't file plans (see DailyPlanCard's !isAdmin gate on Pulse).
+// produces (lib/events/ingest.ts runAutomationRules). Admins and superadmins
+// are skipped — they don't file plans (see DailyPlanCard's !isAdmin gate on
+// Pulse, which now covers both via isAdminRole).
 export async function checkPlanReminders(): Promise<PlanReminderResult> {
   const now = new Date()
   const roster = await db
@@ -65,7 +67,7 @@ export async function checkPlanReminders(): Promise<PlanReminderResult> {
   const dueMembers: { id: string; workspaceId: string; externalId: string }[] = []
 
   for (const member of roster) {
-    if (member.accessRole === 'admin') continue
+    if (isAdminRole(member.accessRole)) continue
 
     const timezone = member.timezone ?? 'UTC'
     if (localHour(now, timezone) !== REMINDER_HOUR) continue

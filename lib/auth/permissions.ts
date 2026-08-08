@@ -3,10 +3,22 @@ import 'server-only'
 import { eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import { teamMembers, users } from '@/lib/db/schema'
+import { isAdminRole, roleAtLeast } from './roles'
 import type { WorkspaceContext } from './workspace-context'
 
+// admin OR superadmin — superadmin is a strict superset of admin, so every
+// existing admin-gated surface (60+ call sites) extends to superadmin for
+// free by going through this one function rather than a literal role check.
 export function isAdmin(ctx: WorkspaceContext): boolean {
-  return ctx.role === 'admin'
+  return isAdminRole(ctx.role)
+}
+
+// Exactly superadmin — for the handful of surfaces even admins don't get
+// (Vision/Mission, granting/revoking superadmin itself). Distinct concept
+// from isSuperAdminUser below: this is the top of one workspace's own role
+// hierarchy, not the platform-wide cross-tenant flag.
+export function isSuperadmin(ctx: WorkspaceContext): boolean {
+  return ctx.role === 'superadmin'
 }
 
 // Platform-wide admin, independent of workspace membership/role. There is no
@@ -16,18 +28,20 @@ export async function isSuperAdminUser(userId: string): Promise<boolean> {
   return row?.isSuperAdmin ?? false
 }
 
-// Only admins see every team; everyone else (managers included) is scoped to
-// their own team(s) — a manager's "own team" is just their teamMembers rows,
-// the same membership managers already have via ctx.teams.
+// Only admins (and superadmins) see every team; everyone else (managers
+// included) is scoped to their own team(s) — a manager's "own team" is just
+// their teamMembers rows, the same membership managers already have via
+// ctx.teams.
 export function canViewAllTeams(ctx: WorkspaceContext): boolean {
-  return ctx.role === 'admin'
+  return isAdminRole(ctx.role)
 }
 
 // Workspace-wide config surfaces (cycles, automation rules, projects) have no
-// team dimension to scope by, so admin and manager stay the same unrestricted
-// tier here regardless of canViewAllTeams' team-visibility scoping.
+// team dimension to scope by, so manager-and-above stays the same
+// unrestricted tier here regardless of canViewAllTeams' team-visibility
+// scoping.
 export function canManageWorkspaceConfig(ctx: WorkspaceContext): boolean {
-  return ctx.role === 'admin' || ctx.role === 'manager'
+  return roleAtLeast(ctx.role, 'manager')
 }
 
 export function leadTeamIds(ctx: WorkspaceContext): string[] {
@@ -66,10 +80,11 @@ export async function detailVisibleMemberIds(ctx: WorkspaceContext): Promise<str
   return [...ids]
 }
 
-// Which team/engine owns a work item is org routing — an admin/manager call.
-// A lead delegates *within* the team they lead; they don't move work across it.
+// Which team/engine owns a work item is org routing — a manager-and-above
+// call. A lead delegates *within* the team they lead; they don't move work
+// across it.
 export function canRouteWorkItems(ctx: WorkspaceContext): boolean {
-  return ctx.role === 'admin' || ctx.role === 'manager'
+  return roleAtLeast(ctx.role, 'manager')
 }
 
 // Guards a change of assignee on a work item. Returns null when the change is

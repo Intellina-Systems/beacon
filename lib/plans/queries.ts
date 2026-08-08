@@ -1,18 +1,23 @@
 import 'server-only'
 
-import { and, desc, eq, gte, inArray, isNotNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lte, notInArray } from 'drizzle-orm'
 import { db } from '@/lib/db/client'
 import {
   dailyPlans,
   events,
   members,
   workItems,
+  type AccessRole,
   type DailyPlan,
   type DailyPlanStatus,
   type WorkItemStatus,
 } from '@/lib/db/schema'
 import { visibleMemberIds } from '@/lib/auth/permissions'
 import type { WorkspaceContext } from '@/lib/auth/workspace-context'
+
+// Roles that never file a daily plan — excluded from any roster this module
+// builds, not just shown as permanently "not planned."
+const NON_PLANNING_ROLES: AccessRole[] = ['admin', 'superadmin']
 
 // One shared notion of "today" for both the composer and the founder-facing
 // panel, so a plan submitted here is the same row read there. Server time
@@ -118,6 +123,7 @@ export async function getTodaysPlans(ctx: WorkspaceContext, date: string = serve
         eq(members.workspaceId, ctx.workspaceId),
         scoped ? inArray(members.id, scoped) : undefined,
         isNotNull(members.name),
+        notInArray(members.accessRole, NON_PLANNING_ROLES),
       ),
     )
     .orderBy(members.name)

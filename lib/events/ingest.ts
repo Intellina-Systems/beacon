@@ -8,6 +8,7 @@ import {
   notifications,
   workItems,
   workItemWatchers,
+  EVENT_INSTRUMENTATIONS,
   type AutomationAction,
   type InsertEvent,
   type Member,
@@ -48,6 +49,13 @@ export const rawEventSchema = z.object({
   // Repository the work is happening in, e.g. "Intellina-Systems/beacon".
   repo: z.string().max(300).optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
+  // Correlates events from the same coding-agent session, and which of the
+  // beacon-insights skill's two reporting paths sent this one — both wired
+  // through by the skill's hooks/send-event helper, not something a caller
+  // is expected to construct by hand. See the `events.sessionId`/
+  // `events.instrumentation` column comments in schema.ts.
+  sessionId: z.string().max(200).optional(),
+  instrumentation: z.enum(EVENT_INSTRUMENTATIONS).optional(),
 })
 
 export type RawEvent = z.infer<typeof rawEventSchema>
@@ -138,6 +146,8 @@ export async function ingestEvents(rawEvents: RawEvent[], options: IngestOptions
       repo: raw.repo ?? null,
       externalId: raw.externalId ?? null,
       confidence: raw.confidence ?? null,
+      sessionId: raw.sessionId ?? null,
+      instrumentation: raw.instrumentation ?? null,
       occurredAt: raw.occurredAt ?? now,
     }
   })
